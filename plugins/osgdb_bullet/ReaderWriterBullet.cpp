@@ -81,19 +81,28 @@ public:
     virtual void setVelocity(const std::string& name, const osg::Vec3& v, bool linearOrAngular);
     virtual osg::Vec3 getVelocity(const std::string& name, bool linearOrAngular);
 
+    virtual void setGravity(const osg::Vec3& gravity);
+    virtual osg::Vec3 getGravity() const;
+
     // Constraint functions
     virtual void addConstraint(const std::string& name, ConstraintBase* constraint,
                                 bool noCollisionsBetweenLinked = true);
     virtual void removeConstraint(const std::string& name);
 
-    virtual void setGravity(const osg::Vec3& gravity);
-    virtual osg::Vec3 getGravity() const;
+    // Applying force functions
+    virtual void applyImpulse(const std::string& name, const osg::Vec3& point,
+                                const osg::Vec3& impulse, bool wake = true);
+    
+    // get*() functions
+    virtual float getInverseMass(const std::string& name);
+    virtual osg::Matrix getInverseInertia(const std::string& name);
+    virtual osg::Vec3 getCenterOfMass(const std::string& name);
 
-    // Raycast functions
+    // Collision and raycast functions
     virtual bool raycast(const osg::Vec3& start, const osg::Vec3& end,
-                            RaycastHit& result, bool getNameFromBody = true);
+                         RaycastHit& result, const QueryFilter& filter = QueryFilter(), bool getNameFromBody = true);
     virtual std::vector<RaycastHit> raycastAll(const osg::Vec3& start, const osg::Vec3& end,
-                                                bool getNameFromBody = true);
+                                               const QueryFilter& filter = QueryFilter(), bool getNameFromBody = true);
 
     /* Physics creation functions */
     virtual CollisionShapeBase* createPhysicsPoint();  // for kinematic use only
@@ -308,12 +317,66 @@ void BulletPhysicsEngine::setGravity(const osg::Vec3& gravity)
 osg::Vec3 BulletPhysicsEngine::getGravity() const
 { const btVector3& v = PHY_WORLD()->getGravity(); return osg::Vec3(v.x(), v.y(), v.z()); }
 
+void BulletPhysicsEngine::applyImpulse(const std::string& name, const osg::Vec3& point,
+                                       const osg::Vec3& impulse, bool wake)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        btRigidBody* body = itr->second->get<btRigidBody>();
+        if (body->isStaticOrKinematicObject()) return;
+
+        btVector3 btImpulse(impulse[0], impulse[1], impulse[2]);
+        btVector3 btPoint(point[0], point[1], point[2]);
+        btVector3 relPos = btPoint - body->getCenterOfMassPosition();
+        body->applyImpulse(btImpulse, relPos);
+        if (wake && !body->isActive()) body->activate();
+    }
+}
+
+float BulletPhysicsEngine::getInverseMass(const std::string& name)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        btRigidBody* body = itr->second->get<btRigidBody>();
+        return body->getInvMass();
+    }
+    return 0.0f;
+}
+
+osg::Matrix BulletPhysicsEngine::getInverseInertia(const std::string& name)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        btRigidBody* body = itr->second->get<btRigidBody>();
+        btMatrix3x3 m = body->getInvInertiaTensorWorld();
+        return osg::Matrix(m[0][0], m[0][1], m[0][2], 0.0f, m[1][0], m[1][1], m[1][2], 0.0f,
+                           m[2][0], m[2][1], m[2][2], 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    return osg::Matrix();
+}
+
+osg::Vec3 BulletPhysicsEngine::getCenterOfMass(const std::string& name)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        btRigidBody* body = itr->second->get<btRigidBody>();
+        btVector3 c = body->getCenterOfMassPosition(); return osg::Vec3(c[0], c[1], c[2]);
+    }
+    return osg::Vec3();
+}
+
 bool BulletPhysicsEngine::raycast(const osg::Vec3& s, const osg::Vec3& e,
-                                  RaycastHit& result, bool getNameFromBody)
+                                  RaycastHit& result, const QueryFilter& f, bool getNameFromBody)
 {
     btVector3 from(s.x(), s.y(), s.z()), to(e.x(), e.y(), e.z());
     btCollisionWorld::ClosestRayResultCallback rayCallback(from, to);
     //rayCallback.m_flags |= btTriangleRaycastCallback::kF_UseGjkConvexCastRaytest;
+    rayCallback.m_collisionFilterMask = f.maskBits;
+    rayCallback.m_collisionFilterGroup = f.categoryBits;
 
     PHY_WORLD()->rayTest(from, to, rayCallback);
     if (rayCallback.hasHit())
@@ -336,11 +399,13 @@ bool BulletPhysicsEngine::raycast(const osg::Vec3& s, const osg::Vec3& e,
 }
 
 std::vector<BulletPhysicsEngine::RaycastHit> BulletPhysicsEngine::raycastAll(
-        const osg::Vec3& s, const osg::Vec3& e, bool getNameFromBody)
+        const osg::Vec3& s, const osg::Vec3& e, const QueryFilter& f, bool getNameFromBody)
 {
     btVector3 from(s.x(), s.y(), s.z()), to(e.x(), e.y(), e.z());
     btCollisionWorld::AllHitsRayResultCallback rayCallback(from, to);
     //rayCallback.m_flags |= btTriangleRaycastCallback::kF_UseGjkConvexCastRaytest;
+    rayCallback.m_collisionFilterMask = f.maskBits;
+    rayCallback.m_collisionFilterGroup = f.categoryBits;
 
     std::vector<BulletPhysicsEngine::RaycastHit> hitList;
     PHY_WORLD()->rayTest(from, to, rayCallback);

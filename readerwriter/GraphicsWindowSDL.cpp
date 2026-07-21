@@ -194,7 +194,17 @@ void GraphicsWindowSDL::initialize()
     }
     OSG_NOTICE << "[GraphicsWindowSDL] Create EGL system for WebAssembly" << std::endl;
 #else
-    OSG_NOTICE << "[GraphicsWindowSDL] Create native windowing system" << std::endl;
+    if (winData && winData->forceEGL)
+    {
+#  if defined(SDL_VIDEO_DRIVER_X11)
+        SDL_SetHint(SDL_HINT_VIDEO_X11_FORCE_EGL, "1");
+        OSG_NOTICE << "[GraphicsWindowSDL] Create EGL system (EGL forced on)" << std::endl;
+#  else
+        OSG_NOTICE << "[GraphicsWindowSDL] Create native windowing system (EGL disabled)" << std::endl;
+#  endif
+    }
+    else
+        { OSG_NOTICE << "[GraphicsWindowSDL] Create native windowing system" << std::endl; }
 #endif
 
     int exMajor = 0, exMinor = 0;
@@ -373,17 +383,17 @@ void GraphicsWindowSDL::initialize()
 
     // Create context
 #if defined(VERSE_GLES_DESKTOP)
-#   if defined(OSG_GLES3_AVAILABLE)
+#  if defined(OSG_GLES3_AVAILABLE)
     if (exMajor <= 0) exMajor = 3;
     EGLint contextAttribList[] = {
         EGL_CONTEXT_CLIENT_VERSION, exMajor,
         EGL_CONTEXT_MINOR_VERSION, exMinor,
         EGL_NONE, EGL_NONE
     };
-#   else
+#  else
     if (exMajor <= 0) exMajor = 2;
     EGLint contextAttribList[] = { EGL_CONTEXT_CLIENT_VERSION, exMajor, EGL_NONE, EGL_NONE };
-#   endif
+#  endif
     EGLDisplay display = (EGLDisplay)_glDisplay;
     EGLSurface surface = (EGLSurface)_glSurface;
     eglBindAPI(EGL_OPENGL_ES_API);  // Set rendering API
@@ -393,7 +403,7 @@ void GraphicsWindowSDL::initialize()
     if (context == EGL_NO_CONTEXT)
     { OSG_WARN << "[GraphicsWindowSDL] Failed to create EGL context" << std::endl; return; }
 
-#   if VERSE_WITH_VULKAN
+#  if VERSE_WITH_VULKAN
     // Check if Google Angle is modified for VERSE use?
     PFNEGLGETVKOBJECTSVERSEPROC eglGetVkObjectsVERSE =
         (PFNEGLGETVKOBJECTSVERSEPROC)(eglGetProcAddress("eglGetVkObjectsVERSE"));
@@ -412,7 +422,7 @@ void GraphicsWindowSDL::initialize()
         OSG_NOTICE << "[GraphicsWindowSDL] eglGetVkObjectsVERSE() found. "
                    << "Retrieved Vulkan objects for integration uses." << std::endl;
     }
-#   endif
+#  endif
 #else
     SDL_GLContext context = SDL_GL_CreateContext(_sdlWindow);
     if (context == NULL)

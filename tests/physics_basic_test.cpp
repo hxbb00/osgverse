@@ -74,7 +74,7 @@ public:
         {
             // Try to pick a rigid object
             osgVerse::PhysicsEngine::RaycastHit result;
-            if (_physics->raycast(start, end, result, true))
+            if (_physics->raycast(start, end, result))
             {
                 bool isKinematic = false;
                 if (_physics->isDynamicBody(result.name, isKinematic))

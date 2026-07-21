@@ -298,6 +298,54 @@ osg::Vec3 PhysicsEngine::getVelocity(const std::string& name, bool linearOrAngul
     return osg::Vec3();
 }
 
+void PhysicsEngine::applyImpulse(const std::string& name, const osg::Vec3& point,
+                                 const osg::Vec3& impulse, bool wake)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        b3BodyId* body = itr->second->get<b3BodyId>();
+        b3Vec3 v = b3Vec3{ impulse[0], impulse[1], impulse[2] };
+        b3Pos p = b3Pos({ point[0], point[1], point[2] });
+        b3Body_ApplyLinearImpulse(*body, v, p, wake);
+    }
+}
+
+float PhysicsEngine::getInverseMass(const std::string& name)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        b3BodyId* body = itr->second->get<b3BodyId>();
+        return b3Body_GetInverseMass(*body);
+    }
+    return 0.0f;
+}
+
+osg::Matrix PhysicsEngine::getInverseInertia(const std::string& name)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        b3BodyId* body = itr->second->get<b3BodyId>();
+        b3Matrix3 m = b3Body_GetWorldInverseRotationalInertia(*body);
+        return osg::Matrix(m.cx.x, m.cy.x, m.cz.x, 0.0f, m.cx.y, m.cy.y, m.cz.y, 0.0f,
+                           m.cx.z, m.cy.z, m.cz.z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    return osg::Matrix();
+}
+
+osg::Vec3 PhysicsEngine::getCenterOfMass(const std::string& name)
+{
+    std::map<std::string, osg::ref_ptr<RigidBodyBase>>::iterator itr = _bodies.find(name);
+    if (itr != _bodies.end())
+    {
+        b3BodyId* body = itr->second->get<b3BodyId>();
+        b3Pos c = b3Body_GetWorldCenter(*body); return osg::Vec3(c.x, c.y, c.z);
+    }
+    return osg::Vec3();
+}
+
 void PhysicsEngine::addConstraint(const std::string& name, ConstraintBase* cBase,
                                   bool noCollisionsBetweenLinked)
 {
@@ -357,11 +405,13 @@ osg::Vec3 PhysicsEngine::getGravity() const
 { b3Vec3 g = b3World_GetGravity(PHY_WORLD()); return osg::Vec3(g.x, g.y, g.z); }
 
 bool PhysicsEngine::raycast(const osg::Vec3& s, const osg::Vec3& e,
-                            RaycastHit& result, bool getNameFromBody)
+                            RaycastHit& result, const QueryFilter& f, bool getNameFromBody)
 {
     b3Vec3 origin = b3Vec3{ s.x(), s.y(), s.z() };
     b3Vec3 translation = b3Vec3{ e.x() - s.x(), e.y() - s.y(), e.z() - s.z() };
     b3QueryFilter filter = b3DefaultQueryFilter();
+    filter.categoryBits = f.categoryBits; filter.maskBits = f.maskBits;
+    if (!f.name.empty()) filter.name = f.name.c_str();
 
     b3RayResult r = b3World_CastRayClosest(PHY_WORLD(), b3ToPos(origin), translation, filter);
     if (r.hit)
@@ -370,13 +420,15 @@ bool PhysicsEngine::raycast(const osg::Vec3& s, const osg::Vec3& e,
 }
 
 std::vector<PhysicsEngine::RaycastHit> PhysicsEngine::raycastAll(const osg::Vec3& s, const osg::Vec3& e,
-                                                                 bool getNameFromBody)
+                                                                 const QueryFilter& f, bool getNameFromBody)
 {
     b3Vec3 origin = b3Vec3{ s.x(), s.y(), s.z() };
     b3Vec3 translation = b3Vec3{ e.x() - s.x(), e.y() - s.y(), e.z() - s.z() };
     b3QueryFilter filter = b3DefaultQueryFilter();
-    std::vector<RaycastHit> hitList;
+    filter.categoryBits = f.categoryBits; filter.maskBits = f.maskBits;
+    if (!f.name.empty()) filter.name = f.name.c_str();
 
+    std::vector<RaycastHit> hitList;
     b3Helpers::RaycastCallbackData data = { this, &hitList, getNameFromBody };
     b3World_CastRay(PHY_WORLD(), b3ToPos(origin), translation, filter, b3Helpers::raycastCallback, &data);
     return hitList;

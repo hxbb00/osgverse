@@ -35,6 +35,7 @@ USE_GRAPICSWINDOW_IMPLEMENTATION(GLFW)
 #include <pipeline/LightModule.h>
 #include <pipeline/ShadowModule.h>
 #include <pipeline/Utilities.h>
+#include <readerwriter/GraphicsWindowSDL.h>
 #include <readerwriter/Utilities.h>
 #include <iostream>
 #include <sstream>
@@ -64,6 +65,7 @@ int main(int argc, char** argv)
     osg::setNotifyHandler(new osgVerse::ConsoleHandler);
 
     bool useGLFW = arguments.read("--use-glfw"), useWin32Ex = arguments.read("--use-win32ex");
+    bool forceEGL = arguments.read("--force-egl");
     bool testPipeline = arguments.read("--with-deferred"), showShadowMaps = arguments.read("--debug-shadow");
 #if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
     testPipeline = true;
@@ -127,6 +129,12 @@ int main(int argc, char** argv)
 #if OSG_VERSION_GREATER_THAN(3, 4, 0)
 #   ifdef VERSE_WITH_SDL
     traits->windowingSystemPreference = "SDL";
+    if (forceEGL)
+    {
+        osg::ref_ptr<osgVerse::GraphicsWindowSDL::WindowData> winData = new osgVerse::GraphicsWindowSDL::WindowData;
+        winData->forceEGL = true;
+        traits->inheritedWindowData = winData;
+    }
 #   endif
     if (useGLFW) traits->windowingSystemPreference = "GLFW";
     else if (useWin32Ex) traits->windowingSystemPreference = "Win32NV";  // FIXME: will crash currently...

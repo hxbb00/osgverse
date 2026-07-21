@@ -40,12 +40,23 @@ namespace osgVerse
         virtual void setVelocity(const std::string& name, const osg::Vec3& v, bool linearOrAngular);
         virtual osg::Vec3 getVelocity(const std::string& name, bool linearOrAngular);
 
+        virtual void setGravity(const osg::Vec3& gravity);
+        virtual osg::Vec3 getGravity() const;
+
         // Constraint functions
         virtual void addConstraint(const std::string& name, ConstraintBase* constraint,
                                    bool noCollisionsBetweenLinked = true);
         virtual void removeConstraint(const std::string& name);
 
+        // Applying force functions
+        virtual void applyImpulse(const std::string& name, const osg::Vec3& point,
+                                  const osg::Vec3& impulse, bool wake = true);
+
         // get*() functions
+        virtual float getInverseMass(const std::string& name);
+        virtual osg::Matrix getInverseInertia(const std::string& name);
+        virtual osg::Vec3 getCenterOfMass(const std::string& name);
+
         CollisionShapeBase* getShape(const std::string& name);
         RigidBodyBase* getRigidBody(const std::string& name);
         ConstraintBase* getConstraint(const std::string& name);
@@ -55,20 +66,43 @@ namespace osgVerse
         const std::map<std::string, osg::ref_ptr<CollisionShapeBase>>& getShapes() const { return _shapes; }
         const std::map<std::string, osg::ref_ptr<RigidBodyBase>>& getBodies() const { return _bodies; }
 
-        virtual void setGravity(const osg::Vec3& gravity);
-        virtual osg::Vec3 getGravity() const;
+        // Collision and raycast functions
+        struct QueryFilter
+        {
+            unsigned int categoryBits, maskBits; std::string name;
+            QueryFilter() : categoryBits(0xFFFFFFFF), maskBits(0xFFFFFFFF) {}
+        };
 
-        // Raycast functions
+        struct ContactPlane
+        {
+            osg::ref_ptr<RigidBodyBase> rigidBody;
+            osg::Plane plane; osg::Vec3 point; float penetration;
+            ContactPlane() : penetration(0.0f) {}
+        };
+
+        struct SweepResult
+        {
+            osg::ref_ptr<RigidBodyBase> rigidBody;
+            osg::Vec3 point, normal; float fraction; bool hit;
+            SweepResult() : fraction(1.0f), hit(false) {}
+        };
+
         struct RaycastHit
         {
             osg::ref_ptr<RigidBodyBase> rigidBody;
             osg::Vec3 position, normal; std::string name;
             RaycastHit() : rigidBody(NULL) {}
         };
+
+        // TODO
+        //virtual std::vector<ContactPlane> collide(const osg::Vec3& position, CollisionShapeBase* shape,
+        //                                          const QueryFilter& filter = QueryFilter());
+        //virtual SweepResult sweep(const osg::Vec3& start, const osg::Vec3& translation, CollisionShapeBase* shape,
+        //                          const QueryFilter& filter = QueryFilter());
         virtual bool raycast(const osg::Vec3& start, const osg::Vec3& end,
-                             RaycastHit& result, bool getNameFromBody = true);
+                             RaycastHit& result, const QueryFilter& filter = QueryFilter(), bool getNameFromBody = true);
         virtual std::vector<RaycastHit> raycastAll(const osg::Vec3& start, const osg::Vec3& end,
-                                                   bool getNameFromBody = true);
+                                                   const QueryFilter& filter = QueryFilter(), bool getNameFromBody = true);
 
         /* Physics creation functions */
         virtual CollisionShapeBase* createPhysicsPoint();  // for kinematic use only
