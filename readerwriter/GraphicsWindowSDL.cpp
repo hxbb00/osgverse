@@ -658,9 +658,9 @@ GraphicsWindowHandle* GraphicsWindowSDL::getHandle() const
 {
     osg::ref_ptr<GraphicsWindowHandle> handle = new GraphicsWindowHandle;
 #if defined(OSG_GLES1_AVAILABLE) || defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
-    handle->eglDisplay = _glDisplay; handle->eglSurface = _glSurface; handle->eglContext = _glContext;
+    handle->eglDisplay = _glDisplay; handle->eglSurface = _glSurface;
 #endif
-    handle->nativeHandle = _sdlWindow; return handle.release();
+    handle->eglContext = _glContext; handle->nativeHandle = _sdlWindow; return handle.release();
 }
 
 extern "C" OSGVERSE_RW_EXPORT void graphicswindow_SDL(void) {}

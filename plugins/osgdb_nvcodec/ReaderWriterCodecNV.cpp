@@ -36,20 +36,29 @@ public:
     {
         if (_decoder != NULL) delete _decoder; _decoder = NULL;
         _demuxer = demuxer; if (!demuxer) return false;
-        if (_demuxer->getVideoCodec() != osgVerse::CODEC_INVALID)
+
+        if (getResourceType() == RES_CUDA)
         {
-            _decoder = new NvDecoder(_cuContext, true, (cudaVideoCodec)_demuxer->getVideoCodec());
-            _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
+            CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+            if (_demuxer->getVideoCodec() != osgVerse::CODEC_INVALID)
+            {
+                _decoder = new NvDecoder(H->cuContext, true, (cudaVideoCodec)_demuxer->getVideoCodec());
+                _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
+            }
         }
         _numFrames = 0; return true;
     }
 
     virtual void releaseCuda()
     {
-        _mutex.lock();
-        ck(cuMemFree(_deviceFrame)); _pbo = 0; _demuxer = NULL;
-        if (_decoder != NULL) delete _decoder; _decoder = NULL;
-        _mutex.unlock();
+        if (getResourceType() == RES_CUDA)
+        {
+            CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+            _mutex.lock();
+            ck(cuMemFree(H->deviceFrame)); H->pbo = 0; _demuxer = NULL;
+            if (_decoder != NULL) delete _decoder; _decoder = NULL;
+            _mutex.unlock();
+        }
     }
 
     virtual void operator()(osg::StateAttribute* sa, osg::NodeVisitor* nv)
@@ -57,12 +66,16 @@ public:
         if (_demuxer && !_decoder)
         {
             if (_demuxer->getVideoCodec() == osgVerse::CODEC_INVALID) return;
-            _decoder = new NvDecoder(_cuContext, true, (cudaVideoCodec)_demuxer->getVideoCodec());
+            if (getResourceType() == RES_CUDA)
+            {
+                CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+                _decoder = new NvDecoder(H->cuContext, true, (cudaVideoCodec)_demuxer->getVideoCodec());
+            }
             _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
         }
 
-        CUdeviceptr deviceFrame = NULL;
-        uint8_t* video = NULL, * frame = NULL; long long pts = 0;
+        CUdeviceptr deviceFrame = 0;
+        uint8_t *video = NULL, *frame = NULL; long long pts = 0;
         int videoBytes = 0, frameReturned = 0, matrixData = 0, pitch = _width * 4;
         if (!_demuxer || !_decoder || !_vendorStatus) { setState(INVALID); return; }
         if (!_demuxer->demux(&video, &videoBytes, &pts)) { setState(PENDING); return; }

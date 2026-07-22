@@ -40,43 +40,61 @@ bool GpuResourceWriterBase::openResource(GpuResourceDemuxerMuxerContainer* c)
 }
 
 GpuResourceReaderBase::GpuResourceReaderBase(CUcontext cu)
-:   osg::Texture2D::SubloadCallback(), _cuResource(0), _deviceFrame(0), _state(INVALID),
-    _width(0), _height(0), _pbo(0), _textureID(0), _vendorStatus(false)
-{ _cuContext = (CUcontext)cu; }
+:   osg::Texture2D::SubloadCallback(), _textureID(0), _state(INVALID), _width(0), _height(0), _vendorStatus(false)
+{ _handle = new CudaResourceHandle(cu); _resourceType = RES_CUDA; }
+
+GpuResourceReaderBase::GpuResourceReaderBase(void* eglDisplay, void* eglContext)
+:   osg::Texture2D::SubloadCallback(), _textureID(0), _state(INVALID), _width(0), _height(0), _vendorStatus(false)
+{ _handle = new EglResourceHandle(eglDisplay, eglContext); _resourceType = RES_EGL; }
 
 bool GpuResourceReaderBase::openResource(GpuResourceDemuxerMuxerContainer* c)
 { return (c && c->getDemuxer()) ? openResource(c->getDemuxer()) : false; }
 
 void GpuResourceReaderBase::releaseGpu()
 {
-    if (_cuResource != NULL)
+    if (_resourceType == RES_CUDA)
     {
+        CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+        if (H->cuResource != NULL)
+        {
 #ifdef VERSE_ENABLE_MTT
-        ck(muGraphicsUnregisterResource(_cuResource));
+            ck(muGraphicsUnregisterResource(H->cuResource));
 #else
-        ck(cuGraphicsUnregisterResource(_cuResource));
+            ck(cuGraphicsUnregisterResource(H->cuResource));
 #endif
-    }
+        }
 
-    _mutex.lock();
 #ifdef VERSE_ENABLE_MTT
-    ck(muMemFree(_deviceFrame));
+        _mutex.lock(); ck(muMemFree(H->deviceFrame)); _mutex.unlock();
 #else
-    ck(cuMemFree(_deviceFrame));
+        _mutex.lock(); ck(cuMemFree(H->deviceFrame)); _mutex.unlock();
 #endif
-    _mutex.unlock();
-    _pbo = 0; _demuxer = NULL; _cuResource = NULL;
+        H->pbo = 0; H->cuResource = NULL;
+    }
+    else if (_resourceType == RES_EGL)
+    {
+        // TODO: release EGL image
+    }
+    _demuxer = NULL;
 }
 
 void GpuResourceReaderBase::releaseGLObjects(osg::State* state) const
 {
-    if (!state) { _pbo = 0; return; }
 #if OSG_VERSION_GREATER_THAN(3, 3, 2)
     osg::GLExtensions* ext = state->get<osg::GLExtensions>();
 #else
     osg::GLBufferObject::Extensions* ext = osg::GLBufferObject::getExtensions(state->getContextID(), true);
 #endif
-    if (ext) ext->glDeleteBuffers(1, &_pbo); _pbo = 0;
+    if (_resourceType == RES_CUDA)
+    {
+        CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+        if (!state) { H->pbo = 0; return; }
+        if (ext) ext->glDeleteBuffers(1, &(H->pbo)); H->pbo = 0;
+    }
+    else if (_resourceType == RES_EGL)
+    {
+        // TODO
+    }
 }
 
 #if OSG_VERSION_GREATER_THAN(3, 4, 0)
@@ -104,68 +122,92 @@ void GpuResourceReaderBase::load(const osg::Texture2D& texture, osg::State& stat
     osg::GLBufferObject::Extensions* ext = osg::GLBufferObject::getExtensions(state.getContextID(), true);
 #endif
     if (_width == 0 || _height == 0 || !ext) return;
-    if (_pbo != 0) ext->glDeleteBuffers(1, &_pbo);
 
-    ext->glGenBuffers(1, &_pbo);
-    ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, _pbo);
-    ext->glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, _width * _height * 4, NULL, GL_STREAM_DRAW_ARB);
-    ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+    if (_resourceType == RES_CUDA)
+    {
+        CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+        if (H->pbo != 0) ext->glDeleteBuffers(1, &(H->pbo));
+
+        ext->glGenBuffers(1, &(H->pbo));
+        ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, H->pbo);
+        ext->glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, _width * _height * 4, NULL, GL_STREAM_DRAW_ARB);
+        ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+
+#ifdef VERSE_ENABLE_MTT
+        ck(muCtxSetCurrent(H->cuContext));
+        ck(muMemAlloc(&(H->deviceFrame), _width * _height * 4));
+        ck(muMemsetD8(H->deviceFrame, 0, _width * _height * 4));
+#else
+        ck(cuCtxSetCurrent(H->cuContext));
+        ck(cuMemAlloc(&(H->deviceFrame), _width * _height * 4));
+        ck(cuMemsetD8(H->deviceFrame, 0, _width * _height * 4));
+#endif
+    }
+    else if (_resourceType == RES_EGL)
+    {
+        // TODO: create image, load function address
+    }
 
     glBindTexture(GL_TEXTURE_2D, _textureID);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, _width, _height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glBindTexture(GL_TEXTURE_2D, 0);
-
-#ifdef VERSE_ENABLE_MTT
-    ck(muCtxSetCurrent(_cuContext));
-    ck(muMemAlloc(&_deviceFrame, _width * _height * 4));
-    ck(muMemsetD8(_deviceFrame, 0, _width * _height * 4));
-#else
-    ck(cuCtxSetCurrent(_cuContext));
-    ck(cuMemAlloc(&_deviceFrame, _width * _height * 4));
-    ck(cuMemsetD8(_deviceFrame, 0, _width * _height * 4));
-#endif
 }
 
 void GpuResourceReaderBase::subload(const osg::Texture2D& texture, osg::State& state) const
 {
-    if (_width == 0 || _height == 0) return;
-    if (_pbo == 0) { load(texture, state); if (_pbo == 0) return; }
-    _mutex.lock();
-
-    CUdeviceptr devBackBuffer; size_t size = 0;
-#ifdef VERSE_ENABLE_MTT
-    if (!_cuResource) ck(muGraphicsGLRegisterBuffer(&_cuResource, _pbo, MU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD));
-    ck(muGraphicsMapResources(1, &_cuResource, 0));
-    ck(muGraphicsResourceGetMappedPointer(&devBackBuffer, &size, _cuResource));
-    ck(muMemcpyAsync(devBackBuffer, _deviceFrame, size, 0));
-    ck(muGraphicsUnmapResources(1, &_cuResource, 0));
-#else
-    if (!_cuResource) ck(cuGraphicsGLRegisterBuffer(&_cuResource, _pbo, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD));
-    ck(cuGraphicsMapResources(1, &_cuResource, 0));
-    ck(cuGraphicsResourceGetMappedPointer(&devBackBuffer, &size, _cuResource));
-    ck(cuMemcpyAsync(devBackBuffer, _deviceFrame, size, 0));
-    ck(cuGraphicsUnmapResources(1, &_cuResource, 0));
-#endif
-    _mutex.unlock();
-
 #if OSG_VERSION_GREATER_THAN(3, 3, 2)
     osg::GLExtensions* ext = state.get<osg::GLExtensions>();
 #else
     osg::GLBufferObject::Extensions* ext = osg::GLBufferObject::getExtensions(state.getContextID(), true);
 #endif
-    if (ext) ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, _pbo);
-    glBindTexture(GL_TEXTURE_2D, _textureID);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE, 0);
-    if (ext) ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+    if (_resourceType == RES_CUDA)
+    {
+        CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+        if (_width == 0 || _height == 0) return;
+        if (H->pbo == 0) { load(texture, state); if (H->pbo == 0) return; }
+        _mutex.lock();
+
+        CUdeviceptr devBackBuffer; size_t size = 0;
+#ifdef VERSE_ENABLE_MTT
+        if (!H->cuResource) ck(muGraphicsGLRegisterBuffer(&(H->cuResource), H->pbo, MU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD));
+        ck(muGraphicsMapResources(1, &(H->cuResource), 0));
+        ck(muGraphicsResourceGetMappedPointer(&devBackBuffer, &size, H->cuResource));
+        ck(muMemcpyAsync(devBackBuffer, H->deviceFrame, size, 0));
+        ck(muGraphicsUnmapResources(1, &(H->cuResource), 0));
+#else
+        if (!H->cuResource) ck(cuGraphicsGLRegisterBuffer(&(H->cuResource), H->pbo, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD));
+        ck(cuGraphicsMapResources(1, &(H->cuResource), 0));
+        ck(cuGraphicsResourceGetMappedPointer(&devBackBuffer, &size, H->cuResource));
+        ck(cuMemcpyAsync(devBackBuffer, H->deviceFrame, size, 0));
+        ck(cuGraphicsUnmapResources(1, &(H->cuResource), 0));
+#endif
+        _mutex.unlock();
+
+        if (ext) ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, H->pbo);
+        glBindTexture(GL_TEXTURE_2D, _textureID);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE, 0);
+        if (ext) ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+    }
+    else if (_resourceType == RES_EGL)
+    {
+        // TODO: bind and show image with glEGLImageTargetTexStorageEXT / glEGLImageTargetTexture2DOES
+    }
 }
 
 bool GpuResourceReaderBase::getDeviceFrameBuffer(CUdeviceptr* devFrameOut, int* pitchOut)
 {
     // FIXME: consider use a queue because reader may return multiple data in one frame
-    if (!_deviceFrame) return false;
-    *devFrameOut = (CUdeviceptr)_deviceFrame;
-    *pitchOut = _width * 4;
-    return true;
+    if (_resourceType == RES_CUDA)
+    {
+        CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
+        if (!H->deviceFrame) return false;
+        *devFrameOut = (CUdeviceptr)H->deviceFrame;
+    }
+    else if (_resourceType == RES_EGL)
+    {
+        // TODO: update EGL image? or in a different method?
+    }
+    *pitchOut = _width * 4; return true;
 }
 
 namespace

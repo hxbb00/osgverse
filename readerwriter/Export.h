@@ -18,10 +18,10 @@ namespace osgVerse
 {
     struct GraphicsWindowHandle : public osg::Referenced
     {
-        void* nativeHandle;
-        void* eglDisplay;
-        void* eglSurface;
-        void* eglContext;
+        void* nativeHandle;  // SDL_Window / GLFWwindow
+        void* eglDisplay;    // EGLDisplay
+        void* eglSurface;    // EGLSurface
+        void* eglContext;    // EGLContext
         GraphicsWindowHandle() : nativeHandle(NULL), eglDisplay(NULL),
                                  eglSurface(NULL), eglContext(NULL) {}
     };

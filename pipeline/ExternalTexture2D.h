@@ -68,7 +68,7 @@ namespace osgVerse
         void* _cuContext;
     };
 
-    // Gpu resource reader: load H264 frames from Demuxer and decode to texture
+    // Gpu resource reader: load video frames from Demuxer and decode to texture
     class GpuResourceReaderBase : public osg::Texture2D::SubloadCallback
     {
     public:
@@ -92,6 +92,7 @@ namespace osgVerse
         };
 
         GpuResourceReaderBase(CUcontext cu);
+        GpuResourceReaderBase(void* eglDisplay, void* eglContext);
         virtual void operator()(osg::StateAttribute* sa, osg::NodeVisitor* nv) {}
 
         bool openResource(GpuResourceDemuxerMuxerContainer* c);
@@ -120,22 +121,39 @@ namespace osgVerse
         void setState(ResourceState s) { _state = s; }
         ResourceState getState() const { return _state; }
 
+        enum ResourceType { RES_CUDA = 0, RES_EGL = 1 };
+        ResourceType getResourceType() const { return _resourceType; }
+
     protected:
         virtual ~GpuResourceReaderBase() {}
         bool getDeviceFrameBuffer(CUdeviceptr* devFrameOut, int* pitchOut);
 
+        struct CudaResourceHandle : public osg::Referenced
+        {
+            CUcontext cuContext;
+            CUgraphicsResource cuResource;
+            CUdeviceptr deviceFrame; GLuint pbo;
+            CudaResourceHandle(CUcontext cu) : cuContext(cu), cuResource(0),
+                                               deviceFrame(0), pbo(0) {}
+        };
+
+        struct EglResourceHandle : public osg::Referenced
+        {
+            void* display; void* context; void* image;
+            EglResourceHandle(void* d, void* c) : display(d), context(c), image(NULL) {}
+        };
+
+        osg::ref_ptr<osg::Referenced> _handle;
         osg::ref_ptr<Demuxer> _demuxer;
-        CUcontext _cuContext;
-        mutable CUgraphicsResource _cuResource;
-        mutable CUdeviceptr _deviceFrame;
+        mutable GLuint _textureID;
         ResourceState _state;
+        ResourceType _resourceType;
         int _width, _height;
-        mutable GLuint _pbo, _textureID;
         mutable bool _vendorStatus;
         mutable std::mutex _mutex;
     };
 
-    // Gpu resource writer: load texture and encode to H264 frames, then send to Muxer
+    // Gpu resource writer: load texture and encode to video frames, then send to Muxer
     class GpuResourceWriterBase : public osg::Camera::DrawCallback
     {
     public:

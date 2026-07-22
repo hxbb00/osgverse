@@ -144,6 +144,16 @@ namespace
         }
     }
 #endif
+
+    static inline std::vector<std::string> splitExtensions(const char* extString)
+    {
+        std::vector<std::string> result;
+        if (!extString || !extString[0]) return result;
+        
+        std::istringstream iss(extString); std::string token;
+        while (iss >> token) { if (!token.empty()) result.push_back(std::move(token)); }
+        return result;
+    }
 }
 
 class GLExtensionTester : public osg::Camera::DrawCallback
@@ -189,8 +199,10 @@ public:
 
         const char* versionString = (const char*)glGetString(GL_VERSION);
         const char* rendererString = (const char*)glGetString(GL_RENDERER);
+        const char* extensions = (const char*)glGetString(GL_EXTENSIONS);
         if (versionString != NULL) d->version = versionString;
         if (rendererString != NULL) d->renderer = rendererString;
+        if (extensions != NULL) d->extensions = splitExtensions(extensions);
         if (!d->capabilities.empty()) return;  // query only once
 
         // Check graphics card performance

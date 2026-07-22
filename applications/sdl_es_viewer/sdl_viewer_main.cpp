@@ -132,8 +132,7 @@ int main(int argc, char** argv)
     if (forceEGL)
     {
         osg::ref_ptr<osgVerse::GraphicsWindowSDL::WindowData> winData = new osgVerse::GraphicsWindowSDL::WindowData;
-        winData->forceEGL = true;
-        traits->inheritedWindowData = winData;
+        winData->forceEGL = true; traits->inheritedWindowData = winData;
     }
 #   endif
     if (useGLFW) traits->windowingSystemPreference = "GLFW";
@@ -152,8 +151,14 @@ int main(int argc, char** argv)
     if (testPipeline)
     {
         //params.enablePostEffects = false;
-        queryOpenGLVersion(pipeline.get(), true, gc.get());
+        osg::ref_ptr<osgVerse::GLVersionData> glVer = queryOpenGLVersion(pipeline.get(), true, gc.get());
         setupStandardPipeline(pipeline.get(), viewer.get(), params);
+        if (glVer.valid())
+        {
+            const std::vector<std::string>& ext = glVer->extensions;
+            for (size_t i = 0; i < ext.size(); ++i) std::cout << ext[i] << "\t\t\t";
+            std::cout << "\n======== Total: " << ext.size() << "========\n";
+        }
 
         // Post pipeline settings
         osgVerse::ShadowModule* shadow = static_cast<osgVerse::ShadowModule*>(pipeline->getModule("Shadow"));

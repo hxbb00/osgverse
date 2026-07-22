@@ -66,6 +66,7 @@ namespace osgVerse
     struct GLVersionData : public osg::Referenced
     {
         std::map<std::string, int> capabilities;
+        std::vector<std::string> extensions;
         std::string version, renderer;
         int glVersion, glslVersion;
         bool glslSupported, fboSupported;
