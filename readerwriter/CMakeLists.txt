@@ -1,14 +1,14 @@
 SET(LIB_NAME osgVerseReaderWriter)
 SET(LIBRARY_INCLUDE_FILES
     Utilities.h OsgbTileOptimizer.h DracoProcessor.h FileCache.h DatabasePager.h
-    TileCallback.h EarthManipulator.h GraphicsWindowGLFW.h
+    TileCallback.h EarthManipulator.h GraphicsWindowGLFW.h VisionDevice.h
     MaterialGraph.h NamedObjectFinder.h FeatureDefinition.h Export.h
 )
 SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     LoadSceneFBX.cpp LoadSceneFBX.h LoadSceneGLTF.cpp LoadSceneGLTFv1.cpp LoadSceneGLTF.h
     LoadTextureKTX.cpp LoadTextureKTX.h SaveSceneGLTF.cpp SaveSceneGLTF.h MimeTypes.cpp GLEnums.cpp
     DracoProcessor.cpp FileCache.cpp DatabasePager.cpp OsgbTileOptimizer.cpp FeatureDefinition.cpp
-    TileCallback.cpp EarthManipulator.cpp GraphicsWindowGLFW.cpp
+    TileCallback.cpp EarthManipulator.cpp GraphicsWindowGLFW.cpp VisionDevice.cpp
     MaterialGraph.cpp Utilities.cpp UtilitiesEx.cpp
 )
 
