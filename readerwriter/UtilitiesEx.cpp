@@ -995,6 +995,9 @@ namespace osgVerse
             // created with no processing threads to avoid deadlock at exit
             // create new threads until new gaussians come
             sorter->sorterBase = new osgVerse::GaussianSorter(0);
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
+            sorter->readOptions["RenderMethod"] = "TEX2D";
+#endif
         }
 
         if (flags & DontVertifySSL)

@@ -178,9 +178,18 @@ osgDB::ReaderWriter::ReadResult GlobalReadFileCallback::readHeightField(const st
 
 osgDB::ReaderWriter::ReadResult GlobalReadFileCallback::readNode(const std::string& f, const osgDB::Options* opt)
 {
+    osg::ref_ptr<osgDB::Options> localOpt = const_cast<osgDB::Options*>(opt);
+    if (gaussianSorter.valid() && !gaussianSorter->readOptions.empty())
+    {
+        std::map<std::string, std::string>::iterator it = gaussianSorter->readOptions.begin();
+        if (!localOpt) localOpt = new osgDB::Options;
+        for (; it != gaussianSorter->readOptions.end(); ++it)
+            localOpt->setPluginStringData(it->first, it->second);
+    }
+
     std::string file = osgVerse::Utf8StringValidator::check(f) ? f
                         : osgDB::convertStringFromCurrentCodePageToUTF8(f);
-    osgDB::ReaderWriter::ReadResult rr = osgDB::ReadFileCallback::readNode(file, opt);
+    osgDB::ReaderWriter::ReadResult rr = osgDB::ReadFileCallback::readNode(file, localOpt.get());
 
     osg::Node* resultNode = rr.getNode();
     if (resultNode)

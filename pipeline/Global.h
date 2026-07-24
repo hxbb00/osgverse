@@ -344,6 +344,7 @@ namespace osgVerse
             osg::ref_ptr<osg::Referenced> sorterBase;
             osg::ref_ptr<osg::Program> program;
             osg::ref_ptr<osg::Uniform> renderMode;
+            std::map<std::string, std::string> readOptions;
         };
 
         osg::ref_ptr<NodeOptimizerBase> nodeOptimizer;
