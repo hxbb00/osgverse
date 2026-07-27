@@ -1,13 +1,73 @@
+#include <cstdint>
+#include <type_traits>
+#include <limits>
+#if defined(_MSC_VER)
+#  include <intrin.h>
+#  pragma intrinsic(_BitScanForward, _BitScanForward64)
+#endif
 #include "VisionDevice.h"
 using namespace osgVerse;
 
 namespace
 {
     static constexpr size_t kMaxQueue = 4;
+
+#if defined(_MSC_VER)
+    template<typename T> typename std::enable_if<sizeof(T) == 8, unsigned int>::type ctz_impl(T value)
+    {
+        unsigned long index = 0; _BitScanForward64(&index, static_cast<unsigned __int64>(value));
+        return static_cast<unsigned int>(index);
+    }
+
+    template<typename T> typename std::enable_if<sizeof(T) == 4, unsigned int>::type ctz_impl(T value)
+    {
+        unsigned long index = 0; _BitScanForward(&index, static_cast<unsigned long>(value));
+        return static_cast<unsigned int>(index);
+    }
+
+    template<typename T> typename std::enable_if<sizeof(T) == 2, unsigned int>::type ctz_impl(T value)
+    {
+        unsigned long index = 0; _BitScanForward(&index, static_cast<unsigned long>(value));
+        return static_cast<unsigned int>(index);
+    }
+
+    template<typename T> typename std::enable_if<sizeof(T) == 1, unsigned int>::type ctz_impl(T value)
+    {
+        unsigned long index = 0; _BitScanForward(&index, static_cast<unsigned long>(value));
+        return static_cast<unsigned int>(index);
+    }
+#elif defined(__GNUC__) || defined(__clang__)
+    template<typename T> typename std::enable_if<sizeof(T) == 8, unsigned int>::type ctz_impl(T value)
+    { return static_cast<unsigned int>(__builtin_ctzll(value)); }
+
+    template<typename T> typename std::enable_if<sizeof(T) == 4, unsigned int>::type ctz_impl(T value)
+    { return static_cast<unsigned int>(__builtin_ctz(value)); }
+
+    template<typename T> typename std::enable_if<sizeof(T) == 2, unsigned int>::type ctz_impl(T value)
+    { return static_cast<unsigned int>(__builtin_ctz(static_cast<unsigned int>(value))); }
+
+    template<typename T> typename std::enable_if<sizeof(T) == 1, unsigned int>::type ctz_impl(T value)
+    { return static_cast<unsigned int>(__builtin_ctz(static_cast<unsigned int>(value))); }
+#else
+    template<typename T> unsigned int ctz_impl(T value) noexcept
+    {
+        const unsigned int bits = static_cast<unsigned int>(sizeof(T) * 8);
+        for (unsigned int i = 0; i < bits; ++i) { if (value & (static_cast<T>(1) << i)) return i; }
+        return bits;
+    }
+#endif
+
+    template<typename T> inline unsigned int ctz(T value)
+    {
+        if (value == 0)
+            return static_cast<unsigned int>(sizeof(T) * 8);
+        return ctz_impl<T>(value);
+    }
+
     inline int bitIndex(VisionInputDevice::StreamType t)
     {
         unsigned int v = static_cast<unsigned int>(t);
-        if (v == 0u) return 0; return __builtin_ctz(v);
+        if (v == 0u) return 0; return ctz(v);
     }
 }
 
@@ -38,7 +98,7 @@ unsigned int VisionInputDevice::getFrameCount(StreamType type) const
     unsigned int total = 0, v = static_cast<unsigned int>(type);
     while (v)
     {
-        int idx = __builtin_ctz(v);
+        int idx = ctz(v);
         total += _stats[idx].frameCount.load(std::memory_order_relaxed); v &= v - 1u;
     }
     return total;
@@ -50,7 +110,7 @@ unsigned int VisionInputDevice::getErrorCount(StreamType type) const
     unsigned int total = 0, v = static_cast<unsigned int>(type);
     while (v)
     {
-        int idx = __builtin_ctz(v);
+        int idx = ctz(v);
         total += _stats[idx].errorCount.load(std::memory_order_relaxed); v &= v - 1u;
     }
     return total;
@@ -85,7 +145,7 @@ void VisionInputDevice::reportError(StreamType type)
     unsigned int v = static_cast<unsigned int>(type);
     while (v)
     {
-        int idx = __builtin_ctz(v);
+        int idx = ctz(v);
         _stats[idx].errorCount.fetch_add(1, std::memory_order_relaxed); v &= v - 1u;
     }
 }
