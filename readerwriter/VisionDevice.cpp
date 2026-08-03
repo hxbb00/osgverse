@@ -86,7 +86,8 @@ VisionInputDevice::~VisionInputDevice()
 
 void VisionInputDevice::sendEvent(const osgGA::Event& ev)
 {
-    OSG_WARN << "[VisionInputDevice] sendEvent not implemented!" << std::endl;
+    // TODO
+    OSG_NOTICE << "[VisionInputDevice] Not implemented...\n";
 }
 
 bool VisionInputDevice::stopAllStreams()

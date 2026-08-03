@@ -160,16 +160,22 @@ protected:
 class GaussianSortCallback : public osg::Camera::DrawCallback
 {
 public:
-    GaussianSortCallback(osgVerse::GaussianSorter* s) : _sorter(s), _lastFrame(0) {}
+    GaussianSortCallback(osgVerse::GaussianSorter* s)
+        : _sorter(s), _lastFrame(0), _useFrameFence(false) {}
     virtual void operator()(osg::RenderInfo& renderInfo) const;
     virtual void releaseGLObjects(osg::State* state = 0) const;
+
+    void setUseFrameFence(bool b) { _useFrameFence = b; }
+    bool getUseFrameFence() const { return _useFrameFence; }
 
     osgVerse::GaussianSorter* getSorter() { return _sorter.get(); }
     const osgVerse::GaussianSorter* getSorter() const { return _sorter.get(); }
 
 protected:
     osg::ref_ptr<osgVerse::GaussianSorter> _sorter;
+    osg::ref_ptr<osg::Referenced> _fence;
     mutable unsigned int _lastFrame;
+    bool _useFrameFence;
 };
 
 }

@@ -963,9 +963,24 @@ bool TextureCopier::operator()(unsigned int srcTexture, unsigned int srcFBO, int
         if (ext->isSupported())
 #endif
         {
+            unsigned int resolveFboId = 0;
+            if (_texToFboMap.find(dstTexture) == _texToFboMap.end())
+            {
+                ext->glGenFramebuffers(1, &resolveFboId);
+                _texToFboMap[dstTexture] = resolveFboId;
+            }
+            else
+                resolveFboId = _texToFboMap[dstTexture];
+
+            ext->glBindFramebuffer(GL_DRAW_FRAMEBUFFER_EXT, resolveFboId);
+            ext->glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, dstTexture, 0);
             ext->glBindFramebuffer(GL_READ_FRAMEBUFFER_EXT, srcFBO);
+            ext->glBlitFramebuffer(srcX, srcY, srcX + srcW, srcX + srcH,
+                                   dstX, dstY, dstX + srcW, dstY + srcH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            ext->glBindFramebuffer(GL_FRAMEBUFFER_EXT, srcFBO);
+            /*ext->glBindFramebuffer(GL_READ_FRAMEBUFFER_EXT, srcFBO);
             glBindTexture(GL_TEXTURE_2D, dstTexture);
-            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, dstX, dstY, srcX, srcY, srcW, srcH);
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, dstX, dstY, srcX, srcY, srcW, srcH);*/
         }
     }
     return (state && !state->checkGLErrors("TextureCopier"));

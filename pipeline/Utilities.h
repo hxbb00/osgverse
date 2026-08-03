@@ -486,6 +486,7 @@ namespace osgVerse
         TextureCopier() : _glCopyImageSubDataPtr(NULL), _initialized(false) {}
         virtual ~TextureCopier() {}
 
+        mutable std::map<unsigned int, unsigned int> _texToFboMap;
         mutable void* _glCopyImageSubDataPtr;
         mutable bool _initialized;
     };

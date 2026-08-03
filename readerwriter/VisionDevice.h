@@ -123,15 +123,13 @@ namespace osgVerse
         {
             float fx = 0.f, fy = 0.f;
             float cx = 0.f, cy = 0.f;
-            std::vector<float> distortion;  ///< vendor-specific ordering
+            std::vector<double> distortion;  ///< vendor-specific ordering
             CameraIntrinsics() = default;
         };
 
         struct CameraExtrinsics
         {
-            float rotation[9] = {1.f, 0.f, 0.f,
-                                 0.f, 1.f, 0.f,
-                                 0.f, 0.f, 1.f};
+            float rotation[3] = {0.f, 0.f, 0.f};
             float translation[3] = {0.f, 0.f, 0.f};
             CameraExtrinsics() = default;
         };
@@ -160,7 +158,20 @@ namespace osgVerse
             Features     = 1 << 7,   ///< Features tracking
             Temperature  = 1 << 8,
             CNN          = 1 << 9,   ///< On-chip NN inference results
-            YOLO         = 1 << 10   ///< On-chip YOLO results
+            All          = 0x0FFFFFFF
+        };
+
+        enum class PixelFormat
+        {
+            Unknown,
+            Raw,        ///< Sensor-specific raw bytes
+            Gray8,      ///< 8-bit monochrome
+            BGR8,       ///< 24-bit BGR
+            RGB8,       ///< 24-bit RGB
+            BGRA8,      ///< 32-bit BGRA
+            RGBA8,      ///< 32-bit RGBA
+            Depth16,    ///< 16-bit unsigned depth in millimetres
+            Depth32F    ///< 32-bit float depth in metres
         };
 
         enum class DeviceState
@@ -194,10 +205,11 @@ namespace osgVerse
         virtual std::string getSerialNumber() const = 0;
         virtual std::string getFirmwareVersion() const = 0;
 
-        virtual bool configure(osgDB::Options* opts) = 0;
-        virtual bool connect(osgDB::Options* opts) = 0;
+        virtual bool connect(const osgDB::Options* opts) = 0;
         virtual bool disconnect() = 0;
 
+        virtual bool configure(const osgDB::Options* opts) = 0;
+        virtual bool getCalibration(Calibration& out) const = 0;
         virtual bool startStream(StreamType mask) = 0;
         virtual bool stopStream(StreamType mask) = 0;
         bool stopAllStreams();

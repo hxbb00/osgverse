@@ -5,6 +5,7 @@
 #include <osg/BufferObject>
 #include <osgUtil/CullVisitor>
 #include <parallel_radix_sort.h>
+#include <thread>
 #include "Math.h"
 #include "GaussianGeometry.h"
 using namespace osgVerse;
@@ -1068,6 +1069,81 @@ void GaussianSorter::cull(osg::State* state, GaussianGeometry* geom, const osg::
 #endif
 }
 
+namespace
+{
+    class FrameFenceSync : public osg::Referenced
+    {
+    public:
+        typedef GLsync (GL_APIENTRY* PFNGLFENCESYNCPROC)(GLenum condition, GLbitfield flags);
+        typedef void (GL_APIENTRY* PFNGLDELETESYNCPROC)(GLsync sync);
+        typedef GLenum (GL_APIENTRY* PFNGLCLIENTWAITSYNCPROC)(GLsync sync, GLbitfield flags, GLuint64 timeout);
+
+        FrameFenceSync(osg::State* state)
+        {
+#if OSG_VERSION_GREATER_THAN(3, 3, 2)
+            osg::GLExtensions* ext = state->get<osg::GLExtensions>();
+            if (ext->isFrameBufferObjectSupported)
+#else
+            osg::FBOExtensions* ext = osg::FBOExtensions::instance(state->getContextID(), true);
+            if (ext->isSupported())
+#endif
+            {
+                osg::setGLExtensionFuncPtr(_glFenceSync, "glFenceSync", "glFenceSyncEXT");
+                osg::setGLExtensionFuncPtr(_glDeleteSync, "glDeleteSync", "glDeleteSyncEXT");
+                osg::setGLExtensionFuncPtr(_glClientWaitSync, "glClientWaitSync", "glClientWaitSyncEXT");
+                _fenceObject = _glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0); _syncValid = true;
+            }
+            else
+            {
+                _glFenceSync = NULL; _glDeleteSync = NULL;
+                _glClientWaitSync = NULL; _fenceObject = NULL; _syncValid = false;
+            }
+        }
+
+        void wait()
+        {
+            if (_syncValid && _fenceObject)
+            {
+                GLenum result = _glClientWaitSync(_fenceObject, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
+                if (result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED)
+                    { _glDeleteSync(_fenceObject); _fenceObject = NULL; }
+                else
+                {
+                    int syncCount = 100;
+                    while (syncCount > 0)
+                    {
+                        result = _glClientWaitSync(_fenceObject, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000);  // 1ms
+                        if (result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED)
+                            { _glDeleteSync(_fenceObject); _fenceObject = NULL; }
+                        else
+                            { syncCount--; std::this_thread::yield(); }
+                    }
+                }
+            }
+            else
+                glFinish();
+        }
+
+        void newFence()
+        {
+            if (_syncValid)
+            {
+                if (_fenceObject != NULL) _glDeleteSync(_fenceObject);
+                _fenceObject = _glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            }
+        }
+
+    protected:
+        virtual ~FrameFenceSync()
+        { if (_fenceObject != NULL) _glDeleteSync(_fenceObject); }
+
+        PFNGLFENCESYNCPROC _glFenceSync;
+        PFNGLDELETESYNCPROC _glDeleteSync;
+        PFNGLCLIENTWAITSYNCPROC _glClientWaitSync;
+        GLsync _fenceObject; bool _syncValid;
+    };
+}
+
 void GaussianSortCallback::operator()(osg::RenderInfo& renderInfo) const
 {
     if (renderInfo.getView() && renderInfo.getView()->getFrameStamp())
@@ -1076,16 +1152,34 @@ void GaussianSortCallback::operator()(osg::RenderInfo& renderInfo) const
         if (frame <= _lastFrame) return; else _lastFrame = frame;
     }
 
+#if !defined(VERSE_ENABLE_MTT)  // FIXME: MTT driver must use frame fence to avoid congestion?
+    if (_useFrameFence)
+#endif
+    {
+        GaussianSortCallback* nonconst = const_cast<GaussianSortCallback*>(this);
+        if (!_fence) nonconst->_fence = new FrameFenceSync(renderInfo.getState());
+        static_cast<FrameFenceSync*>(_fence.get())->wait();
+    }
+
     if (_sorter.valid())
     {
         if (_sorter->numThreads() == 0) _sorter->configureThreads(1);
         _sorter->cull(renderInfo);
+    }
+
+#if !defined(VERSE_ENABLE_MTT)
+    if (_useFrameFence)
+#endif
+    {
+        if (_fence.valid())
+            static_cast<FrameFenceSync*>(_fence.get())->newFence();
     }
 }
 
 void GaussianSortCallback::releaseGLObjects(osg::State* state) const
 {
     GaussianSortCallback* non_const = const_cast<GaussianSortCallback*>(this);
+    if (non_const->_fence.valid()) non_const->_fence = NULL;
     if (non_const->_sorter.valid()) non_const->_sorter->configureThreads(0);
     non_const->_sorter = NULL;   // to release threads
 }

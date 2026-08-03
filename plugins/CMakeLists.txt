@@ -3,32 +3,52 @@ IF(UNIX)
     SET(INSTALL_LIBDIR "lib/osgPlugins-${OSG_MAJOR_VERSION}.${OSG_MINOR_VERSION}.${OSG_PATCH_VERSION}")
 ENDIF(UNIX)
 
-ADD_SUBDIRECTORY(osgdb_3dgs)
+# meshes
 ADD_SUBDIRECTORY(osgdb_3dtiles)
-ADD_SUBDIRECTORY(osgdb_bullet)
-ADD_SUBDIRECTORY(osgdb_ept)
 ADD_SUBDIRECTORY(osgdb_fbx)
 ADD_SUBDIRECTORY(osgdb_gltf)
-ADD_SUBDIRECTORY(osgdb_geojson)
-ADD_SUBDIRECTORY(osgdb_ktx)
-ADD_SUBDIRECTORY(osgdb_mvt)
-ADD_SUBDIRECTORY(osgdb_mlt)
-ADD_SUBDIRECTORY(osgdb_web)
-ADD_SUBDIRECTORY(osgdb_webp)
-ADD_SUBDIRECTORY(osgdb_mbtiles)
-ADD_SUBDIRECTORY(osgdb_netcdf)
-ADD_SUBDIRECTORY(osgdb_image)
 ADD_SUBDIRECTORY(osgdb_mesh)
-ADD_SUBDIRECTORY(osgdb_leveldb)
-ADD_SUBDIRECTORY(osgdb_odbc)
-ADD_SUBDIRECTORY(osgdb_osm)
-ADD_SUBDIRECTORY(osgdb_mediastream)
-ADD_SUBDIRECTORY(osgdb_vdb)
-ADD_SUBDIRECTORY(osgdb_shp)
 ADD_SUBDIRECTORY(osgdb_terrain)
 ADD_SUBDIRECTORY(osgdb_tms)
-ADD_SUBDIRECTORY(osgdb_tiff)
-ADD_SUBDIRECTORY(osgdb_ffmpeg)
-ADD_SUBDIRECTORY(osgdb_nvcodec)
-ADD_SUBDIRECTORY(osgdb_pbrlayout)
+
+# point clouds & 3DGS
+ADD_SUBDIRECTORY(osgdb_3dgs)
+ADD_SUBDIRECTORY(osgdb_ept)
 ADD_SUBDIRECTORY(osgdb_potree)
+ADD_SUBDIRECTORY(osgdb_vdb)
+
+# vectors
+ADD_SUBDIRECTORY(osgdb_geojson)
+ADD_SUBDIRECTORY(osgdb_mbtiles)
+ADD_SUBDIRECTORY(osgdb_mvt)
+ADD_SUBDIRECTORY(osgdb_mlt)
+ADD_SUBDIRECTORY(osgdb_osm)
+ADD_SUBDIRECTORY(osgdb_shp)
+
+# images
+ADD_SUBDIRECTORY(osgdb_image)
+ADD_SUBDIRECTORY(osgdb_ktx)
+ADD_SUBDIRECTORY(osgdb_tiff)
+ADD_SUBDIRECTORY(osgdb_webp)
+
+# video demuxer / muxer
+ADD_SUBDIRECTORY(osgdb_ffmpeg)
+ADD_SUBDIRECTORY(osgdb_mediastream)
+
+# video decoder / encoder
+ADD_SUBDIRECTORY(osgdb_nvcodec)
+
+# vision devices
+ADD_SUBDIRECTORY(osgdb_inudev)
+
+# physics
+ADD_SUBDIRECTORY(osgdb_bullet)
+
+# database
+ADD_SUBDIRECTORY(osgdb_leveldb)
+ADD_SUBDIRECTORY(osgdb_odbc)
+
+# misc
+ADD_SUBDIRECTORY(osgdb_web)
+ADD_SUBDIRECTORY(osgdb_netcdf)
+ADD_SUBDIRECTORY(osgdb_pbrlayout)

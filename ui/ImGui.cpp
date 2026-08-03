@@ -82,7 +82,7 @@ void endImGuiFrame(osg::RenderInfo& renderInfo, ImGuiManager* manager,
         {
             std::map<std::string, osg::ref_ptr<osg::Texture2D>>& tList = manager->getTextures();
             for (std::map<std::string, osg::ref_ptr<osg::Texture2D>>::iterator itr = tList.begin();
-                 itr != tList.end(); ++itr)
+                itr != tList.end(); ++itr)
             {
                 osg::Texture2D* tex2D = itr->second.get();
 #if OSG_VERSION_GREATER_THAN(3, 4, 1)
@@ -187,132 +187,139 @@ int convertImGuiSpecialKey(int key)
     }
 }
 
-class ImGuiHandler : public osgGA::GUIEventHandler
+namespace
 {
-public:
-    std::map<std::string, ImFont*> _fonts;
-    bool _mousePressed[3];
-    float _mouseWheel;
-
-    ImGuiHandler() : _mouseWheel(0.0f)
+    class ImGuiHandler : public osgGA::GUIEventHandler
     {
-        _mousePressed[0] = false;
-        _mousePressed[1] = false;
-        _mousePressed[2] = false;
-    }
+    public:
+        std::map<std::string, ImFont*> _fonts;
+        bool _mousePressed[3];
+        float _mouseWheel;
 
-    void start(ImGuiManager* manager)
-    { startImGuiContext(manager, _fonts); }
-
-    void release(ImGuiManager* manager)
-    {
-#if defined(OSG_GLES1_AVAILABLE) || defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
-        ImGui_ImplOpenGL3_Shutdown();
-#else
-        if (s_useImguiLoaderGL3) ImGui_ImplOpenGL3_Shutdown();
-        else ImGui_ImplOpenGL2_Shutdown();
-#endif
-    }
-
-    virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
-    {
-        ImGuiIO& io = ImGui::GetIO();
-        bool wantCaptureMouse = io.WantCaptureMouse;
-        bool wantCaptureKeyboard = io.WantCaptureKeyboard;
-        wantCaptureMouse |= ImGuizmo::IsUsing();
-
-        switch (ea.getEventType())
+        ImGuiHandler() : _mouseWheel(0.0f)
         {
-        case osgGA::GUIEventAdapter::KEYDOWN:
-        case osgGA::GUIEventAdapter::KEYUP:
-            //if (wantCaptureKeyboard)
-            {
-                const bool isKeyDown = ea.getEventType() == osgGA::GUIEventAdapter::KEYDOWN;
-                const int c = ea.getKey(); const int special_key = convertImGuiSpecialKey(c);
-                if (special_key > 0)
-                {
-                    io.AddKeyEvent((ImGuiKey)special_key, isKeyDown);
-                    io.KeyCtrl = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_CTRL;
-                    io.KeyShift = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_SHIFT;
-                    io.KeyAlt = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_ALT;
-                    io.KeySuper = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_SUPER;
-                }
-                else if (c > 0 && c < 0xFF)
-                {
-                    io.AddKeyEvent((ImGuiKey)convertImGuiCharacterKey(c), isKeyDown);
-                    if (isKeyDown) io.AddInputCharacter((unsigned short)c);
-                }
-                return wantCaptureKeyboard;
-            }
-        case osgGA::GUIEventAdapter::DOUBLECLICK:
-        case osgGA::GUIEventAdapter::RELEASE:
-        case osgGA::GUIEventAdapter::PUSH:
-            io.MousePos = ImVec2(ea.getX(), io.DisplaySize.y - ea.getY());
-            _mousePressed[0] = ea.getButtonMask() & osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON;
-            _mousePressed[1] = ea.getButtonMask() & osgGA::GUIEventAdapter::RIGHT_MOUSE_BUTTON;
-            _mousePressed[2] = ea.getButtonMask() & osgGA::GUIEventAdapter::MIDDLE_MOUSE_BUTTON;
-            return wantCaptureMouse;
-        case osgGA::GUIEventAdapter::DRAG:
-        case osgGA::GUIEventAdapter::MOVE:
-            io.MousePos = ImVec2(ea.getX(), io.DisplaySize.y - ea.getY());
-            return wantCaptureMouse;
-        case osgGA::GUIEventAdapter::SCROLL:
-            if (wantCaptureMouse)
-                _mouseWheel = (ea.getScrollingMotion() == osgGA::GUIEventAdapter::SCROLL_UP ? 1.0f : -1.0f);
-            return wantCaptureMouse;
-        default: return false;
+            _mousePressed[0] = false;
+            _mousePressed[1] = false;
+            _mousePressed[2] = false;
         }
-        return false;
-    }
 
-protected:
-    virtual ~ImGuiHandler()
-    {
-        //if (s_useImguiLoaderGL3) ImGui_ImplOpenGL3_Shutdown();  // FIXME
-        //else ImGui_ImplOpenGL2_Shutdown();
-        ImGui::DestroyContext();
-    }
-};
+        void start(ImGuiManager* manager)
+        { startImGuiContext(manager, _fonts); }
 
-struct ImGuiNewFrameCallback : public CameraDrawCallback
-{
-    ImGuiNewFrameCallback(osgGA::GUIEventHandler* h) : _handler(h), _time(-1.0f) {}
-    osg::observer_ptr<osgGA::GUIEventHandler> _handler;
-    mutable double _time;
+        void release(ImGuiManager* manager)
+        {
+    #if defined(OSG_GLES1_AVAILABLE) || defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
+            ImGui_ImplOpenGL3_Shutdown();
+    #else
+            if (s_useImguiLoaderGL3) ImGui_ImplOpenGL3_Shutdown();
+            else ImGui_ImplOpenGL2_Shutdown();
+    #endif
+        }
 
-    virtual void operator()(osg::RenderInfo& renderInfo) const override
-    {
-        newImGuiFrame(renderInfo, _time, [&](ImGuiIO& io) {
-            ImGuiHandler* handler = static_cast<ImGuiHandler*>(_handler.get());
-            if (handler)
+        virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
+        {
+            ImGuiIO& io = ImGui::GetIO();
+            bool wantCaptureMouse = io.WantCaptureMouse;
+            bool wantCaptureKeyboard = io.WantCaptureKeyboard;
+            wantCaptureMouse |= ImGuizmo::IsUsing();
+
+            switch (ea.getEventType())
             {
-                io.MouseDown[0] = handler->_mousePressed[0];
-                io.MouseDown[1] = handler->_mousePressed[1];
-                io.MouseDown[2] = handler->_mousePressed[2];
-                io.MouseWheel = handler->_mouseWheel; handler->_mouseWheel = 0.0f;
+            case osgGA::GUIEventAdapter::KEYDOWN:
+            case osgGA::GUIEventAdapter::KEYUP:
+                //if (wantCaptureKeyboard)
+                {
+                    const bool isKeyDown = ea.getEventType() == osgGA::GUIEventAdapter::KEYDOWN;
+                    const int c = ea.getKey(); const int special_key = convertImGuiSpecialKey(c);
+                    if (special_key > 0)
+                    {
+                        io.AddKeyEvent((ImGuiKey)special_key, isKeyDown);
+                        io.KeyCtrl = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_CTRL;
+                        io.KeyShift = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_SHIFT;
+                        io.KeyAlt = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_ALT;
+                        io.KeySuper = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_SUPER;
+                    }
+                    else if (c > 0 && c < 0xFF)
+                    {
+                        io.AddKeyEvent((ImGuiKey)convertImGuiCharacterKey(c), isKeyDown);
+                        if (isKeyDown) io.AddInputCharacter((unsigned short)c);
+                    }
+                    return wantCaptureKeyboard;
+                }
+            case osgGA::GUIEventAdapter::DOUBLECLICK:
+            case osgGA::GUIEventAdapter::RELEASE:
+            case osgGA::GUIEventAdapter::PUSH:
+                io.MousePos = ImVec2(ea.getX(), io.DisplaySize.y - ea.getY());
+                _mousePressed[0] = ea.getButtonMask() & osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON;
+                _mousePressed[1] = ea.getButtonMask() & osgGA::GUIEventAdapter::RIGHT_MOUSE_BUTTON;
+                _mousePressed[2] = ea.getButtonMask() & osgGA::GUIEventAdapter::MIDDLE_MOUSE_BUTTON;
+                return wantCaptureMouse;
+            case osgGA::GUIEventAdapter::DRAG:
+            case osgGA::GUIEventAdapter::MOVE:
+                io.MousePos = ImVec2(ea.getX(), io.DisplaySize.y - ea.getY());
+                return wantCaptureMouse;
+            case osgGA::GUIEventAdapter::SCROLL:
+                if (wantCaptureMouse)
+                    _mouseWheel = (ea.getScrollingMotion() == osgGA::GUIEventAdapter::SCROLL_UP ? 1.0f : -1.0f);
+                return wantCaptureMouse;
+            default: return false;
             }
-        });
-    }
-};
+            return false;
+        }
 
-struct ImGuiRenderCallback : public CameraDrawCallback
-{
-    ImGuiRenderCallback(ImGuiManager* m, osgGA::GUIEventHandler* h) : _handler(h), _manager(m) {}
-    mutable std::map<std::string, ImTextureID> _textureIdList;
-    osg::observer_ptr<osgGA::GUIEventHandler> _handler;
-    ImGuiManager* _manager;
+    protected:
+        virtual ~ImGuiHandler()
+        {
+            ImGui::DestroyContext();
+        }
+    };
 
-    virtual void operator()(osg::RenderInfo& renderInfo) const override
+    struct ImGuiNewFrameCallback : public CameraDrawCallback
     {
-        endImGuiFrame(renderInfo, _manager, _textureIdList,
-                      [&](ImGuiContentHandler* v, ImGuiContext* context) {
+        ImGuiNewFrameCallback(osgGA::GUIEventHandler* h) : _handler(h), _time(-1.0f) {}
+        osg::observer_ptr<osgGA::GUIEventHandler> _handler;
+        mutable double _time;
+
+        virtual void operator()(osg::RenderInfo& renderInfo) const override
+        {
+            newImGuiFrame(renderInfo, _time, [&](ImGuiIO& io) {
+                ImGuiHandler* handler = static_cast<ImGuiHandler*>(_handler.get());
+                if (handler)
+                {
+                    io.MouseDown[0] = handler->_mousePressed[0];
+                    io.MouseDown[1] = handler->_mousePressed[1];
+                    io.MouseDown[2] = handler->_mousePressed[2];
+                    io.MouseWheel = handler->_mouseWheel; handler->_mouseWheel = 0.0f;
+                }
+            });
+        }
+    };
+
+    struct ImGuiRenderCallback : public CameraDrawCallback
+    {
+        ImGuiRenderCallback(ImGuiManager* m, osgGA::GUIEventHandler* h) : _handler(h), _manager(m) {}
+        mutable std::map<std::string, ImTextureID> _textureIdList;
+        osg::observer_ptr<osgGA::GUIEventHandler> _handler;
+        ImGuiManager* _manager;
+
+        virtual void operator()(osg::RenderInfo& renderInfo) const override
+        {
+            endImGuiFrame(renderInfo, _manager, _textureIdList,
+                        [&](ImGuiContentHandler* v, ImGuiContext* context) {
+                ImGuiHandler* handler = static_cast<ImGuiHandler*>(_handler.get());
+                if (handler) v->ImGuiFonts = handler->_fonts;
+                v->ImGuiTextures = _textureIdList; v->context = context;
+                v->runInternal(_manager);
+            });
+        }
+
+        virtual void releaseGLObjects(osg::State* state) const
+        {
             ImGuiHandler* handler = static_cast<ImGuiHandler*>(_handler.get());
-            if (handler) v->ImGuiFonts = handler->_fonts;
-            v->ImGuiTextures = _textureIdList; v->context = context;
-            v->runInternal(_manager);
-        });
-    }
-};
+            if (handler) handler->release(_manager);
+        }
+    };
+}
 
 ////////////// ImGuiManager //////////////
 
