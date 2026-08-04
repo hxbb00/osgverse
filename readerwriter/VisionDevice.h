@@ -40,21 +40,29 @@ namespace osgVerse
     };
 
     /// A single IMU sample
-    struct IMUSample : public VisionFrameBase
+    struct IMUSampleFrame : public VisionFrameBase
     {
         osg::Vec3d gyro;            ///< rad/s
         osg::Vec3d accel;           ///< m/s^2
         osg::Vec3d magnetometer;    ///< optional, gauss
         bool hasGyro = false, hasAccel = false, hasMag = false;
-        IMUSample() = default;
+        IMUSampleFrame() = default;
     };
 
     /// 6-DoF pose frame (typically from SLAM/tracking)
     struct PoseFrame : public VisionFrameBase
     {
+        enum TrackingState
+        {
+            NotSupported = 0, Tracking = 1 << 0, LostNoReloc = 1 << 1,
+            LostFewFeatures = 1 << 2, LostFewStereoPairs = 1 << 3, LostFewMatchers = 1 << 4,
+            LostFewInliers1 = 1 << 5, LostFewInliers2 = 1 << 6, LostGenerally = 1 << 7,
+            Relocalizated = 1 << 8, LoopClosed = 1 << 9, OnlyIMU = 1 << 10
+        };
+
         osg::Quat orientation;          ///< body -> world
         osg::Vec3d translation;         ///< metres
-        unsigned int state = 0;         ///< tracking state (vendor-specific)
+        unsigned int state = 0;         ///< tracking state
         PoseFrame() = default;
     };
 
@@ -63,7 +71,7 @@ namespace osgVerse
     {
         osg::ref_ptr<osg::Vec3Array>   points;
         osg::ref_ptr<osg::Vec4ubArray> colors;   ///< optional, may be null
-        unsigned int width = 0, height = 0;          ///< H=1 for unorganised clouds
+        unsigned int width = 0, height = 0;      ///< H=1 for unorganised clouds
         PointCloudFrame() = default;
     };
 
@@ -73,10 +81,10 @@ namespace osgVerse
         struct Detection
         {
             std::string label;
-            unsigned int classId = 0;
             float confidence = 0.f;
             float bbox[4] = {0.f, 0.f, 0.f, 0.f};  /// Axis-aligned (x, y, w, h)
-            std::vector<osg::Vec2f> keypoints;  /// Optional 2D keypoints (pose / hand / face)
+            std::vector<osg::Vec2f> keypoints;     /// Optional 2D keypoints (pose / hand / face)
+            std::vector<float> confidencesKP;      /// Optional 2D keypoint confidences
             Detection() = default;
         };
 
@@ -85,11 +93,10 @@ namespace osgVerse
             ObjectDetect = 0x1, Segmentation = 0x2, Classification = 0x4,
             PoseDetect = 0x8, HandDetect = 0x10, FaceDetect = 0x20
         };
-        unsigned int detectionType = 0;
+        unsigned int detectionType = 0, width = 0, height = 0;
 
-        std::vector<Detection> detections;
-        std::vector<osg::ref_ptr<osg::Image>> mask;   /// Optional segmentation mask
-        std::vector<float> classScores;               /// Optional classification scores
+        std::vector<Detection> detections;            /// Detections or classifications
+        osg::ref_ptr<osg::Image> segmentation;        /// Optional segmentation mask
         DetectionsFrame() = default;
     };
 
@@ -100,7 +107,7 @@ namespace osgVerse
         {
             osg::Vec2f position;
             unsigned int id = 0;
-            std::vector<uint8_t> descriptor;   ///< optional raw descriptor
+            std::vector<unsigned int> descriptor;   ///< optional 512 bits FREAK/LIFT binary descriptor
             FeaturePoint() = default;
         };
         std::vector<FeaturePoint> keypoints;
@@ -184,7 +191,7 @@ namespace osgVerse
         {
             osg::ref_ptr<ImageFrame> image;
             osg::ref_ptr<StereoImageFrame> stereo;
-            osg::ref_ptr<IMUSample> imu;
+            osg::ref_ptr<IMUSampleFrame> imu;
             osg::ref_ptr<PoseFrame> pose;
             osg::ref_ptr<PointCloudFrame> cloud;
             osg::ref_ptr<DetectionsFrame> detections;
@@ -236,7 +243,7 @@ namespace osgVerse
         // -- frame-arrival helpers (subclasses call these from SDK callbacks) --
         void notifyImage      (StreamType type, ImageFrame* f);
         void notifyStereoImage(StreamType type, StereoImageFrame* f);
-        void notifyIMU        (IMUSample* s);
+        void notifyIMU        (IMUSampleFrame* s);
         void notifyPose       (PoseFrame* f);
         void notifyPointCloud (PointCloudFrame* f);
         void notifyDetections (DetectionsFrame* f);
@@ -255,7 +262,7 @@ namespace osgVerse
         // ring-buffers (kept tiny - latest-N) per stream kind
         std::deque<osg::ref_ptr<ImageFrame>> _imgQueue[32];
         std::deque<osg::ref_ptr<StereoImageFrame>> _stereoQueue[32];
-        std::deque<osg::ref_ptr<IMUSample>> _imuQueue;
+        std::deque<osg::ref_ptr<IMUSampleFrame>> _imuQueue;
         std::deque<osg::ref_ptr<PoseFrame>> _poseQueue;
         std::deque<osg::ref_ptr<PointCloudFrame>> _cloudQueue;
         std::deque<osg::ref_ptr<DetectionsFrame>> _detQueue;

@@ -190,7 +190,7 @@ void VisionInputDevice::notifyStereoImage(StreamType type, StereoImageFrame* f)
     ev->stereo = f; sendEvent(*ev);
 }
 
-void VisionInputDevice::notifyIMU(IMUSample* s)
+void VisionInputDevice::notifyIMU(IMUSampleFrame* s)
 {
     {
         std::lock_guard<std::mutex> lk(_imuMtx); _imuQueue.push_back(s);

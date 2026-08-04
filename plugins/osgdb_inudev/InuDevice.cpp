@@ -90,7 +90,8 @@ InuDevice::InuDevice()
 :   _fps(10), _binning(0), _rgbChannel(4), _irChannel(0), _depthChannel(3), _fisheyeChannel(2),
     _rgbRegistrationChannel(-1), _depthRegistrationChannel(-1), _calibrationLoaded(false)
 {
-    _rgbCache = new ImageFrame; _depthCache = new ImageFrame;
+    _rgbCache = new osg::Image; _depthCache = new osg::Image; _fisheyeCache = new osg::Image;
+    _irCache[0] = new osg::Image; _irCache[1] = new osg::Image;
 }
 
 InuDevice::~InuDevice()
@@ -231,6 +232,7 @@ bool InuDevice::connect(const osgDB::Options* opts)
         std::string depthCh = opts->getPluginStringData("ChannelDepth");
         _deviceId = opts->getPluginStringData("DeviceID");
         _ipAddress = opts->getPluginStringData("IpAddress");
+        _cnnMode = opts->getPluginStringData("CnnAlgorithm");
 
         if (!fpsV.empty()) _fps = atoi(fpsV.c_str());
         if (!binV.empty()) _binning = atoi(binV.c_str());
@@ -501,12 +503,12 @@ bool InuDevice::controlRGB(bool started)
 void InuDevice::onRGBFrame(std::shared_ptr<InuDev::CImageStream>,
                            std::shared_ptr<const InuDev::CImageFrame> frame, InuDev::CInuError err)
 {
-    osg::ref_ptr<ImageFrame> f = _rgbCache;
+    osg::ref_ptr<ImageFrame> f = new ImageFrame;
     if (err != InuDev::eOK || !frame || !frame->Valid) return;
     
     PixelFormat fmt = fromImageFormat(static_cast<InuDev::CImageStream::EOutputFormat>(frame->Format()));
     f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex;
-    if (!f->image) f->image = new osg::Image;
+    if (!f->image) f->image = _rgbCache;
     wrapImage(f->image.get(), frame.get(), fmt);
     notifyImage(StreamType::RGB, f.get());
 }
@@ -546,11 +548,11 @@ bool InuDevice::controlDepth(bool started)
 void InuDevice::onDepthFrame(std::shared_ptr<InuDev::CDepthStream>,
                              std::shared_ptr<const InuDev::CImageFrame> frame, InuDev::CInuError err)
 {
-    osg::ref_ptr<ImageFrame> f = _depthCache;
+    osg::ref_ptr<ImageFrame> f = new ImageFrame;
     if (err != InuDev::eOK || !frame || !frame->Valid) return;
     
     f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex;
-    if (!f->image) f->image = new osg::Image;
+    if (!f->image) f->image = _depthCache;
     wrapImage(f->image.get(), frame.get(), PixelFormat::Depth16);
     notifyImage(StreamType::Depth, f.get());
 }
@@ -560,13 +562,47 @@ bool InuDevice::controlIR(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        if (_irStream) return true;
+        _irStream = _sensor->CreateStereoImageStream();
+        if (!_irStream) { OSG_NOTICE << "[InuDevice] Failed to create IR stream"; return false; }
+        ret = _irStream->Init(InuDev::CStereoImageStream::eRaw);
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init IR stream"; return false; }
+        ret = _irStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start IR stream"; return false; }
+        ret = _irStream->Register([this](auto s, auto f, auto e) { onIRFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::IR, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_irStream)
+        {
+            _irStream->Register(nullptr); _irStream->Stop();
+            _irStream->Terminate(); _irStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::IR);
     }
     return true;
+}
+
+void InuDevice::onIRFrame(std::shared_ptr<InuDev::CStereoImageStream>,
+                          std::shared_ptr<const InuDev::CStereoImageFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<StereoImageFrame> f = new StereoImageFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    
+    f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex;
+    if (frame->GetLeftFrame())
+    {
+        if (!f->left.image) f->left.image = _irCache[0];
+        wrapImage(f->left.image.get(), frame->GetLeftFrame(), PixelFormat::Gray8);
+    }
+    if (frame->GetRightFrame())
+    {
+        if (!f->right.image) f->right.image = _irCache[1];
+        wrapImage(f->right.image.get(), frame->GetRightFrame(), PixelFormat::Gray8);
+    }
+    notifyStereoImage(StreamType::IR, f.get());
 }
 
 bool InuDevice::controlFisheye(bool started)
@@ -574,13 +610,39 @@ bool InuDevice::controlFisheye(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        if (_fisheyeStream) return true;
+        _fisheyeStream = _sensor->CreateImageStream(static_cast<uint32_t>(_fisheyeChannel));
+        if (!_fisheyeStream) { OSG_NOTICE << "[InuDevice] Failed to create fish-eye stream"; return false; }
+        ret = _fisheyeStream->Init(InuDev::CImageStream::eDefault, InuDev::CImageStream::eNone);
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init fish-eye stream"; return false; }
+        ret = _fisheyeStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start fish-eye stream"; return false; }
+        ret = _fisheyeStream->Register([this](auto s, auto f, auto e) { onFisheyeFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::Fisheye, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_fisheyeStream)
+        {
+            _fisheyeStream->Register(nullptr); _fisheyeStream->Stop();
+            _fisheyeStream->Terminate(); _fisheyeStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::Fisheye);
     }
     return true;
+}
+
+void InuDevice::onFisheyeFrame(std::shared_ptr<InuDev::CImageStream>,
+                               std::shared_ptr<const InuDev::CImageFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<ImageFrame> f = new ImageFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    
+    f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex;
+    if (!f->image) f->image = _fisheyeCache;
+    wrapImage(f->image.get(), frame.get(), PixelFormat::Gray8);
+    notifyImage(StreamType::Fisheye, f.get());
 }
 
 bool InuDevice::controlIMU(bool started)
@@ -588,13 +650,49 @@ bool InuDevice::controlIMU(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        if (_imuStream) return true;
+        _imuStream = _sensor->CreateImuStream();
+        if (!_imuStream) { OSG_NOTICE << "[InuDevice] Failed to create IMU stream"; return false; }
+        ret = _imuStream->Init();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init IMU stream"; return false; }
+        ret = _imuStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start IMU stream"; return false; }
+        ret = _imuStream->Register([this](auto s, auto f, auto e) { onIMUFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::IMU, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_imuStream)
+        {
+            _imuStream->Register(nullptr); _imuStream->Stop();
+            _imuStream->Terminate(); _imuStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::IMU);
     }
     return true;
+}
+
+void InuDevice::onIMUFrame(std::shared_ptr<InuDev::CImuStream>,
+                           std::shared_ptr<const InuDev::CImuFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<IMUSampleFrame> f = new IMUSampleFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    else { f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex; }
+
+    auto g = frame->SensorsData.find(InuDev::EImuType::eGyroscope);
+    auto a = frame->SensorsData.find(InuDev::EImuType::eAccelerometer);
+    if (g != frame->SensorsData.end())
+    {
+        f->gyro.set(g->second.X(), g->second.Y(), g->second.Z());
+        f->hasGyro = true;
+    }
+    if (a != frame->SensorsData.end())
+    {
+        f->accel.set(a->second.X(), a->second.Y(), a->second.Z());
+        f->hasAccel = true;
+    }
+    notifyIMU(f.get());
 }
 
 bool InuDevice::controlSLAM(bool started)
@@ -602,13 +700,41 @@ bool InuDevice::controlSLAM(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        if (_slamStream) return true;
+        _slamStream = _sensor->CreateSlamStream();
+        if (!_slamStream) { OSG_NOTICE << "[InuDevice] Failed to create SLAM stream"; return false; }
+        ret = _slamStream->Init();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init SLAM stream"; return false; }
+        ret = _slamStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start SLAM stream"; return false; }
+        ret = _slamStream->Register([this](auto s, auto f, auto e) { onSLAMFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::SLAM, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_slamStream)
+        {
+            _slamStream->Register(nullptr); _slamStream->Stop();
+            _slamStream->Terminate(); _slamStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::SLAM);
     }
     return true;
+}
+
+void InuDevice::onSLAMFrame(std::shared_ptr<InuDev::CSlamStream>,
+                         std::shared_ptr<const InuDev::CSlamFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<PoseFrame> f = new PoseFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    else { f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex; }
+
+    std::array<float, 4> Q; std::array<float, 3> T;
+    frame->ConvertPose4x4ToQuaternionTranslation(frame->mPose4x4BodyToWorld, Q, T);
+    f->orientation.set(Q[0], Q[1], Q[2], Q[3]);
+    f->translation.set(T[0], T[1], T[2]);
+    f->state = frame->mSlamState; notifyPose(f.get());
 }
 
 bool InuDevice::controlPointCloud(bool started)
@@ -616,13 +742,66 @@ bool InuDevice::controlPointCloud(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        if (_pointsStream) return true;
+        _pointsStream = _sensor->CreatePointCloudStream();
+        if (!_pointsStream) { OSG_NOTICE << "[InuDevice] Failed to create point-cloud stream"; return false; }
+        ret = _pointsStream->Init();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init point-cloud stream"; return false; }
+        ret = _pointsStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start point-cloud stream"; return false; }
+        ret = _pointsStream->Register([this](auto s, auto f, auto e) { onPointCloudFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::PointCloud, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_pointsStream)
+        {
+            _pointsStream->Register(nullptr); _pointsStream->Stop();
+            _pointsStream->Terminate(); _pointsStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::PointCloud);
     }
     return true;
+}
+
+void InuDevice::onPointCloudFrame(std::shared_ptr<InuDev::CPointCloudStream>,
+                                  std::shared_ptr<const InuDev::CPointCloudFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<PointCloudFrame> f = new PointCloudFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    else { f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex; }
+
+    InuDev::CPointCloudFrame::EFormat fmt = static_cast<InuDev::CPointCloudFrame::EFormat>(frame->GetFormat());
+    const uint32_t n = frame->GetNumOfPoints(); f->width = n; f->height = 1;
+    
+    if (fmt == InuDev::CPointCloudFrame::EFormat::e3DPoints)
+    {
+        const InuDev::CPointCloudFrame::C3DPixel* p = frame->Get3DData();
+        f->points = new osg::Vec3Array(n);
+        for (uint32_t i = 0; i < n; ++i)
+            (*f->points)[i] = osg::Vec3(p[i].X(), p[i].Y(), p[i].Z());
+    }
+    else if (fmt == InuDev::CPointCloudFrame::EFormat::e3DShortPoints)
+    {
+        const InuDev::CPointCloudFrame::CPoint3DShortPixel* p = frame->Get3DShortData();
+        f->points = new osg::Vec3Array(n);
+        for (uint32_t i = 0; i < n; ++i)
+            (*f->points)[i] = osg::Vec3(static_cast<float>(p[i].X()),
+                                        static_cast<float>(p[i].Y()),
+                                        static_cast<float>(p[i].Z()));
+    }
+    else if (fmt == InuDev::CPointCloudFrame::EFormat::e3DPointsRGB)
+    {   // struct: float x,y,z; uint8_t r,g,b,a;
+        const InuDev::CPointCloudFrame::C3DRGBPixel* p = frame->Get3DRGBData();
+        f->points = new osg::Vec3Array(n); f->colors = new osg::Vec4ubArray(n);
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            (*f->points)[i] = osg::Vec3(p[i].X(), p[i].Y(), p[i].Z());
+            (*f->colors)[i] = osg::Vec4ub(p[i].R, p[i].G, p[i].B, p[i].Alpha);
+        }
+    }
+    notifyPointCloud(f.get());
 }
 
 bool InuDevice::controlFeatures(bool started)
@@ -630,13 +809,48 @@ bool InuDevice::controlFeatures(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        if (_featureStream) return true;
+        _featureStream = _sensor->CreateFeaturesTrackingStream();
+        if (!_featureStream) { OSG_NOTICE << "[InuDevice] Failed to create features stream"; return false; }
+        ret = _featureStream->Init(InuDev::FeaturesTracking::EOutputType::eProcessed);
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init features stream"; return false; }
+        ret = _featureStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start features stream"; return false; }
+        ret = _featureStream->Register([this](auto s, auto f, auto e) { onFeaturesFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::Features, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_featureStream)
+        {
+            _featureStream->Register(nullptr); _featureStream->Stop();
+            _featureStream->Terminate(); _featureStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::Features);
     }
     return true;
+}
+
+void InuDevice::onFeaturesFrame(std::shared_ptr<InuDev::CFeaturesTrackingStream>,
+                                std::shared_ptr<const InuDev::CFeaturesTrackingFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<FeaturesFrame> f = new FeaturesFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    else { f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex; }
+
+    const int n = frame->GetKeyPointNumber();
+    f->keypoints.resize(static_cast<size_t>(n));
+    f->descriptorSize = frame->GetDescriptorSize();
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& kp = frame->GetProcessedData()[i];
+        FeaturesFrame::FeaturePoint& p = f->keypoints[i];
+        p.position.set(kp.X, kp.Y); p.id = static_cast<uint32_t>(kp.UniqId);
+        if (kp.Descriptor && f->descriptorSize > 0)
+            p.descriptor.assign(kp.Descriptor, kp.Descriptor + InuDev::FeaturesTracking::DESCR_SIZE);
+    }
+    notifyFeatures(f.get());
 }
 
 bool InuDevice::controlCNN(bool started)
@@ -644,13 +858,147 @@ bool InuDevice::controlCNN(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        InuDev::CCnnAppFrame::EOutputType t = InuDev::CCnnAppFrame::eObjectDetection;
+        if (_cnnMode.find("Segment") != std::string::npos) t = InuDev::CCnnAppFrame::eSegmentation;
+        else if (_cnnMode.find("Class") != std::string::npos) t = InuDev::CCnnAppFrame::eClassification;
+        else if (_cnnMode.find("Face") != std::string::npos) t = InuDev::CCnnAppFrame::eFaceRecognition;
+        else if (_cnnMode.find("YoloV3") != std::string::npos) t = InuDev::CCnnAppFrame::eObjectDetectionYoloV3;
+        else if (_cnnMode.find("YoloV7") != std::string::npos) t = InuDev::CCnnAppFrame::eObjectDetectionYoloV7;
+        else if (_cnnMode.find("Pose") != std::string::npos) t = InuDev::CCnnAppFrame::ePoseDetection;
+        else if (_cnnMode.find("Hand") != std::string::npos) t = InuDev::CCnnAppFrame::eHandDetection;
+
+        _cnnStream = _sensor->CreateCnnAppStream();
+        if (!_cnnStream) { OSG_NOTICE << "[InuDevice] Failed to create CNN stream"; return false; }
+        ret = _cnnStream->Init(t);
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init CNN stream"; return false; }
+        ret = _cnnStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start CNN stream"; return false; }
+        ret = _cnnStream->Register([this](auto s, auto f, auto e) { onCNNFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::CNN, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_cnnStream)
+        {
+            _cnnStream->Register(nullptr); _cnnStream->Stop();
+            _cnnStream->Terminate(); _cnnStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::CNN);
     }
     return true;
+}
+
+void InuDevice::onCNNFrame(std::shared_ptr<InuDev::CCnnAppStream>,
+                           std::shared_ptr<const InuDev::CCnnAppFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<DetectionsFrame> f = new DetectionsFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    else { f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex; }
+
+    if (frame->GetOutputType() == InuDev::CCnnAppFrame::eObjectDetection ||
+        frame->GetOutputType() == InuDev::CCnnAppFrame::eObjectDetectionYoloV3 ||
+        frame->GetOutputType() == InuDev::CCnnAppFrame::eObjectDetectionYoloV7)
+    {
+        const std::vector<InuDev::CCnnAppFrame::CDetectedObject>& objs = *(frame->GetObjectData());
+        for (const auto& o : objs)
+        {
+            DetectionsFrame::Detection d;
+            d.label = o.ClassID; d.confidence = o.Confidence;
+            d.bbox[0] = o.ClosedRectTopLeft.X(); d.bbox[1] = o.ClosedRectTopLeft.Y();
+            d.bbox[2] = o.ClosedRectSize.X(); d.bbox[3] = o.ClosedRectSize.Y();
+            f->detections.push_back(std::move(d));
+        }
+        f->detectionType = DetectionsFrame::ObjectDetect;
+    }
+    else if (frame->GetOutputType() == InuDev::CCnnAppFrame::eSegmentation)
+    {
+        const InuDev::CImageFrame& imgData = *(frame->GetSegmentationData());
+        PixelFormat fmt = fromImageFormat(static_cast<InuDev::CImageStream::EOutputFormat>(imgData.Format()));
+        f->segmentation = new osg::Image; wrapImage(f->segmentation.get(), &imgData, fmt);
+        f->detectionType = DetectionsFrame::Segmentation;
+    }
+    else if (frame->GetOutputType() == InuDev::CCnnAppFrame::eClassification)
+    {
+        const InuDev::CCnnAppFrame::CClassificationData& clsData = *(frame->GetClassificationData());
+        // TODO: what data to obtain?
+        f->detectionType = DetectionsFrame::Classification;
+    }
+    else if (frame->GetOutputType() == InuDev::CCnnAppFrame::ePoseDetection)
+    {
+        const std::vector<InuDev::CCnnAppFrame::CDetectedPose>& objs = *(frame->GetPoseData());
+        for (const auto& o : objs)
+        {
+            DetectionsFrame::Detection d;
+            d.keypoints.resize(o.NumberOfKeyPoints);
+            d.confidencesKP.resize(o.NumberOfKeyPoints);
+            for (uint32_t i = 0; i < o.NumberOfKeyPoints; ++i)
+            {
+                d.keypoints[i] = osg::Vec2f(o.KeyPoints[i].P.X(), o.KeyPoints[i].P.Y());
+                d.confidencesKP[i] = o.KeyPoints[i].Conf;
+            }
+
+            /*YoloV7Skeleton =
+                std::make_pair(15, 13), std::make_pair(13, 11), std::make_pair(16, 14), std::make_pair(14, 12),
+                std::make_pair(11, 12), std::make_pair(5, 11), std::make_pair(6, 12), std::make_pair(5, 6),
+                std::make_pair(5, 7), std::make_pair(6, 8), std::make_pair(7, 9), std::make_pair(8, 10),
+                std::make_pair(0, 1), std::make_pair(0, 2), std::make_pair(1, 3), std::make_pair(2, 4),
+                std::make_pair(3, 5), std::make_pair(4, 6)*/
+            f->detections.push_back(std::move(d));
+        }
+        f->detectionType = DetectionsFrame::PoseDetect;
+    }
+    else if (frame->GetOutputType() == InuDev::CCnnAppFrame::eHandDetection)
+    {
+        const std::vector<InuDev::CCnnAppFrame::CDetectedHand>& objs = *(frame->GetHandsData());
+        for (const auto& o : objs)
+        {
+            DetectionsFrame::Detection d;
+            d.keypoints.resize(o.HandPoints.size());
+            for (uint32_t i = 0; i < o.HandPoints.size(); ++i)
+                d.keypoints[i] = osg::Vec2f(o.HandPoints[i].X(), o.HandPoints[i].Y());
+
+            d.label = (o.Side == InuDev::CCnnAppFrame::eRightHand) ? "_R" : "_L";
+            switch (o.Gesture)
+            {
+            case InuDev::CCnnAppFrame::eOpenHand: d.label = "OpenHand" + d.label; break;
+            case InuDev::CCnnAppFrame::eCloseHand: d.label = "CloseHand" + d.label; break;
+            case InuDev::CCnnAppFrame::ePointRight: d.label = "PointRight" + d.label; break;
+            case InuDev::CCnnAppFrame::ePointLeft: d.label = "PointLeft" + d.label; break;
+            case InuDev::CCnnAppFrame::eThumbUp: d.label = "ThumbUp" + d.label; break;
+            case InuDev::CCnnAppFrame::eOne: d.label = "One" + d.label; break;
+            default: d.label = "None" + d.label; break;
+            }
+
+            /*HandConnectivitySkeleton =
+                std::make_pair(0, 1), std::make_pair(1, 2), std::make_pair(2, 3), std::make_pair(3, 4),
+                std::make_pair(0, 5), std::make_pair(5, 6), std::make_pair(6, 7), std::make_pair(7, 8),
+                std::make_pair(5, 9), std::make_pair(9, 10), std::make_pair(10, 11), std::make_pair(11, 12),
+                std::make_pair(9, 13), std::make_pair(13, 14), std::make_pair(14, 15), std::make_pair(15, 16),
+                std::make_pair(13, 17), std::make_pair(17, 18), std::make_pair(18, 19),
+                std::make_pair(19, 20), std::make_pair(0, 17)*/
+            f->detections.push_back(std::move(d));
+        }
+        f->detectionType = DetectionsFrame::HandDetect;
+    }
+    else if (frame->GetOutputType() == InuDev::CCnnAppFrame::eFaceRecognition)
+    {
+        const std::vector<InuDev::CCnnAppFrame::CRecognizedFace>& objs = *(frame->GetFaceData());
+        for (const auto& o : objs)
+        {
+            DetectionsFrame::Detection d;
+            d.label = o.FaceID; d.confidence = o.Confidence;
+            d.bbox[0] = o.ClosedRectTopLeft.X(); d.bbox[1] = o.ClosedRectTopLeft.Y();
+            d.bbox[2] = o.ClosedRectSize.X(); d.bbox[3] = o.ClosedRectSize.Y();
+            d.keypoints.resize(InuDev::CCnnAppFrame::CRecognizedFace::LANDMARKS_POINTS);
+            for (uint32_t i = 0; i < d.keypoints.size(); ++i)
+                d.keypoints[i] = osg::Vec2f(o.Landmarks[i].X(), o.Landmarks[i].Y());
+            f->detections.push_back(std::move(d));
+        }
+        f->detectionType = DetectionsFrame::FaceDetect;
+    }
+    f->width = frame->GetWidth(); f->height = frame->GetHeight();
+    notifyDetections(f.get());
 }
 
 bool InuDevice::controlTemperature(bool started)
@@ -658,11 +1006,39 @@ bool InuDevice::controlTemperature(bool started)
     InuDev::CInuError ret = InuDev::eOK;
     if (started)
     {
-        // TODO
+        if (_tempStream) return true;
+        _tempStream = _sensor->CreateTemperaturesStream(InuDev::CTemperaturesFrame::eAll);
+        if (!_tempStream) { OSG_NOTICE << "[InuDevice] Failed to create temperature stream"; return false; }
+        ret = _tempStream->Init();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init temperature stream"; return false; }
+        ret = _tempStream->Start();
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start temperature stream"; return false; }
+        ret = _tempStream->Register([this](auto s, auto f, auto e) { onTemperatureFrame(s, f, e); });
+        if (ret != InuDev::eOK) return false;
+        updateActiveStreams(StreamType::Temperature, StreamType::Unknown);
     }
     else
     {
-        // TODO
+        if (_tempStream)
+        {
+            _tempStream->Register(nullptr); _tempStream->Stop();
+            _tempStream->Terminate(); _tempStream.reset();
+        }
+        updateActiveStreams(StreamType::Unknown, StreamType::Temperature);
     }
     return true;
+}
+
+void InuDevice::onTemperatureFrame(std::shared_ptr<InuDev::CTemperaturesStream>,
+                                   std::shared_ptr<const InuDev::CTemperaturesFrame> frame, InuDev::CInuError err)
+{
+    osg::ref_ptr<TemperatureFrame> f = new TemperatureFrame;
+    if (err != InuDev::eOK || !frame || !frame->Valid) return;
+    else { f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex; }
+
+    f->temperatures.resize(3);
+    frame->GetTemperature(InuDev::CTemperaturesFrame::eSensorLeft, f->temperatures[0]);
+    frame->GetTemperature(InuDev::CTemperaturesFrame::eSensorRight, f->temperatures[1]);
+    frame->GetTemperature(InuDev::CTemperaturesFrame::ePVT, f->temperatures[2]);
+    notifyTemperature(f.get());
 }

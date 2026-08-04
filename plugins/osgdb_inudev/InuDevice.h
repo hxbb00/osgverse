@@ -81,11 +81,12 @@ namespace osgVerse
         std::shared_ptr<InuDev::CCnnAppStream> _cnnStream;
         std::shared_ptr<InuDev::CTemperaturesStream> _tempStream;
 
-        osg::ref_ptr<ImageFrame> _rgbCache, _depthCache;
+        osg::ref_ptr<osg::Image> _rgbCache, _depthCache, _fisheyeCache, _irCache[2];
         InuDev::CCalibrationData _calibrationData;
         mutable std::mutex _calibrationMutex, _streamMutex;
         
-        std::string _modelName, _serialNum, _firmwareVersion, _calibVersion, _deviceId, _ipAddress;
+        std::string _modelName, _serialNum, _firmwareVersion, _calibVersion;
+        std::string _deviceId, _ipAddress, _cnnMode;
         int _fps, _binning, _rgbChannel, _irChannel, _depthChannel, _fisheyeChannel;
         int _rgbRegistrationChannel, _depthRegistrationChannel;
         bool _calibrationLoaded;
