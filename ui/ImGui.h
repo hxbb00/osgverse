@@ -27,6 +27,8 @@ namespace osgVerse
     {
     public:
         ImGuiManager();
+        static std::string defaultSettingsPath();
+
         ImGuiContentHandler* getContentHandler() { return _contentHandler; }
         osgGA::GUIEventHandler* getHandler() { return _imguiHandler.get(); }
         std::map<std::string, osg::ref_ptr<osg::Texture2D>>& getTextures() { return _textures; }

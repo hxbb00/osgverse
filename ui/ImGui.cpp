@@ -4,6 +4,7 @@
 #include <GL/glew.h>
 #include <osg/Version>
 #include <osg/Camera>
+#include <osgDB/FileUtils>
 #include <osgDB/FileNameUtils>
 #include <osgDB/ReadFile>
 #include <imgui/imgui.h>
@@ -15,15 +16,21 @@
 #include <imgui/imgui_impl_opengl3.h>
 #include <imgui/ImGuizmo.h>
 #include "ImGui.h"
+#include "ImGui.Internal.h"
 #include "ImGui.Styles.h"
 #include "pipeline/Utilities.h"
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 using namespace osgVerse;
 
 extern void StyleColorsVisualStudio(ImGuiStyle* dst = (ImGuiStyle*)0);
 extern void StyleColorsSonicRiders(ImGuiStyle* dst = (ImGuiStyle*)0);
 extern void StyleColorsLightBlue(ImGuiStyle* dst = (ImGuiStyle*)0);
 extern void StyleColorsTransparent(ImGuiStyle* dst = (ImGuiStyle*)0);
-static bool s_useImguiLoaderGL3 = true;
+static bool s_useImguiLoaderGL3 = false;
 
 void newImGuiFrame(osg::RenderInfo& renderInfo, double& time, std::function<void(ImGuiIO&)> func)
 {
@@ -82,7 +89,7 @@ void endImGuiFrame(osg::RenderInfo& renderInfo, ImGuiManager* manager,
         {
             std::map<std::string, osg::ref_ptr<osg::Texture2D>>& tList = manager->getTextures();
             for (std::map<std::string, osg::ref_ptr<osg::Texture2D>>::iterator itr = tList.begin();
-                itr != tList.end(); ++itr)
+                 itr != tList.end(); ++itr)
             {
                 osg::Texture2D* tex2D = itr->second.get();
 #if OSG_VERSION_GREATER_THAN(3, 4, 1)
@@ -126,8 +133,32 @@ void startImGuiContext(ImGuiManager* manager, std::map<std::string, ImFont*>& fo
     default: ImGui::StyleColorsClassic(); break;
     }
 
+    static std::string s_iniFilename;
     ImGuiIO& io = ImGui::GetIO();
+    s_iniFilename = ImGuiManager::defaultSettingsPath();
+    if (!s_iniFilename.empty() && osgDB::makeDirectoryForFile(s_iniFilename))
+        io.IniFilename = s_iniFilename.c_str();
+    else
+        io.IniFilename = NULL;
     fonts[""] = io.Fonts->AddFontDefault();
+
+#if defined(__APPLE__)
+    ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
+    pio.Platform_SetClipboardTextFn = [](ImGuiContext*, const char* text)
+        {
+            FILE* p = popen("/usr/bin/pbcopy", "w");
+            if (p) { if (text) fwrite(text, 1, strlen(text), p); pclose(p); }
+        };
+
+    pio.Platform_GetClipboardTextFn = [](ImGuiContext*) -> const char*
+        {
+            static std::string buffer; buffer.clear();
+            FILE* p = popen("/usr/bin/pbpaste", "r"); if (!p) return NULL;
+            char tmp[4096]; size_t n = 0;
+            while ((n = fread(tmp, 1, sizeof(tmp), p)) > 0) buffer.append(tmp, n);
+            pclose(p); return buffer.c_str();
+        };
+#endif
 
     std::string fontData = manager->getChineseSimplifiedFont();
     if (!fontData.empty())
@@ -144,67 +175,17 @@ void startImGuiContext(ImGuiManager* manager, std::map<std::string, ImFont*>& fo
     osgDB::writeImageFile(*img, "test.png");*/
 }
 
-int convertImGuiCharacterKey(int key)
-{
-    if (key >= 'a' && key <= 'z') return (int)ImGuiKey_A + (key - 'a');
-    if (key >= 'A' && key <= 'Z') return (int)ImGuiKey_A + (key - 'A');
-    if (key >= '0' && key <= '9') return (int)ImGuiKey_0 + (key - '0');
-    switch (key)
-    {
-    case ' ': return ImGuiKey_Space; case ',': return ImGuiKey_Comma;
-    case '-': return ImGuiKey_Minus; case '.': return ImGuiKey_Period;
-    case '/': return ImGuiKey_Slash; case ';': return ImGuiKey_Semicolon;
-    case '=': return ImGuiKey_Equal; case '[': return ImGuiKey_LeftBracket;
-    case '\\': return ImGuiKey_Backslash; case ']': return ImGuiKey_RightBracket;
-    case '`': return ImGuiKey_GraveAccent; case '\'': return ImGuiKey_Apostrophe;
-    default: return ImGuiKey_None;
-    }
-}
-
-int convertImGuiSpecialKey(int key)
-{
-    if (key >= osgGA::GUIEventAdapter::KEY_F1 && key <= osgGA::GUIEventAdapter::KEY_F24)
-        return (int)ImGuiKey_F1 + (key - osgGA::GUIEventAdapter::KEY_F1);
-    switch (key)
-    {
-    case osgGA::GUIEventAdapter::KEY_Tab: return ImGuiKey_Tab;
-    case osgGA::GUIEventAdapter::KEY_Left: return ImGuiKey_LeftArrow;
-    case osgGA::GUIEventAdapter::KEY_Right: return ImGuiKey_RightArrow;
-    case osgGA::GUIEventAdapter::KEY_Up: return ImGuiKey_UpArrow;
-    case osgGA::GUIEventAdapter::KEY_Down: return ImGuiKey_DownArrow;
-    case osgGA::GUIEventAdapter::KEY_Page_Up: return ImGuiKey_PageUp;
-    case osgGA::GUIEventAdapter::KEY_Page_Down: return ImGuiKey_PageDown;
-    case osgGA::GUIEventAdapter::KEY_Home: return ImGuiKey_Home;
-    case osgGA::GUIEventAdapter::KEY_End: return ImGuiKey_End;
-    case osgGA::GUIEventAdapter::KEY_Delete: return ImGuiKey_Delete;
-    case osgGA::GUIEventAdapter::KEY_Insert: return ImGuiKey_Insert;
-    case osgGA::GUIEventAdapter::KEY_BackSpace: return ImGuiKey_Backspace;
-    case osgGA::GUIEventAdapter::KEY_Return: return ImGuiKey_Enter;
-    case osgGA::GUIEventAdapter::KEY_Escape: return ImGuiKey_Escape;
-    case osgGA::GUIEventAdapter::KEY_Caps_Lock: return ImGuiKey_CapsLock;
-    case osgGA::GUIEventAdapter::KEY_KP_Enter: return ImGuiKey_KeypadEnter;
-    default: return -1;
-    }
-}
-
 namespace
 {
     class ImGuiHandler : public osgGA::GUIEventHandler
     {
     public:
         std::map<std::string, ImFont*> _fonts;
-        bool _mousePressed[3];
-        float _mouseWheel;
-
-        ImGuiHandler() : _mouseWheel(0.0f)
-        {
-            _mousePressed[0] = false;
-            _mousePressed[1] = false;
-            _mousePressed[2] = false;
-        }
+        ImGuiInputQueue _input;
+        ImGuiHandler() : _started(false) {}
 
         void start(ImGuiManager* manager)
-        { startImGuiContext(manager, _fonts); }
+        { if (!_started) startImGuiContext(manager, _fonts); _started = true; }
 
         void release(ImGuiManager* manager)
         {
@@ -216,51 +197,39 @@ namespace
     #endif
         }
 
+        void drain(ImGuiIO& io)
+        { ImGuiInputEvent::applyImGuiInputEvents(io, _input.takeAll()); }
+
+        void publishCapture()
+        {
+            if (!ImGui::GetCurrentContext()) return; ImGuiIO& io = ImGui::GetIO();
+            _input.publishCapture(io.WantCaptureMouse || ImGuizmo::IsUsing(), io.WantCaptureKeyboard);
+        }
+
         virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
         {
-            ImGuiIO& io = ImGui::GetIO();
-            bool wantCaptureMouse = io.WantCaptureMouse;
-            bool wantCaptureKeyboard = io.WantCaptureKeyboard;
-            wantCaptureMouse |= ImGuizmo::IsUsing();
-
+            const bool wantCaptureMouse = _input.wantsMouse();
+            const bool wantCaptureKeyboard = _input.wantsKeyboard();
             switch (ea.getEventType())
             {
             case osgGA::GUIEventAdapter::KEYDOWN:
             case osgGA::GUIEventAdapter::KEYUP:
-                //if (wantCaptureKeyboard)
                 {
                     const bool isKeyDown = ea.getEventType() == osgGA::GUIEventAdapter::KEYDOWN;
-                    const int c = ea.getKey(); const int special_key = convertImGuiSpecialKey(c);
-                    if (special_key > 0)
-                    {
-                        io.AddKeyEvent((ImGuiKey)special_key, isKeyDown);
-                        io.KeyCtrl = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_CTRL;
-                        io.KeyShift = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_SHIFT;
-                        io.KeyAlt = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_ALT;
-                        io.KeySuper = ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_SUPER;
-                    }
-                    else if (c > 0 && c < 0xFF)
-                    {
-                        io.AddKeyEvent((ImGuiKey)convertImGuiCharacterKey(c), isKeyDown);
-                        if (isKeyDown) io.AddInputCharacter((unsigned short)c);
-                    }
+                    _input.push(ImGuiInputEvent::keyEvent(ea.getKey(), isKeyDown, ea.getModKeyMask()));
                     return wantCaptureKeyboard;
                 }
             case osgGA::GUIEventAdapter::DOUBLECLICK:
             case osgGA::GUIEventAdapter::RELEASE:
             case osgGA::GUIEventAdapter::PUSH:
-                io.MousePos = ImVec2(ea.getX(), io.DisplaySize.y - ea.getY());
-                _mousePressed[0] = ea.getButtonMask() & osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON;
-                _mousePressed[1] = ea.getButtonMask() & osgGA::GUIEventAdapter::RIGHT_MOUSE_BUTTON;
-                _mousePressed[2] = ea.getButtonMask() & osgGA::GUIEventAdapter::MIDDLE_MOUSE_BUTTON;
+                _input.push(ImGuiInputEvent::mouseButtonsEvent(ea.getX(), ea.getY(), ea.getButtonMask()));
                 return wantCaptureMouse;
             case osgGA::GUIEventAdapter::DRAG:
             case osgGA::GUIEventAdapter::MOVE:
-                io.MousePos = ImVec2(ea.getX(), io.DisplaySize.y - ea.getY());
+                _input.push(ImGuiInputEvent::mousePositionEvent(ea.getX(), ea.getY()));
                 return wantCaptureMouse;
             case osgGA::GUIEventAdapter::SCROLL:
-                if (wantCaptureMouse)
-                    _mouseWheel = (ea.getScrollingMotion() == osgGA::GUIEventAdapter::SCROLL_UP ? 1.0f : -1.0f);
+                _input.push(ImGuiInputEvent::mouseWheelEvent(ImGuiInputEvent::resolveImGuiWheelAmount(ea)));
                 return wantCaptureMouse;
             default: return false;
             }
@@ -268,10 +237,8 @@ namespace
         }
 
     protected:
-        virtual ~ImGuiHandler()
-        {
-            ImGui::DestroyContext();
-        }
+        virtual ~ImGuiHandler() { ImGui::DestroyContext(); }
+        bool _started;
     };
 
     struct ImGuiNewFrameCallback : public CameraDrawCallback
@@ -284,13 +251,7 @@ namespace
         {
             newImGuiFrame(renderInfo, _time, [&](ImGuiIO& io) {
                 ImGuiHandler* handler = static_cast<ImGuiHandler*>(_handler.get());
-                if (handler)
-                {
-                    io.MouseDown[0] = handler->_mousePressed[0];
-                    io.MouseDown[1] = handler->_mousePressed[1];
-                    io.MouseDown[2] = handler->_mousePressed[2];
-                    io.MouseWheel = handler->_mouseWheel; handler->_mouseWheel = 0.0f;
-                }
+                if (handler) handler->drain(io);
             });
         }
     };
@@ -311,6 +272,9 @@ namespace
                 v->ImGuiTextures = _textureIdList; v->context = context;
                 v->runInternal(_manager);
             });
+
+            ImGuiHandler* handler = static_cast<ImGuiHandler*>(_handler.get());
+            if (handler) handler->publishCapture();
         }
 
         virtual void releaseGLObjects(osg::State* state) const
@@ -328,6 +292,24 @@ ImGuiManager::ImGuiManager()
 
 ImGuiManager::~ImGuiManager()
 {}
+
+std::string ImGuiManager::defaultSettingsPath()
+{
+#if defined(_WIN32)
+    const char* base = std::getenv("LOCALAPPDATA");
+    return (base && base[0]) ? std::string(base) + "/osgVerse/imgui.ini" : std::string();
+#elif defined(__APPLE__)
+    const char* home = std::getenv("HOME");
+    return (home && home[0]) ? std::string(home) +
+        "/Library/Application Support/osgVerse/imgui.ini" : std::string();
+#else
+    const char* xdg = std::getenv("XDG_CONFIG_HOME");
+    if (xdg && xdg[0]) return std::string(xdg) + "/osgVerse/imgui.ini";
+
+    const char* home = std::getenv("HOME");
+    return (home && home[0]) ? std::string(home) + "/.config/osgVerse/imgui.ini" : std::string();
+#endif
+}
 
 void ImGuiManager::initializeEventHandler2D()
 {

@@ -57,18 +57,28 @@ public:
     {
         std::string ext; std::string fileName = getRealFileName(path, ext);
         if (fileName.empty()) return WriteResult::FILE_NOT_HANDLED;
-
-        std::ofstream out(fileName, std::ios::out | std::ios::binary);
-        if (ext == "rseq") return writeRaw(out, image, options);
+        if (ext == "rseq")
+        {
+            std::ofstream out(fileName, std::ios::out | std::ios::binary);
+            return writeRaw(out, image, options);
+        }
 
         // Write with stbi_write_* functions
         int r = 0, w = image.s(), h = image.t(), comp = osg::Image::computeNumComponents(image.getPixelFormat());
         if (image.getDataType() == GL_UNSIGNED_BYTE)
         {
-            if (ext == "png")
-                r = stbi_write_png(fileName.c_str(), w, h, comp, image.data(), image.getRowStepInBytes());
-            else if (ext == "jpg")
-                r = stbi_write_jpg(fileName.c_str(), w, h, comp, image.data(), 90);
+            if (ext != "png" && ext != "jpg") return WriteResult::NOT_IMPLEMENTED;
+            const unsigned char* pixels = image.data(); int rowStep = image.getRowStepInBytes();
+
+            osg::ref_ptr<osg::Image> flipped;  // stb: start from top-left
+            if (image.getOrigin() == osg::Image::BOTTOM_LEFT)
+            {
+                flipped = new osg::Image(image, osg::CopyOp::DEEP_COPY_IMAGES); flipped->flipVertical();
+                pixels = flipped->data(); rowStep = flipped->getRowStepInBytes();
+            }
+
+            if (ext == "png") r = stbi_write_png(fileName.c_str(), w, h, comp, pixels, rowStep);
+            else if (ext == "jpg") r = stbi_write_jpg(fileName.c_str(), w, h, comp, pixels, 90);
             return (r != 0) ? WriteResult::FILE_SAVED : WriteResult::NOT_IMPLEMENTED;
         }
         else

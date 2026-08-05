@@ -9,31 +9,6 @@
 
 #include "3rdparty/libhv/all/client/requests.h"
 #include <readerwriter/Utilities.h>
-#ifdef WITH_ZLIB
-#   include <zlib.h>
-static size_t readGZip(const char* in, size_t in_size, char* out, size_t out_size)
-{
-    z_stream zs = {}; memset(&zs, 0, sizeof(zs));
-    inflateInit2(&zs, 16 + MAX_WBITS);
-    zs.next_in = (Bytef*)in;
-    zs.avail_in = in_size;
-
-    char buffer[16384];
-    std::string result;
-    do {
-        zs.next_out = reinterpret_cast<Bytef*>(buffer);
-        zs.avail_out = sizeof(buffer);
-        inflate(&zs, Z_NO_FLUSH);
-        result.append(buffer, sizeof(buffer) - zs.avail_out);
-    } while (zs.avail_out == 0);
-    inflateEnd(&zs);
-    memcpy(out, result.data(), result.size());
-    return result.size();
-}
-#else
-static size_t readGZip(const char* in, size_t in_size, char* out, size_t out_size)
-{ return 0; }
-#endif
 
 class ReaderWriterWeb : public osgDB::ReaderWriter
 {
@@ -267,11 +242,14 @@ public:
         if (encoding.find("gzip") != std::string::npos)
         {
             size_t bufferSize = buffer.str().size();
-            std::vector<char> inData(bufferSize), outData(bufferSize * 10);
-
+            std::vector<unsigned char> inData(bufferSize);
             buffer.read((char*)&inData[0], bufferSize); buffer.str("");
-            bufferSize = readGZip(inData.data(), bufferSize, outData.data(), outData.size());
-            if (bufferSize > 0) buffer.write(outData.data(), bufferSize);
+
+            osg::ref_ptr<osg::Referenced> compressor =
+                osgVerse::CompressAuxiliary::createHandle(osgVerse::CompressAuxiliary::GZ, inData.data(), bufferSize);
+            std::vector<unsigned char> outData = osgVerse::CompressAuxiliary::extract(compressor.get(), "");
+            if (!outData.empty()) buffer.write((char*)outData.data(), outData.size());
+            osgVerse::CompressAuxiliary::destroyHandle(compressor.get());
         }
         else if (!encoding.empty())
         {

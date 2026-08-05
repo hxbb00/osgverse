@@ -570,18 +570,29 @@ struct CompressHandleData : osg::Referenced
     CompressAuxiliary::CompressorType type;
 
     mz_zip_archive zipArchive;
+    z_stream zlibStream;
 };
 
 osg::Referenced* CompressAuxiliary::createHandle(CompressorType type, std::istream& fin)
 {
     std::string data((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
+    return createHandle(type, (unsigned char*)data.data(), data.size());
+}
+
+osg::Referenced* CompressAuxiliary::createHandle(CompressorType type, unsigned char* buf, size_t size)
+{
     osg::ref_ptr<CompressHandleData> H = new CompressHandleData(type);
+    H->buffer.assign(buf, buf + size);
     if (type == ZIP)
     {
         memset(&(H->zipArchive), 0, sizeof(mz_zip_archive));
-        H->buffer.assign(data.begin(), data.end());
         if (mz_zip_reader_init_mem(&(H->zipArchive), (void*)H->buffer.data(), H->buffer.size(), 0))
             return H.release();
+    }
+    else if (type == GZ)
+    {
+        memset(&(H->zlibStream), 0, sizeof(z_stream));
+        if (inflateInit2(&(H->zlibStream), 16 + MAX_WBITS) == Z_OK) return H.release();
     }
     return NULL;
 }
@@ -590,6 +601,7 @@ void CompressAuxiliary::destroyHandle(osg::Referenced* handle)
 {
     CompressHandleData* H = (CompressHandleData*)handle; if (!H) return;
     if (H->type == ZIP) mz_zip_reader_end(&(H->zipArchive));
+    else if (H->type == GZ) inflateEnd(&(H->zlibStream));
 }
 
 std::vector<std::string> CompressAuxiliary::listContents(osg::Referenced* handle)
@@ -617,6 +629,41 @@ std::vector<unsigned char> CompressAuxiliary::extract(osg::Referenced* handle, c
     {
         void* p = mz_zip_reader_extract_file_to_heap(&(H->zipArchive), fileName.c_str(), &uncompSize, 0);
         if (!p) return data; data.assign((unsigned char*)p, (unsigned char*)p + uncompSize); mz_free(p);
+    }
+    else if (H->type == GZ)
+    {
+        size_t inputOffset = 0, inputSize = H->buffer.size(), maxExpansionRatio = 512u;
+        size_t ratioLimit = 256u * 1024u * 1024u;  // max-output-bytes
+        if (inputSize <= std::numeric_limits<size_t>::max() / maxExpansionRatio)
+            ratioLimit = osg::minimum(ratioLimit, inputSize * maxExpansionRatio);
+
+        int result = Z_OK; unsigned char buffer[16384];
+        while (result == Z_OK)
+        {
+            if (H->zlibStream.avail_in == 0 && inputOffset < inputSize)
+            {
+                const size_t chunk = osg::minimum(inputSize - inputOffset,
+                                                  static_cast<size_t>(std::numeric_limits<uInt>::max()));
+                H->zlibStream.next_in = const_cast<Bytef*>(H->buffer.data() + inputOffset);
+                H->zlibStream.avail_in = static_cast<uInt>(chunk);
+                inputOffset += chunk;
+            }
+            H->zlibStream.next_out = buffer;
+            H->zlibStream.avail_out = sizeof(buffer);
+            result = inflate(&(H->zlibStream), Z_NO_FLUSH);
+
+            const size_t produced = sizeof(buffer) - H->zlibStream.avail_out;
+            if (produced > ratioLimit - osg::minimum(ratioLimit, data.size()))
+            {
+                result = Z_MEM_ERROR;  // gzip output exceeds configured bound
+                break;
+            }
+
+            data.insert(data.end(), buffer, buffer + produced);
+            if (result == Z_STREAM_END) break;
+            if (result != Z_OK || (produced == 0 && H->zlibStream.avail_in == 0 && inputOffset >= inputSize))
+                break;  // invalid or truncated gzip stream
+        }
     }
     return data;
 }

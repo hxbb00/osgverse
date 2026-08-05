@@ -20,27 +20,41 @@
 #include <limits.h>
 #define WRITE_TO_OSG 0
 
-static std::vector<std::string> split(const std::string& src, const char* seperator, bool ignoreEmpty)
+namespace
 {
-    std::vector<std::string> slist;
-    std::string sep = (seperator == NULL) ? " " : std::string(seperator);
-    std::string::size_type start = src.find_first_not_of(sep);
-    while (start != std::string::npos)
+    static std::vector<std::string> split(const std::string& src, const char* seperator, bool ignoreEmpty)
     {
-        std::string::size_type end = src.find_first_of(sep, start);
-        if (end != std::string::npos)
+        std::vector<std::string> slist;
+        std::string sep = (seperator == NULL) ? " " : std::string(seperator);
+        std::string::size_type start = src.find_first_not_of(sep);
+        while (start != std::string::npos)
         {
-            slist.push_back(std::string(src, start, end - start));
-            if (ignoreEmpty) start = src.find_first_not_of(sep, end);
-            else start = end + 1;
+            std::string::size_type end = src.find_first_of(sep, start);
+            if (end != std::string::npos)
+            {
+                slist.push_back(std::string(src, start, end - start));
+                if (ignoreEmpty) start = src.find_first_not_of(sep, end);
+                else start = end + 1;
+            }
+            else
+            {
+                slist.push_back(std::string(src, start, src.size() - start));
+                start = end;
+            }
         }
-        else
-        {
-            slist.push_back(std::string(src, start, src.size() - start));
-            start = end;
-        }
+        return slist;
     }
-    return slist;
+
+    inline double computeSwitchPixels(double radius, double geometricError, double sse)
+    {
+        if (!std::isfinite(radius) || !std::isfinite(geometricError) ||
+            !std::isfinite(sse) || !(radius > 0.0) || !(geometricError > 0.0) || !(sse > 0.0))
+        { return 1.0; }
+
+        const double result = 2.0 * radius * sse / geometricError;
+        if (!std::isfinite(result)) return 1.0; else if (result < 1.0) return 1.0;
+        return result > static_cast<double>(FLT_MAX) ? static_cast<double>(FLT_MAX) : result;
+    }
 }
 
 // OSGB:    osgviewer G:\OsgData\metadata.xml.verse_tiles
@@ -58,7 +72,7 @@ public:
         supportsExtension("xml", "coordinate file of ContextCapture (metadata.xml)");
         supportsExtension("json", "Decription file of 3dtiles");
         supportsExtension("children", "Internal use of 3dtiles' <children> tag");
-        supportsOption("UsePixelsOnScreen", "Use pixels-on-screen to switch between LOD children. Default: 0");
+        supportsOption("UsePixelsOnScreen", "Use pixels-on-screen to switch between LOD children. Default: 1");
     }
 
     virtual const char* className() const
@@ -268,10 +282,13 @@ protected:
         osg::ref_ptr<osgDB::Options> opt = options ? options->cloneOptions() : new osgDB::Options;
         opt->setPluginStringData("sub_tile", name);
 
-        double range = rangeV.is<double>() ? rangeV.get<double>() : 0.0;
+        double geometricError = rangeV.is<double>() ? rangeV.get<double>() : 0.0;
         double sseDenominator = 0.5629, height = 1080.0; // FIXME
+        double range = geometricError, sse = _maxScreenSpaceError;
+        std::string sseStr = options ? options->getPluginStringData("MaxScreenSpaceError") : "";
+        if (!sseStr.empty() && atof(sseStr.c_str()) > 0.0) sse = atof(sseStr.c_str());
         if (range < 0.0 || range > 99999.0) range = FLT_MAX;  // invalid range
-        range = (range * height) / (_maxScreenSpaceError * sseDenominator);
+        range = (range * height) / (sse * sseDenominator);
 
         bool isAbsoluteBound = false;  // FIXME: how to handle <region>?
         osg::BoundingSphered bs = getBoundingSphere(bound, isAbsoluteBound);
@@ -279,7 +296,7 @@ protected:
         if (st.empty()) st = parentRefine;
 
         osg::ref_ptr<osg::Node> tile = createTile(
-            content, children, bs, range, st, prefix, name, opt.get(), isAbsoluteBound);
+            content, children, bs, geometricError, range, sse, st, prefix, name, opt.get(), isAbsoluteBound);
         if (trans.is<picojson::array>())
         {
             picojson::array& tArray = trans.get<picojson::array>();
@@ -295,10 +312,9 @@ protected:
         else return tile.release();
     }
 
-    osg::Node* createTile(picojson::value& content, picojson::value& children,
-                          const osg::BoundingSphered& bound, double range, const std::string& st,
-                          const std::string& prefix, const std::string& name,
-                          const osgDB::Options* options, bool absBound) const
+    osg::Node* createTile(picojson::value& content, picojson::value& children, const osg::BoundingSphered& bound,
+                          double geometricError, double range, double sse, const std::string& st, const std::string& prefix,
+                          const std::string& name, const osgDB::Options* options, bool absBound) const
     {
         std::string uri = (content.is<picojson::object>() && content.contains("uri"))
                          ? content.get("uri").to_str() : "";
@@ -310,7 +326,7 @@ protected:
         uri = osgVerse::WebAuxiliary::urlDecode(uri);  // some data converted from CesiumLab may have encoded characters...
 
         std::string ext(osgDB::getFileExtension(uri)), sep(1, osgDB::getNativePathSeparator());
-        if (!uri.empty() && !osgDB::isAbsolutePath(uri))
+        if (!uri.empty() && !osgDB::isAbsolutePath(uri) && osgDB::getServerProtocol(uri).empty())
         {
             if (osgDB::getServerProtocol(prefix) != "") uri = prefix + "/" + uri;
             else if (!prefix.empty()) uri = prefix + sep + uri;
@@ -348,6 +364,8 @@ protected:
             // Add <children> as the refined level of PagedLOD
             plod->setDatabaseOptions(childOpt);
             plod->setFileName(1, childPseudoFile);
+            plod->setNumChildrenThatCannotBeExpired(1);
+            plod->setMinimumExpiryTime(1, 30.0);
 
             /*if (child0.valid())
                 std::cout << uri << ": CHILD = " << child0->getBound().center() << "; " << child0->getBound().radius()
@@ -381,9 +399,10 @@ protected:
                 OSG_WARN << "[ReaderWriter3dtiles] Missing <boundingVolume>?" << std::endl;
 
             std::string usePixels = options ? options->getPluginStringData("UsePixelsOnScreen") : "";
-            if (atoi(usePixels.c_str()) > 0)
+            if (usePixels.empty() || atoi(usePixels.c_str()) > 0)
             {
-                double switchPixels = osg::clampBetween((bound.radius() * 1873.0) / range, 5.0, 2000.0);
+                //double switchPixels = osg::clampBetween((bound.radius() * 1873.0) / range, 5.0, 2000.0);
+                double switchPixels = computeSwitchPixels(bound.radius(), geometricError, sse);
                 plod->setRangeMode(osg::LOD::PIXEL_SIZE_ON_SCREEN);
                 if (additive) plod->setRange(0, 0.0f, FLT_MAX);
                 else plod->setRange(0, 0.0f, (float)switchPixels);
@@ -425,8 +444,14 @@ protected:
                                       bArray.at(8).get<double>());
                     osg::Vec3d zWidth(bArray.at(9).get<double>(), bArray.at(10).get<double>(),
                                       bArray.at(11).get<double>());
-                    result.expandBy(center); result.expandBy(center + xWidth);
-                    result.expandBy(center + yWidth); result.expandBy(center + zWidth);
+
+                    // Enclose all 8 corners of the oriented box (center +/- each half-axis // vector combined)
+                    for (int sx = -1; sx <= 1; sx += 2)
+                        for (int sy = -1; sy <= 1; sy += 2)
+                            for (int sz = -1; sz <= 1; sz += 2)
+                                result.expandBy(center + xWidth * sx + yWidth * sy + zWidth * sz);
+                    //result.expandBy(center); result.expandBy(center + xWidth);
+                    //result.expandBy(center + yWidth); result.expandBy(center + zWidth);
                 }
                 catch (std::exception& e)
                 { OSG_NOTICE << "[ReaderWriter3dtiles]" << e.what() << std::endl; }

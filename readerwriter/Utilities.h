@@ -282,10 +282,11 @@ namespace osgVerse
     /** Compression helper functions and algorithms */
     struct OSGVERSE_RW_EXPORT CompressAuxiliary
     {
-        enum CompressorType { ZIP };
+        enum CompressorType { ZIP, GZ };
 
         /** Create the archive handle */
         static osg::Referenced* createHandle(CompressorType type, std::istream& fin);
+        static osg::Referenced* createHandle(CompressorType type, unsigned char* buf, size_t size);
 
         /** Destroy the archive handle */
         static void destroyHandle(osg::Referenced* handle);
