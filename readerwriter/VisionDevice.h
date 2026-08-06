@@ -182,10 +182,7 @@ namespace osgVerse
         };
 
         enum class DeviceState
-        {
-            Disconnected, Connected,
-            Initialized, Streaming, Error
-        };
+        { Disconnected, Connected, Streaming, Error };
 
         struct StreamEvent : public osgGA::Event
         {
@@ -206,6 +203,10 @@ namespace osgVerse
         VisionInputDevice();
         VisionInputDevice(const VisionInputDevice&, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
         virtual void sendEvent(const osgGA::Event& ev);
+
+        typedef std::function<void (StreamEvent*)> EventCallback;
+        void setEventCallback(EventCallback cb) { _eventCallback = cb; }
+        EventCallback getEventCallback() { return _eventCallback; }
 
         virtual const char* getDeviceClassName() const = 0;
         virtual const char* getDeviceModelName() const = 0;
@@ -240,7 +241,7 @@ namespace osgVerse
         void reportError(StreamType type);  /// Increment the per-stream error counter
         void resetStats();  /// Reset all per-stream statistics (e.g. on connect)
 
-        // -- frame-arrival helpers (subclasses call these from SDK callbacks) --
+        // frame-arrival helpers (subclasses call these from SDK callbacks) --
         void notifyImage      (StreamType type, ImageFrame* f);
         void notifyStereoImage(StreamType type, StereoImageFrame* f);
         void notifyIMU        (IMUSampleFrame* s);
@@ -258,6 +259,7 @@ namespace osgVerse
         PerStreamStats _stats[32];   // indexed by bit position of StreamType
         std::atomic<DeviceState> _state;
         std::atomic<unsigned int> _activeMask;
+        EventCallback _eventCallback;
 
         // ring-buffers (kept tiny - latest-N) per stream kind
         std::deque<osg::ref_ptr<ImageFrame>> _imgQueue[32];

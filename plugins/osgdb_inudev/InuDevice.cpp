@@ -1,5 +1,6 @@
 #include "InuDevice.h"
 using namespace osgVerse;
+#define INUERR(ret) static_cast<std::string>(ret)
 
 namespace
 {
@@ -26,7 +27,7 @@ namespace
         case VisionInputDevice::PixelFormat::RGB8:     return GL_RGB8;
         case VisionInputDevice::PixelFormat::BGRA8:    return GL_RGBA8;
         case VisionInputDevice::PixelFormat::RGBA8:    return GL_RGBA8;
-        case VisionInputDevice::PixelFormat::Depth16:  return GL_R16UI;
+        case VisionInputDevice::PixelFormat::Depth16:  return GL_R16;
         case VisionInputDevice::PixelFormat::Depth32F: return GL_R32F;
         default:                                       return GL_R8;
         }
@@ -36,10 +37,10 @@ namespace
         switch (pf)
         {
             case VisionInputDevice::PixelFormat::Gray8:    return GL_LUMINANCE;
-            case VisionInputDevice::PixelFormat::BGR8:     return GL_BGR;
-            case VisionInputDevice::PixelFormat::RGB8:     return GL_RGB;
-            case VisionInputDevice::PixelFormat::BGRA8:    return GL_BGRA;
-            case VisionInputDevice::PixelFormat::RGBA8:    return GL_RGBA;
+            case VisionInputDevice::PixelFormat::BGR8:     return GL_RGB;
+            case VisionInputDevice::PixelFormat::RGB8:     return GL_BGR;
+            case VisionInputDevice::PixelFormat::BGRA8:    return GL_RGBA;
+            case VisionInputDevice::PixelFormat::RGBA8:    return GL_BGRA;
             case VisionInputDevice::PixelFormat::Depth16:  return GL_RED;
             case VisionInputDevice::PixelFormat::Depth32F: return GL_RED;
             default:                                       return GL_RED;
@@ -65,7 +66,8 @@ namespace
         case InuDev::CImageStream::eBGR:  return VisionInputDevice::PixelFormat::BGR8;
         case InuDev::CImageStream::eRaw:
         case InuDev::CImageStream::eDefault:
-        default:                          return VisionInputDevice::PixelFormat::BGR8;
+        default:
+            return VisionInputDevice::PixelFormat::BGR8;  // FIXME: handle YUVY and so on?
         }
     }
 
@@ -87,19 +89,18 @@ namespace
 }
 
 InuDevice::InuDevice()
-:   _fps(10), _binning(0), _rgbChannel(4), _irChannel(0), _depthChannel(3), _fisheyeChannel(2),
+:   _fps(10), _binning(0), _rgbChannel(-1), _irChannel(-1), _depthChannel(-1), _fisheyeChannel(-1),
     _rgbRegistrationChannel(-1), _depthRegistrationChannel(-1), _calibrationLoaded(false)
 {
-    _rgbCache = new osg::Image; _depthCache = new osg::Image; _fisheyeCache = new osg::Image;
-    _irCache[0] = new osg::Image; _irCache[1] = new osg::Image;
+    _rgbCache = new osg::Image; _rgbCache->setName("RGB");
+    _depthCache = new osg::Image; _depthCache->setName("Depth");
+    _fisheyeCache = new osg::Image; _fisheyeCache->setName("FishEye");
+    _irCache[0] = new osg::Image; _irCache[0]->setName("LeftIR");
+    _irCache[1] = new osg::Image; _irCache[1]->setName("RightIR");
 }
 
 InuDevice::~InuDevice()
-{
-    stopAllStreams();
-    if (getState() != DeviceState::Disconnected)
-        disconnect();
-}
+{ stopAllStreams(); stopAndTerminateSensor(); }
 
 bool InuDevice::configure(const osgDB::Options* opts)
 {
@@ -107,7 +108,7 @@ bool InuDevice::configure(const osgDB::Options* opts)
     if (!opts) return true;
 
     std::string cfg = opts->getPluginStringData("ConfigEnabledRGB");
-    if (atoi(cfg.c_str()) > 0)
+    if (atoi(cfg.c_str()) > 0 && _rgbChannel >= 0)
     {
         std::string dGain = opts->getPluginStringData("DigitalGainRGB");
         std::string aGain = opts->getPluginStringData("AnalogGainRGB");
@@ -120,17 +121,17 @@ bool InuDevice::configure(const osgDB::Options* opts)
         p.ExposureTime = exposure.empty() ? 300 : atoi(exposure.c_str());
         p.AutoControl = autoCtrl.empty() ? false : (atoi(autoCtrl.c_str()) > 0);
 
-        // RGB sensor index = 2
-        InuDev::CInuError ret = _sensor->SetSensorControlParams(p, 2);
+        // RGB sensor index
+        InuDev::CInuError ret = _sensor->SetSensorControlParams(p, _rgbChannel);
         if (ret != InuDev::eOK)
         {
-            OSG_NOTICE << "[InuDevice] RGB SetSensorControlParams failed: 0x"
-                       << std::hex << int(ret) << std::endl; return false;
+            OSG_NOTICE << "[InuDevice] RGB SetSensorControlParams failed: "
+                       << INUERR(ret) << std::endl; return false;
         }
     }
 
     cfg = opts->getPluginStringData("ConfigEnabledIR");
-    if (atoi(cfg.c_str()) > 0)
+    if (atoi(cfg.c_str()) > 0 && _irChannel >= 0)
     {
         std::string dGain = opts->getPluginStringData("DigitalGainIR");
         std::string aGain = opts->getPluginStringData("AnalogGainIR");
@@ -153,11 +154,11 @@ bool InuDevice::configure(const osgDB::Options* opts)
         p.Params.ROIBottomRight.X() = roiBottomRight0.empty() ? 0 : atoi(roiBottomRight0.c_str());
         p.Params.ROIBottomRight.Y() = roiBottomRight1.empty() ? 0 : atoi(roiBottomRight1.c_str());
 
-        InuDev::CInuError ret = _sensor->SetSensorControlParams(p, 0);
+        InuDev::CInuError ret = _sensor->SetSensorControlParams(p, _irChannel);
         if (ret != InuDev::eOK)
         {
-            OSG_NOTICE << "[InuDevice] IR SetSensorControlParams failed: 0x"
-                       << std::hex << int(ret) << std::endl; return false;
+            OSG_NOTICE << "[InuDevice] IR SetSensorControlParams failed: "
+                       << INUERR(ret) << std::endl; return false;
         }
     }
 
@@ -191,9 +192,9 @@ bool InuDevice::getCalibration(Calibration& out) const
     auto blIt = _calibrationData.Baselines.find(std::pair<int, int>(0, 1));
     if (blIt != _calibrationData.Baselines.end()) out.baseline = blIt->second;
 
-    // RGB sensor index 2
+    // RGB sensor index
     InuDev::CCalibrationData rgbCalib;
-    if (_sensor) _sensor->GetCalibrationData(rgbCalib, 4);
+    if (_sensor) _sensor->GetCalibrationData(rgbCalib, _rgbChannel);
     if (rgbCalib.Sensors.size() > 2)
     {
         const auto& rgbSensor = rgbCalib.Sensors[2]; bool useVirtual = true;
@@ -228,21 +229,25 @@ bool InuDevice::connect(const osgDB::Options* opts)
     {
         std::string fpsV = opts->getPluginStringData("FrameRate");
         std::string binV = opts->getPluginStringData("SensorResolution");
-        std::string rgbCh = opts->getPluginStringData("ChannelRGB");
-        std::string depthCh = opts->getPluginStringData("ChannelDepth");
+        std::string ch, rgbCh = opts->getPluginStringData("RegisteredChannelRGB");
+        std::string depthCh = opts->getPluginStringData("RegisteredChannelDepth");
         _deviceId = opts->getPluginStringData("DeviceID");
         _ipAddress = opts->getPluginStringData("IpAddress");
         _cnnMode = opts->getPluginStringData("CnnAlgorithm");
-
         if (!fpsV.empty()) _fps = atoi(fpsV.c_str());
         if (!binV.empty()) _binning = atoi(binV.c_str());
         if (!rgbCh.empty()) _rgbRegistrationChannel = atoi(rgbCh.c_str());
         if (!depthCh.empty()) _depthRegistrationChannel = atoi(depthCh.c_str());
+
+        ch = opts->getPluginStringData("ChannelRGB"); if (!ch.empty()) _rgbChannel = atoi(ch.c_str());
+        ch = opts->getPluginStringData("ChannelDepth"); if (!ch.empty()) _depthChannel = atoi(ch.c_str());
+        ch = opts->getPluginStringData("ChannelIR"); if (!ch.empty()) _irChannel = atoi(ch.c_str());
+        ch = opts->getPluginStringData("ChannelFishEye"); if (!ch.empty()) _fisheyeChannel = atoi(ch.c_str());
     }
 
     if (!createSensor()) { setState(DeviceState::Error); return false; }
     if (!startSensor()) { setState(DeviceState::Error); return false; }
-    setState(DeviceState::Initialized); return true;
+    setState(DeviceState::Connected); return true;
 }
 
 bool InuDevice::disconnect()
@@ -269,8 +274,7 @@ bool InuDevice::startStream(StreamType mask)
     if (hasType(mask, StreamType::CNN)) ok &= controlCNN(true);
     if (hasType(mask, StreamType::Temperature)) ok &= controlTemperature(true);
 
-    if (isStreaming(StreamType::All))
-        setState(DeviceState::Streaming);
+    if (isStreaming(StreamType::All)) setState(DeviceState::Streaming);
     return ok;
 }
 
@@ -291,8 +295,7 @@ bool InuDevice::stopStream(StreamType mask)
     if (hasType(mask, StreamType::CNN)) ok &= controlCNN(false);
     if (hasType(mask, StreamType::Temperature)) ok &= controlTemperature(false);
 
-    if (isStreaming(StreamType::All))
-        setState(DeviceState::Initialized);
+    if (!isStreaming(StreamType::All)) setState(DeviceState::Connected);
     return ok;
 }
 
@@ -320,7 +323,7 @@ bool InuDevice::createSensor()
     if (ret != InuDev::eOK)
     {
         OSG_NOTICE << "[InuDevice] Connect sensor failed: 0x" << std::hex
-                   << int(ret) << " - " << std::string(ret) << std::endl;
+                   << int(ret) << " - " << INUERR(ret) << std::endl;
         _sensor->Terminate(); _sensor->Disconnect();
         _sensor.reset(); return false;
     }
@@ -345,7 +348,7 @@ bool InuDevice::startSensor()
     if (ret != InuDev::eOK)
     {
         OSG_NOTICE << "[InuDevice] Init sensor failed: 0x" << std::hex
-                   << int(ret) << " - " << std::string(ret) << std::endl;
+                   << int(ret) << " - " << INUERR(ret) << std::endl;
         return false;
     }
 
@@ -353,8 +356,9 @@ bool InuDevice::startSensor()
     ret = _sensor->GetVersion(versions);
     if (ret == InuDev::eOK)
     {
-        _serialNum = versions[InuDev::CEntityVersion::eSerialNumber].VersionName;
+        std::string nuNum = versions[InuDev::CEntityVersion::eHWRevision].VersionName;
         _firmwareVersion = versions[InuDev::CEntityVersion::eFWVersion].VersionName;
+        _serialNum = versions[InuDev::CEntityVersion::eSerialNumber].VersionName;
         _calibVersion = versions[InuDev::CEntityVersion::eCalibrationVersion].VersionName;
         //_bootfixVersion = versions[InuDev::CEntityVersion::eBootfixVersion].VersionName;
         //_usbType = versions[InuDev::CEntityVersion::eUSBSpeed].VersionNum;
@@ -365,19 +369,21 @@ bool InuDevice::startSensor()
         else if (_serialNum.find("ABA") != std::string::npos ||
                  _serialNum.find("JHT") != std::string::npos) _modelName = "C158";
         else if (_serialNum.find("ABB") != std::string::npos) _modelName = "C158Tracking";
-        else _modelName = "UnknownModel";
+        else _modelName = "R200Series";
+        _modelName += ", " + nuNum;
     }
 
     InuDev::ESensorResolution depthRes = toResolution(_binning);
     InuDev::ESensorResolution rgbRes = toResolution(_binning);
     InuDev::CStartDeviceParamsExt startParams;
     startParams.VecDpeParams = dpeStart;
+    std::string channelInfo;
     for (const auto& ch : hwInfo.GetChannels())
     {
         const uint32_t id = ch.second.ChannelId;
         switch (ch.second.ChannelType)
         {
-        case InuDev::eDepthChannel: case InuDev::eDisparityChannel:
+        case InuDev::eDepthChannel:
             startParams.ChannelControlParam[id].SensorRes = depthRes;
             startParams.ChannelControlParam[id].FPS = _fps;
             if (_depthRegistrationChannel != -1)
@@ -386,22 +392,35 @@ bool InuDevice::startSensor()
                 startParams.ChannelControlParam[id].RegisteredDepthChannelID =
                     static_cast<uint32_t>(_depthRegistrationChannel);
             }
-            break;
+            if (_depthChannel < 0) _depthChannel = id;
+            channelInfo += std::to_string(id) + " = Depth; "; break;
+        case InuDev::eDisparityChannel:
+            startParams.ChannelControlParam[id].SensorRes = depthRes;
+            startParams.ChannelControlParam[id].FPS = _fps;
+            channelInfo += std::to_string(id) + " = Disparity; "; break;
         case InuDev::eGeneralCameraChannel:
             startParams.ChannelControlParam[id].SensorRes = rgbRes;
             startParams.ChannelControlParam[id].FPS = _fps;
-            break;
+            if (_rgbChannel < 0) _rgbChannel = id;
+            channelInfo += std::to_string(id) + " = Camera; "; break;
         case InuDev::eTrackingChannel:
             startParams.ChannelControlParam[id].SensorRes = InuDev::eFull;
             startParams.ChannelControlParam[id].FPS = 30;
             startParams.ChannelControlParam[id].InterleaveMode = InuDev::eInterleave;
-            break;
+            channelInfo += std::to_string(id) + " = Tracking; "; break;
+        case InuDev::eFeaturesTrackingChannel:
+            startParams.ChannelControlParam[id].SensorRes = InuDev::eFull;
+            startParams.ChannelControlParam[id].FPS = 30;
+            startParams.ChannelControlParam[id].InterleaveMode = InuDev::eInterleave;
+            channelInfo += std::to_string(id) + " = Features; "; break;
         case InuDev::eStereoChannel:
             startParams.ChannelControlParam[id].SensorRes = toResolution(_binning);
             startParams.ChannelControlParam[id].FPS = _fps;
             startParams.ChannelControlParam[id].InterleaveMode = InuDev::eInterleave;
-            break;
-        default: break;
+            if (_irChannel < 0) _irChannel = id; 
+            channelInfo += std::to_string(id) + " = Stereo; "; break;
+        default:
+            channelInfo += std::to_string(id) + " = Unknown; "; break;
         }
     }
 
@@ -413,6 +432,7 @@ bool InuDevice::startSensor()
                    << int(ret) << " - " << std::string(ret) << std::endl;
         return false;
     }
+    OSG_NOTICE << "[InuDevice] Start sensor successfully: " + channelInfo << std::endl;
     return loadCalibrationFromSensor();
 }
 
@@ -431,21 +451,21 @@ void InuDevice::stopAndTerminateSensor()
     if (ret != InuDev::eOK)
     {
         OSG_NOTICE << "[InuDevice] Stop failed: 0x" << std::hex << int(ret)
-                   << " - " << std::string(ret) << std::endl;
+                   << " - " << INUERR(ret) << std::endl;
     }
 
     ret = _sensor->Terminate();
     if (ret != InuDev::eOK)
     {
         OSG_NOTICE << "[InuDevice] Terminate failed: 0x" << std::hex << int(ret)
-                   << " - " << std::string(ret) << std::endl;
+                   << " - " << INUERR(ret) << std::endl;
     }
 
     ret = _sensor->Disconnect();
     if (ret != InuDev::eOK)
     {
         OSG_NOTICE << "[InuDevice] Disconnect failed: 0x" << std::hex << int(ret)
-                   << " - " << std::string(ret) << std::endl;
+                   << " - " << INUERR(ret) << std::endl;
     }
     _sensor.reset();
 }
@@ -462,22 +482,22 @@ bool InuDevice::controlRGB(bool started)
         InuDev::CImageStream::EPostProcessing ppe = InuDev::CImageStream::eNone; // CImageStream::eGammaCorrect;
         if (_rgbRegistrationChannel != -1)
         {
-            _rgbRegStream = _sensor->CreateImageRegisteredStream(static_cast<uint32_t>(_rgbChannel), regCh);
-            if (!_rgbRegStream) { OSG_NOTICE << "[InuDevice] Failed to create image stream"; return false; }
+            _rgbRegStream = _sensor->CreateImageRegisteredStream(_rgbChannel, regCh);
+            if (!_rgbRegStream) { OSG_NOTICE << "[InuDevice] Failed to create image stream\n"; return false; }
             ret = _rgbRegStream->Init(outFmt, ppe, InuDev::CDepthProperties::EPostProcessing::eDefaultPP);
-            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init image stream"; return false; }
+            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init image: " << INUERR(ret) << "\n"; return false; }
             ret = _rgbRegStream->Start();
-            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start image stream"; return false; }
+            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start image: " << INUERR(ret) << "\n"; return false; }
             ret = _rgbRegStream->Register([this](auto s, auto f, auto e) { onRGBFrame(s, f, e); });
         }
         else
         {
-            _rgbStream = _sensor->CreateImageStream(static_cast<uint32_t>(_rgbChannel));
-            if (!_rgbStream) { OSG_NOTICE << "[InuDevice] Failed to create image stream"; return false; }
+            _rgbStream = _sensor->CreateImageStream(_rgbChannel);
+            if (!_rgbStream) { OSG_NOTICE << "[InuDevice] Failed to create image stream\n"; return false; }
             ret = _rgbStream->Init(outFmt, ppe);
-            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init image stream"; return false; }
+            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init image: " << INUERR(ret) << "\n"; return false; }
             ret = _rgbStream->Start();
-            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start image stream"; return false; }
+            if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start image: " << INUERR(ret) << "\n"; return false; }
             ret = _rgbStream->Register([this](auto s, auto f, auto e) { onRGBFrame(s, f, e); });
         }
         if (ret != InuDev::eOK) return false;
@@ -508,8 +528,7 @@ void InuDevice::onRGBFrame(std::shared_ptr<InuDev::CImageStream>,
     
     PixelFormat fmt = fromImageFormat(static_cast<InuDev::CImageStream::EOutputFormat>(frame->Format()));
     f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex;
-    if (!f->image) f->image = _rgbCache;
-    wrapImage(f->image.get(), frame.get(), fmt);
+    f->image = _rgbCache; wrapImage(f->image.get(), frame.get(), fmt);
     notifyImage(StreamType::RGB, f.get());
 }
 
@@ -522,12 +541,12 @@ bool InuDevice::controlDepth(bool started)
         InuDev::CDepthStream::EOutputFormat fmt = InuDev::CDepthStream::eDefault;
         InuDev::CDepthStream::EPostProcessing pp = InuDev::CDepthStream::eDefaultPP;
         
-        _depthStream = _sensor->CreateDepthStream(static_cast<uint32_t>(_depthChannel));
-        if (!_depthStream) { OSG_NOTICE << "[InuDevice] Failed to create depth stream"; return false; }
+        _depthStream = _sensor->CreateDepthStream(_depthChannel);
+        if (!_depthStream) { OSG_NOTICE << "[InuDevice] Failed to create depth stream\n"; return false; }
         ret = _depthStream->Init();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init depth stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init depth: " << INUERR(ret) << "\n"; return false; }
         ret = _depthStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start depth stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start depth: " << INUERR(ret) << "\n"; return false; }
 
         ret = _depthStream->Register([this](auto s, auto f, auto e) { onDepthFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
@@ -552,8 +571,7 @@ void InuDevice::onDepthFrame(std::shared_ptr<InuDev::CDepthStream>,
     if (err != InuDev::eOK || !frame || !frame->Valid) return;
     
     f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex;
-    if (!f->image) f->image = _depthCache;
-    wrapImage(f->image.get(), frame.get(), PixelFormat::Depth16);
+    f->image = _depthCache; wrapImage(f->image.get(), frame.get(), PixelFormat::Depth16);
     notifyImage(StreamType::Depth, f.get());
 }
 
@@ -563,12 +581,12 @@ bool InuDevice::controlIR(bool started)
     if (started)
     {
         if (_irStream) return true;
-        _irStream = _sensor->CreateStereoImageStream();
-        if (!_irStream) { OSG_NOTICE << "[InuDevice] Failed to create IR stream"; return false; }
+        _irStream = _sensor->CreateStereoImageStream(_irChannel);
+        if (!_irStream) { OSG_NOTICE << "[InuDevice] Failed to create IR stream\n"; return false; }
         ret = _irStream->Init(InuDev::CStereoImageStream::eRaw);
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init IR stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init IR: " << INUERR(ret) << "\n"; return false; }
         ret = _irStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start IR stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start IR: " << INUERR(ret) << "\n"; return false; }
         ret = _irStream->Register([this](auto s, auto f, auto e) { onIRFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::IR, StreamType::Unknown);
@@ -611,12 +629,12 @@ bool InuDevice::controlFisheye(bool started)
     if (started)
     {
         if (_fisheyeStream) return true;
-        _fisheyeStream = _sensor->CreateImageStream(static_cast<uint32_t>(_fisheyeChannel));
-        if (!_fisheyeStream) { OSG_NOTICE << "[InuDevice] Failed to create fish-eye stream"; return false; }
+        _fisheyeStream = _sensor->CreateImageStream(_fisheyeChannel);
+        if (!_fisheyeStream) { OSG_NOTICE << "[InuDevice] Failed to create fish-eye stream\n"; return false; }
         ret = _fisheyeStream->Init(InuDev::CImageStream::eDefault, InuDev::CImageStream::eNone);
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init fish-eye stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init fish-eye: " << INUERR(ret) << "\n"; return false; }
         ret = _fisheyeStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start fish-eye stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start fish-eye: " << INUERR(ret) << "\n"; return false; }
         ret = _fisheyeStream->Register([this](auto s, auto f, auto e) { onFisheyeFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::Fisheye, StreamType::Unknown);
@@ -640,8 +658,7 @@ void InuDevice::onFisheyeFrame(std::shared_ptr<InuDev::CImageStream>,
     if (err != InuDev::eOK || !frame || !frame->Valid) return;
     
     f->timestamp = frame->Timestamp; f->frameIndex = frame->FrameIndex;
-    if (!f->image) f->image = _fisheyeCache;
-    wrapImage(f->image.get(), frame.get(), PixelFormat::Gray8);
+    f->image = _fisheyeCache; wrapImage(f->image.get(), frame.get(), PixelFormat::Gray8);
     notifyImage(StreamType::Fisheye, f.get());
 }
 
@@ -652,11 +669,11 @@ bool InuDevice::controlIMU(bool started)
     {
         if (_imuStream) return true;
         _imuStream = _sensor->CreateImuStream();
-        if (!_imuStream) { OSG_NOTICE << "[InuDevice] Failed to create IMU stream"; return false; }
+        if (!_imuStream) { OSG_NOTICE << "[InuDevice] Failed to create IMU stream\n"; return false; }
         ret = _imuStream->Init();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init IMU stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init IMU: " << INUERR(ret) << "\n"; return false; }
         ret = _imuStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start IMU stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start IMU: " << INUERR(ret) << "\n"; return false; }
         ret = _imuStream->Register([this](auto s, auto f, auto e) { onIMUFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::IMU, StreamType::Unknown);
@@ -701,12 +718,12 @@ bool InuDevice::controlSLAM(bool started)
     if (started)
     {
         if (_slamStream) return true;
-        _slamStream = _sensor->CreateSlamStream();
-        if (!_slamStream) { OSG_NOTICE << "[InuDevice] Failed to create SLAM stream"; return false; }
+        _slamStream = _sensor->CreateSlamStream(_rgbChannel);
+        if (!_slamStream) { OSG_NOTICE << "[InuDevice] Failed to create SLAM stream\n"; return false; }
         ret = _slamStream->Init();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init SLAM stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init SLAM: " << INUERR(ret) << "\n"; return false; }
         ret = _slamStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start SLAM stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start SLAM: " << INUERR(ret) << "n"; return false; }
         ret = _slamStream->Register([this](auto s, auto f, auto e) { onSLAMFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::SLAM, StreamType::Unknown);
@@ -744,11 +761,11 @@ bool InuDevice::controlPointCloud(bool started)
     {
         if (_pointsStream) return true;
         _pointsStream = _sensor->CreatePointCloudStream();
-        if (!_pointsStream) { OSG_NOTICE << "[InuDevice] Failed to create point-cloud stream"; return false; }
+        if (!_pointsStream) { OSG_NOTICE << "[InuDevice] Failed to create point-cloud stream\n"; return false; }
         ret = _pointsStream->Init();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init point-cloud stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init point-cloud: " << INUERR(ret) << "\n"; return false; }
         ret = _pointsStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start point-cloud stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start point-cloud: " << INUERR(ret) << "\n"; return false; }
         ret = _pointsStream->Register([this](auto s, auto f, auto e) { onPointCloudFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::PointCloud, StreamType::Unknown);
@@ -810,12 +827,12 @@ bool InuDevice::controlFeatures(bool started)
     if (started)
     {
         if (_featureStream) return true;
-        _featureStream = _sensor->CreateFeaturesTrackingStream();
-        if (!_featureStream) { OSG_NOTICE << "[InuDevice] Failed to create features stream"; return false; }
+        _featureStream = _sensor->CreateFeaturesTrackingStream(_rgbChannel);
+        if (!_featureStream) { OSG_NOTICE << "[InuDevice] Failed to create features stream\n"; return false; }
         ret = _featureStream->Init(InuDev::FeaturesTracking::EOutputType::eProcessed);
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init features stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init features: " << INUERR(ret) << "\n"; return false; }
         ret = _featureStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start features stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start features: " << INUERR(ret) << "\n"; return false; }
         ret = _featureStream->Register([this](auto s, auto f, auto e) { onFeaturesFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::Features, StreamType::Unknown);
@@ -867,12 +884,12 @@ bool InuDevice::controlCNN(bool started)
         else if (_cnnMode.find("Pose") != std::string::npos) t = InuDev::CCnnAppFrame::ePoseDetection;
         else if (_cnnMode.find("Hand") != std::string::npos) t = InuDev::CCnnAppFrame::eHandDetection;
 
-        _cnnStream = _sensor->CreateCnnAppStream();
-        if (!_cnnStream) { OSG_NOTICE << "[InuDevice] Failed to create CNN stream"; return false; }
+        _cnnStream = _sensor->CreateCnnAppStream(_rgbChannel);
+        if (!_cnnStream) { OSG_NOTICE << "[InuDevice] Failed to create CNN stream\n"; return false; }
         ret = _cnnStream->Init(t);
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init CNN stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init CNN: " << INUERR(ret) << "\n"; return false; }
         ret = _cnnStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start CNN stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start CNN: " << INUERR(ret) << "\n"; return false; }
         ret = _cnnStream->Register([this](auto s, auto f, auto e) { onCNNFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::CNN, StreamType::Unknown);
@@ -1008,11 +1025,11 @@ bool InuDevice::controlTemperature(bool started)
     {
         if (_tempStream) return true;
         _tempStream = _sensor->CreateTemperaturesStream(InuDev::CTemperaturesFrame::eAll);
-        if (!_tempStream) { OSG_NOTICE << "[InuDevice] Failed to create temperature stream"; return false; }
+        if (!_tempStream) { OSG_NOTICE << "[InuDevice] Failed to create temperature stream\n"; return false; }
         ret = _tempStream->Init();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init temperature stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to init temperature: " << INUERR(ret) << "\n"; return false; }
         ret = _tempStream->Start();
-        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start temperature stream"; return false; }
+        if (ret != InuDev::eOK) { OSG_NOTICE << "[InuDevice] Failed to start temperature: " << INUERR(ret) << "\n"; return false; }
         ret = _tempStream->Register([this](auto s, auto f, auto e) { onTemperatureFrame(s, f, e); });
         if (ret != InuDev::eOK) return false;
         updateActiveStreams(StreamType::Temperature, StreamType::Unknown);

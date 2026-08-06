@@ -85,7 +85,6 @@ IF(ONNXRUNTIME_FOUND)
 ENDIF(ONNXRUNTIME_FOUND)
 
 IF(NOT VERSE_USE_EXTERNAL_GLES)
-    NEW_EXAMPLE(osgVerse_Test_Pbr_Prerequisite pbr_prerequisite.cpp)  # PBR necessary textures creator example
     NEW_EXAMPLE(osgVerse_Test_Atmospheric atmospheric_scattering.cpp)  # Precomputed atmosphere textures example // FIXME: implement
     NEW_EXAMPLE(osgVerse_Test_CSG csg_stencil_test.cpp)  # Stencil-based CSG algorithm example  // FIXME: SCS implement, simple hint UI
     NEW_EXAMPLE(osgVerse_Test_ImGui imgui_test.cpp)  # Basic IMGUI-based UI example  // FIXME: add Drawer2D usage
@@ -97,13 +96,15 @@ IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_EXAMPLE(osgVerse_Test_Paging_Lod paging_lod_test.cpp)  # Paging LOD optimization and creation example  // FIXME: with simple UI
     NEW_EXAMPLE(osgVerse_Test_Particle_U3D particle_u3d_test.cpp)  # Unity-like particle effect example  // FIXME: more effects
     NEW_EXAMPLE(osgVerse_Test_Particle_Cloud particle_cloud_test.cpp)  # Convert data to particle example  // FIXME: merge with last example
+    NEW_EXAMPLE(osgVerse_Test_Pbr_Prerequisite pbr_prerequisite.cpp)  # PBR necessary textures creator example
+    NEW_EXAMPLE(osgVerse_Test_Physics_Basic physics_basic_test.cpp)  # Basic rigid physics example  // FIXME: with simple hint UI # TODO: physics_walk_test...
     NEW_EXAMPLE(osgVerse_Test_Player_Animation player_animation_test.cpp)  # Player animation example  // FIXME: with simple UI
     NEW_EXAMPLE(osgVerse_Test_Point_Cloud point_cloud_test.cpp)  # Point cloud with simple picking example  // FIXME: add eye-doming, UI
     NEW_EXAMPLE(osgVerse_Test_Polygon2D polygon2d_test.cpp)  # 2D polygon processing example  // FIXME: with simple hint UI
     NEW_EXAMPLE(osgVerse_Test_Symbols symbols_test.cpp)  # Massive symbol/label example  // FIXME: show on earth, with picking and UI
     NEW_EXAMPLE(osgVerse_Test_Tween_Animation tween_animation_test.cpp)  # Tween animation path example  // FIXME: with simple UI
-    NEW_EXAMPLE(osgVerse_Test_Physics_Basic physics_basic_test.cpp)  # Basic rigid physics example  // FIXME: with simple hint UI
-	# TODO: physics_softbody_test, physics_walk_test...
+    NEW_EXAMPLE(osgVerse_Test_Vision_Device vision_device_test.cpp)  # Vision device (webcam, RGBD...) example  // FIXME: with simple UI
+
     IF(CUDA_FOUND AND VERSE_BUILD_WITH_CUDA)
         NEW_EXAMPLE(osgVerse_Test_Video video_test.cpp)  # Hardware video encoding example
     ENDIF(CUDA_FOUND AND VERSE_BUILD_WITH_CUDA)
@@ -114,7 +115,6 @@ IF(NOT VERSE_USE_EXTERNAL_GLES)
 
     IF(VERSE_SUPPORT_CPP17)
         SET(CMAKE_CXX_STANDARD 17)
-        
         IF(EFFEKSEER_FOUND)
             NEW_EXAMPLE(osgVerse_Test_Particle_Effekseer particle_effekseer_test.cpp)  # Effekseer particle example  // FIXME: deprecate?
         ENDIF(EFFEKSEER_FOUND)

@@ -78,7 +78,7 @@ VisionInputDevice::VisionInputDevice()
 }
 
 VisionInputDevice::VisionInputDevice(const VisionInputDevice& copy, const osg::CopyOp& copyop)
-:   osgGA::Device(copy, copyop)
+:   osgGA::Device(copy, copyop), _eventCallback(copy._eventCallback)
 {}
 
 VisionInputDevice::~VisionInputDevice()
@@ -171,8 +171,8 @@ void VisionInputDevice::notifyImage(StreamType type, ImageFrame* f)
     _stats[idx].frameCount.fetch_add(1, std::memory_order_relaxed);
     _imgCV[idx].notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(type);
-    ev->image = f; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(type); ev->image = f;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }
 
 void VisionInputDevice::notifyStereoImage(StreamType type, StereoImageFrame* f)
@@ -186,8 +186,8 @@ void VisionInputDevice::notifyStereoImage(StreamType type, StereoImageFrame* f)
     _stats[idx].frameCount.fetch_add(1, std::memory_order_relaxed);
     _stereoCV[idx].notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(type);
-    ev->stereo = f; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(type); ev->stereo = f;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }
 
 void VisionInputDevice::notifyIMU(IMUSampleFrame* s)
@@ -199,8 +199,8 @@ void VisionInputDevice::notifyIMU(IMUSampleFrame* s)
     _stats[bitIndex(StreamType::IMU)].frameCount.fetch_add(1, std::memory_order_relaxed);
     _imuCV.notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::IMU);
-    ev->imu = s; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::IMU); ev->imu = s;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }
 
 void VisionInputDevice::notifyPose(PoseFrame* f)
@@ -212,8 +212,8 @@ void VisionInputDevice::notifyPose(PoseFrame* f)
     _stats[bitIndex(StreamType::SLAM)].frameCount.fetch_add(1, std::memory_order_relaxed);
     _poseCV.notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::SLAM);
-    ev->pose = f; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::SLAM); ev->pose = f;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }
 
 void VisionInputDevice::notifyPointCloud(PointCloudFrame* f)
@@ -225,8 +225,8 @@ void VisionInputDevice::notifyPointCloud(PointCloudFrame* f)
     _stats[bitIndex(StreamType::PointCloud)].frameCount.fetch_add(1, std::memory_order_relaxed);
     _cloudCV.notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::PointCloud);
-    ev->cloud = f; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::PointCloud); ev->cloud = f;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }
 
 void VisionInputDevice::notifyDetections(DetectionsFrame* f)
@@ -238,8 +238,8 @@ void VisionInputDevice::notifyDetections(DetectionsFrame* f)
     _stats[bitIndex(StreamType::CNN)].frameCount.fetch_add(1, std::memory_order_relaxed);
     _detCV.notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::CNN);
-    ev->detections = f; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::CNN); ev->detections = f;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }
 
 void VisionInputDevice::notifyFeatures(FeaturesFrame* f)
@@ -251,8 +251,8 @@ void VisionInputDevice::notifyFeatures(FeaturesFrame* f)
     _stats[bitIndex(StreamType::Features)].frameCount.fetch_add(1, std::memory_order_relaxed);
     _featCV.notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::Features);
-    ev->features = f; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::Features); ev->features = f;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }
 
 void VisionInputDevice::notifyTemperature(TemperatureFrame* f)
@@ -264,6 +264,6 @@ void VisionInputDevice::notifyTemperature(TemperatureFrame* f)
     _stats[bitIndex(StreamType::Temperature)].frameCount.fetch_add(1, std::memory_order_relaxed);
     _tempCV.notify_all();
 
-    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::Temperature);
-    ev->temperature = f; sendEvent(*ev);
+    osg::ref_ptr<StreamEvent> ev = new StreamEvent(StreamType::Temperature); ev->temperature = f;
+    if (!_eventCallback) sendEvent(*ev); else _eventCallback(ev.get());
 }

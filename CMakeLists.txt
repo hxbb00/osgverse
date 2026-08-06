@@ -26,7 +26,17 @@ ENDIF()
 IF(NOT WIN32)
     SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic -fPIC")
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -frtti -fpermissive")
-    SET(CMAKE_INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib")
+    IF(APPLE)
+        # macOS dyld does not understand the Linux/ELF "$ORIGIN" dynamic string token used
+        # below — it needs @loader_path (resolved per-Mach-O-image, safer than
+        # @executable_path for shared libraries that aren't the main executable) instead.
+        # This is a genuine two-entry CMake LIST (semicolon-separated), not one string
+        # with an embedded colon — Mach-O rpath entries are one path per LC_RPATH load
+        # command, unlike ELF's single colon-separated RUNPATH field.
+        SET(CMAKE_INSTALL_RPATH "@loader_path" "@loader_path/../lib")
+    ELSE()
+        SET(CMAKE_INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib")
+    ENDIF()
 ENDIF(NOT WIN32)
 
 IF(MSVC)
@@ -327,6 +337,11 @@ IF(VERSE_SUPPORT_CPP17)
     IF(NOT WIN32)
         # disable warning in include/osg/GraphicsCostEstimator
         ADD_COMPILE_OPTIONS(-Wno-psabi)
+        IF(APPLE)
+            # osgVerse serializers pass trivially-copyable osg types (Matrixd/Vec4d) through
+            # variadic InputUserData::add(); AppleClang promotes -Wnon-pod-varargs to an error.
+            ADD_COMPILE_OPTIONS(-Wno-non-pod-varargs)
+        ENDIF(APPLE)
     ENDIF(NOT WIN32)
 ENDIF(VERSE_SUPPORT_CPP17)
 
@@ -739,10 +754,11 @@ IF(OSG_INCLUDE_DIR AND OSG_LIB_DIR)
             MESSAGE(STATUS "[osgVerse] Common third-party libraries (zlib, jpeg, png, freetype, tiff) not provided.")
         ENDIF()
 
-        IF(TIFF_FOUND)
+        IF(TIFF_FOUND OR TIFF_LIBRARY_RELEASE)
+            SET(TIFF_FOUND ON)
             SET(VERSE_WITH_TIFF_LIBRARY ON)
             SET(THIRDPARTY_LIBRARIES ${THIRDPARTY_LIBRARIES} ${TIFF_LIBRARY_RELEASE})
-        ENDIF(TIFF_FOUND)
+        ENDIF()
     ENDIF(VERSE_BUILD_3RDPARTIES)
 
     # Actually add sub-directories
