@@ -37,6 +37,7 @@ ADD_SUBDIRECTORY(osgdb_mediastream)
 
 # video decoder / encoder
 ADD_SUBDIRECTORY(osgdb_nvcodec)
+ADD_SUBDIRECTORY(osgdb_vacodec)
 
 # vision devices
 ADD_SUBDIRECTORY(osgdb_inudev)

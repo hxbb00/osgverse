@@ -1,0 +1,36 @@
+SET(LIB_NAME osgdb_codec_va)
+SET(LIBRARY_FILES
+    ReaderWriterCodecVA.cpp
+    VaapiDecoder.cpp VaapiDecoder.h
+)
+
+#########################################
+FIND_DEPENDENCE(VA_DECODER "va/va.h" "libva.so;libva.lib" "")
+IF(GBM_FOUND AND UNIX)
+    IF(VA_DECODER_FOUND)
+
+        SET_PROPERTY(GLOBAL APPEND PROPERTY VERSE_PLUGIN_LIBRARIES "${LIB_NAME}")
+        INCLUDE_DIRECTORIES(${VA_DECODER_INCLUDE_DIR})
+        IF(VERSE_STATIC_BUILD)
+            NEW_PLUGIN(${LIB_NAME} STATIC)
+        ELSE()
+            NEW_PLUGIN(${LIB_NAME} SHARED)
+        ENDIF()
+
+        SET_PROPERTY(TARGET ${LIB_NAME} PROPERTY FOLDER "PLUGINS")
+        TARGET_COMPILE_OPTIONS(${LIB_NAME} PUBLIC -D_SCL_SECURE_NO_WARNINGS)
+        TARGET_LINK_LIBRARIES(${LIB_NAME} osgVerseDependency osgVersePipeline va va-drm)
+        LINK_OSG_LIBRARY(${LIB_NAME} OpenThreads osg osgDB osgUtil)
+
+        INSTALL(TARGETS ${LIB_NAME} EXPORT ${LIB_NAME}
+                RUNTIME DESTINATION ${INSTALL_PLUGINDIR} COMPONENT libosgverse
+                LIBRARY DESTINATION ${INSTALL_LIBDIR} COMPONENT libosgverse
+                ARCHIVE DESTINATION ${INSTALL_ARCHIVEDIR} COMPONENT libosgverse-dev)
+        IF(NOT VERSE_STATIC_BUILD)
+            IF(MSVC AND VERSE_INSTALL_PDB_FILES)
+                INSTALL(FILES $<TARGET_PDB_FILE:${LIB_NAME}> DESTINATION ${INSTALL_PLUGINDIR} OPTIONAL)
+            ENDIF()
+        ENDIF()
+
+    ENDIF(VA_DECODER_FOUND)
+ENDIF()

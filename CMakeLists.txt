@@ -600,9 +600,12 @@ FIND_DEPENDENCE_EX(TIFF "tiff.h" "libtiff.so;libtiff.a;libtiff.lib" "" TRUE)
 IF(NOT USE_WASM_OPTIONS)
     FIND_DEPENDENCE(ONNXRUNTIME "onnxruntime_c_api.h" "libonnxruntime.so;onnxruntime.lib" "")
     FIND_DEPENDENCE(SDL2 "SDL.h" "libSDL2.so;libSDL2.a;SDL2.lib" "SDL2;SDL")
+    IF(UNIX)
+        FIND_DEPENDENCE(GBM "gbm.h" "libgbm.so;libgbm.a" "")
+    ENDIF()
+    
     IF(VERSE_USE_EXTERNAL_GLES)
         FIND_DEPENDENCE(VULKAN "vulkan/vulkan.h" "" "")
-        FIND_DEPENDENCE(GBM "gbm.h" "libgbm.so;libgbm.a" "")
     ENDIF()
 ENDIF(NOT USE_WASM_OPTIONS)
 
