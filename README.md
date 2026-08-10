@@ -68,10 +68,10 @@ osgVerse, a complete 3D engine solution based on OpenSceneGraph.
     - With MooreThreads devices and VERSE_USE_MTT_DRIVER=ON, CUDA can be replaced with MUSA without extra operations.
 5. Optional external dependencies:
   - 5.1 osgEarth 2.10.1 or later, for earth related applications and examples. (https://github.com/gwaldron/osgearth)
-  - 5.2 Bullet 3.17 or later, for optional physics plugin. (https://github.com/bulletphysics/bullet3). Remember to enable INSTALL_LIBS (for correct installation) and USE_MSVC_RUNTIME_LIBRARY_DLL (for /MD flag) while compiling Bullet.
+  - 5.2 Bullet 3.17 or later, for optional physics plugin verse_bullet. (https://github.com/bulletphysics/bullet3). Remember to enable INSTALL_LIBS (for correct installation) and USE_MSVC_RUNTIME_LIBRARY_DLL (for /MD flag) while compiling Bullet.
   - 5.3 Entwine 2.0 or later, for EPT point cloud octree constructing. (https://github.com/connormanning/entwine)
   - 5.4 Qt 5.5 or later, for Qt related applications and examples. (https://www.qt.io/licensing/open-source-lgpl-obligations)
-  - 5.5 ZLMediaKit (git version), for media streaming plugin. (https://github.com/ZLMediaKit/ZLMediaKit) Remember to uncheck the ENABLE_MSVC_MT option while compiling. To encode to H264 frame and pull to media server, you may also check ENABLE_X264 and add x264 (http://www.videolan.org/developers/x264.html) to ZLMediaKit.
+  - 5.5 ZLMediaKit (git version), for media streaming plugin. (https://github.com/ZLMediaKit/ZLMediaKit) Remember to uncheck the ENABLE_MSVC_MT option while compiling. To support WebRTC-based cloud rendering, you may have to also enable WebRTC with SRTP and UsrSCTP supports.
   - 5.6 OpenVDB 10.0 or later, for VDB point cloud and 3D image reader/writer plugin. (https://github.com/AcademySoftwareFoundation/openvdb)
   - 5.7 libDraco 1.5 or later, for Draco mesh compression support in osgVerseReaderWriter library. (https://github.com/google/draco)
   - 5.8 libIGL 2.5 or later, for Quadriflow, ManifoldPlus and other functionalities in osgModeling library. (https://github.com/libigl/libigl)
@@ -81,6 +81,7 @@ osgVerse, a complete 3D engine solution based on OpenSceneGraph.
   - 5.12 libCEF 127.3 or later, for HTML5/CSS page rendering support in osgVerseAnimation module and related examples. (Binaries download: https://cef-builds.spotifycdn.com/index.html)
   - 5.13 mimalloc 2.17 or later, for general purpose memory allocator with excellent performance. (https://github.com/microsoft/mimalloc)
   - 5.14 NVIDIA Video Codec SDK 12 or later, for video decoding/encoding based on codec_nv plugin. (https://developer.nvidia.com/video-codec-sdk)
+    - Linux & EGL developers can use libVA (apt install libva-dev) and libGBM (apt install libgbm-dev) to implement the codec_va plugin.
   - 5.15 The netCDF-C 4.9.3 or later, for NetCDF/HDF data reading plugin. (https://github.com/Unidata/netcdf-c)
   - 5.16 FFmpeg 6.0 or later, for video parsing and CPU based decoding/encoding. (https://github.com/FFmpeg/FFmpeg)
   - 5.17 GGML 0.13 or later, for AI/LLM based functionalities like human body reconstruction. (https://github.com/ggml-org/ggml)
@@ -402,7 +403,7 @@ Our project is already tested on graphics cards listed as below:
   - Start an HTTPS server at `<osgverse_folder>`/build/verse_wasm/bin. See `<osgverse_folder>`/wasm/run_webserver.py as an example.
   - Copy `<osgverse_folder>`/assets to the same root folder of the server, and enjoy our WebGL examples.
 
-#### CMake options
+#### Core CMake options
 | Option                      | Type    | Default Value | Notes |
 |-----------------------------|---------|---------------|-------|
 | OSG_INCLUDE_DIR             | Path    |               | (Required) Set to path of osg/Node |
@@ -412,26 +413,8 @@ Our project is already tested on graphics cards listed as below:
 | OSG_GLES_INCLUDE_DIR        | Path    |               | Set to path of GLES2/gl2.h or GLES3/gl3.h, for GLES build only |
 | OSG_GLES_LIBRARY            | Path    |               | Set to path of libGLESv2.so or libGLESv2.lib, for GLES build only |
 | OSG_EGL_LIBRARY             | Path    |               | Set to path of libEGL.so or libEGL.lib, for GLES build only |
-| BULLET_INCLUDE_DIR          | Path    |               | Set to path of btBulletDynamicsCommon.h |
-| BULLET_LIB_DIR              | Path    |               | Set to path of libBulletDynamics.a or BulletDynamics.lib |
-| BULLET_DEBUG_POSTFIX        | String  | _Debug        | Set a postfix for Bullet debug built-libraries |
-| DRACO_INCLUDE_DIR           | Path    |               | Set to path of draco/draco_features.h |
-| DRACO_LIB_DIR               | Path    |               | Set to path of libdraco.a or draco.lib |
-| LIBIGL_INCLUDE_DIR          | Path    |               | Set to path of igl/igl_inline.h |
-| ZLMEDIAKIT_INCLUDE_DIR      | Path    |               | Set to path of mk_common.h |
-| ZLMEDIAKIT_LIB_DIR          | Path    |               | Set to path of libmk_api.so or mk_api.lib |
-| OPENVDB_INCLUDE_DIR         | Path    |               | Set to path of openvdb/openvdb.h |
-| OPENVDB_BOOST_INCLUDE_DIR   | Path    |               | Set to path of boost/type.hpp |
-| OPENVDB_TBB_INCLUDE_DIR     | Path    |               | Set to path of tbb/blocked_range.h |
-| OPENVDB_LIB_DIR             | Path    |               | Set to path of libopenvdb.so or openvdb.lib |
-| OPENVDB_TBB_LIB_DIR         | Path    |               | Set to path of libtbb.so or tbb.lib |
-| OSGEARTH_INCLUDE_DIR        | Path    |               | Set to path of osgEarth/EarthManipulator |
-| OSGEARTH_BUILD_INCLUDE_DIR  | Path    |               | Set to path of osgEarth/BuildConfig |
-| OSGEARTH_LIB_DIR            | Path    |               | Set to path of libosgEarth.so or osgEarth.lib |
 | SDL2_INCLUDE_DIR            | Path    |               | Set to path of SDL.h |
 | SDL2_LIB_DIR                | Path    |               | Set to path of libSDL2.so or SDL2.lib |
-| Qt5_DIR                     | Path    |               | Set to path of `<qt_dist>`/lib/cmake/Qt5 |
-| Qt6_DIR                     | Path    |               | Set to path of `<qt_dist>`/lib/cmake/Qt6 |
 | VERSE_3RDPARTY_PATH         | Path    |               | Set to path of third-party libraries |
 | VERSE_INSTALL_PDB_FILES     | Boolean | ON            | Enable to install PDB files along with executables and dynamic libraries |
 | VERSE_BUILD_EXPORTERS       | Boolean | OFF           | Enable build of exporters of other software (e.g., 3dsmax) |

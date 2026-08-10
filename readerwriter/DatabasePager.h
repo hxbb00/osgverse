@@ -13,10 +13,7 @@ namespace osgVerse
     class OSGVERSE_RW_EXPORT DatabasePager : public osgDB::DatabasePager
     {
     public:
-        DatabasePager(bool compressImages = false)
-        :   osgDB::DatabasePager(), _compressingImages(compressImages), _drawExtraBBox(false)
-        { setDrawablePolicy(osgDB::DatabasePager::USE_VERTEX_BUFFER_OBJECTS); }
-
+        DatabasePager(bool originalUpdate = false, bool customizedReadQueue = false);
         void setCompressingImages(bool b) { _compressingImages = true; }
         bool getCompressingImages() const { return _compressingImages; }
 
@@ -42,8 +39,13 @@ namespace osgVerse
 
         virtual void updateSceneGraph(const osg::FrameStamp& fs)
         {
-            removeExpiredSubgraphs(fs);
-            addLoadedDataToSceneGraph_Verse(fs);
+            if (_originalUpdate)
+                osgDB::DatabasePager::updateSceneGraph(fs);
+            else
+            {
+                removeExpiredSubgraphs(fs);
+                addLoadedDataToSceneGraph_Verse(fs);
+            }
         }
 
         void addLoadedDataToSceneGraph_Verse(const osg::FrameStamp& frameStamp);
@@ -55,13 +57,20 @@ namespace osgVerse
                                      const osg::Referenced* options);
 
     protected:
+        struct FocusedReadQueue : public osgDB::DatabasePager::ReadQueue
+        {
+            FocusedReadQueue(DatabasePager* pager, const std::string& name)
+                : osgDB::DatabasePager::ReadQueue(pager, name) {}
+            virtual void updateBlock();
+        };
+
         virtual ~DatabasePager() {}
         void createBoundingBox(osg::Node* node);
 
         typedef std::map<osg::ref_ptr<osg::Group>, std::vector<osg::ref_ptr<osg::Node>>> LoadedNodeMap;
         LoadedNodeMap _loadedNodes;
         osg::ref_ptr<DataMergeCallback> _mergeCallback;
-        bool _compressingImages, _drawExtraBBox;;
+        bool _originalUpdate, _compressingImages, _drawExtraBBox;
     };
 
 }

@@ -371,7 +371,7 @@ int main(int argc, char** argv)
 
     // Create camera manipulator
     osg::ref_ptr<osgGA::CameraManipulator> camManipulator;
-    if (use2D)
+    if (use2D || arguments.read("--trackball"))
         camManipulator = new osgGA::TrackballManipulator;
     else
     {

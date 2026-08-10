@@ -8,7 +8,7 @@ using namespace osgVerse;
 static double g_distanceToCenter = 0.0;
 
 EarthManipulator::EarthManipulator()
-:   _viewer(NULL), _latestLatitude(0.0), _latestLongitude(0.0), _latestAltitude(0.0),
+:   CameraManipulator(), _viewer(NULL), _latestLatitude(0.0), _latestLongitude(0.0), _latestAltitude(0.0),
     _tilt(0.0f), _throwAllowed(true), _thrown(false), _locked(false)
 {
     _tiltCenter.set(0.0, 0.0, -DBL_MAX);

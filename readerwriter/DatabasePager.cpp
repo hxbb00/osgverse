@@ -43,6 +43,17 @@ public:
     }
 };
 
+DatabasePager::DatabasePager(bool oriUpdate, bool customizedReadQueue)
+:   osgDB::DatabasePager(), _originalUpdate(oriUpdate), _compressingImages(false), _drawExtraBBox(false)
+{
+    setDrawablePolicy(osgDB::DatabasePager::USE_VERTEX_BUFFER_OBJECTS);
+    if (customizedReadQueue)
+    {
+        _fileRequestQueue = new FocusedReadQueue(this, "fileRequestQueue");
+        _httpRequestQueue = new FocusedReadQueue(this, "httpRequestQueue");
+    }
+}
+
 void DatabasePager::createBoundingBox(osg::Node* node)
 {
     if (!node) return;
@@ -324,4 +335,10 @@ void DatabasePager::requestNodeFile(const std::string& fileName, osg::NodePath& 
                  dt_itr != _databaseThreads.end(); ++dt_itr) { (*dt_itr)->startThread(); }
         }
     }
+}
+
+void DatabasePager::FocusedReadQueue::updateBlock()
+{
+    // TODO; OSG_NOTICE << "............. " << _requestList.size() << "\n";
+    osgDB::DatabasePager::ReadQueue::updateBlock();
 }

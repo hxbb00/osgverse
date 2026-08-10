@@ -17,6 +17,7 @@
 #include <pipeline/LightModule.h>
 #include <pipeline/ShadowModule.h>
 #include <pipeline/Utilities.h>
+#include <readerwriter/DatabasePager.h>
 #include <readerwriter/Utilities.h>
 #include <modeling/GaussianGeometry.h>
 #include <animation/TweenAnimation.h>
@@ -263,6 +264,8 @@ int main(int argc, char** argv)
     float lodScale = 1.0f;
     if (arguments.read("--lod-scale", lodScale))
         viewer.getCamera()->setLODScale(lodScale);
+    if (arguments.read("--custom-pager"))
+        viewer.setDatabasePager(new osgVerse::DatabasePager(false, true));
 
     // If renderer->setGraphicsThreadDoesCull(false), which is used by DrawThreadPerContext & ThreadPerCamera,
     // Shadow will go jigger because the output texture is not sync-ed before lighting...
