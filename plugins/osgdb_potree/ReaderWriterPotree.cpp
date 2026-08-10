@@ -284,7 +284,7 @@ protected:
                 std::vector<int64_t> histogram;
                 for (const auto& v : hist_arr)
                 {
-                    // picojson 的整数可能以 double 存储，需要转换
+                    // picojson outputs double, needs to be converted
                     histogram.push_back(static_cast<int64_t>(v.get<double>()));
                 }
                 a.histogram = histogram;

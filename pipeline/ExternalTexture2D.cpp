@@ -1,3 +1,4 @@
+#include <iostream>
 #include <osg/Version>
 #include <osg/io_utils>
 #include <osg/GLExtensions>
@@ -63,13 +64,12 @@ void GpuResourceReaderBase::releaseGpu()
             ck(cuGraphicsUnregisterResource(H->cuResource));
 #endif
         }
-
 #ifdef VERSE_ENABLE_MTT
         _mutex.lock(); ck(muMemFree(H->deviceFrame)); _mutex.unlock();
 #else
         _mutex.lock(); ck(cuMemFree(H->deviceFrame)); _mutex.unlock();
 #endif
-        H->pbo = 0; H->cuResource = NULL;
+        H->cuResource = NULL;
     }
     else if (_resourceType == RES_EGL)
     {
@@ -88,8 +88,7 @@ void GpuResourceReaderBase::releaseGLObjects(osg::State* state) const
     if (_resourceType == RES_CUDA)
     {
         CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
-        if (!state) { H->pbo = 0; return; }
-        if (ext) ext->glDeleteBuffers(1, &(H->pbo)); H->pbo = 0;
+        if (H && H->pbo != 0) { ext->glDeleteBuffers(1, &(H->pbo)); H->pbo = 0; }
     }
     else if (_resourceType == RES_EGL)
     {
@@ -110,11 +109,25 @@ osg::Texture::TextureObject* GpuResourceReaderBase::generateTextureObject(
     _textureID = obj->id(); return obj.get();
 }
 
+void GpuResourceReaderBase::setDefaultTestImage(osg::Image* image)
+{
+    if (!image) return;
+    if (image->getPixelFormat() == GL_RGBA || image->getPixelFormat() == GL_BGRA)
+    {
+        if (!image->valid()) return;
+        if (image->getDataType() == GL_UNSIGNED_BYTE)
+        {
+            _testImage = image;
+            _width = image->s();  _height = image->t();
+        }
+    }
+}
+
 void GpuResourceReaderBase::load(const osg::Texture2D& texture, osg::State& state) const
 {
     char* vendor = (char*)glGetString(GL_VENDOR);
     if (std::string(vendor).find("NVIDIA") != std::string::npos) _vendorStatus = true;
-    else { _vendorStatus = false; return; }
+    //else { _vendorStatus = false; return; }
 
 #if OSG_VERSION_GREATER_THAN(3, 3, 2)
     osg::GLExtensions* ext = state.get<osg::GLExtensions>();
@@ -128,19 +141,26 @@ void GpuResourceReaderBase::load(const osg::Texture2D& texture, osg::State& stat
         CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
         if (H->pbo != 0) ext->glDeleteBuffers(1, &(H->pbo));
 
+        unsigned int imageSize = _width * _height * 4;
         ext->glGenBuffers(1, &(H->pbo));
         ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, H->pbo);
-        ext->glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, _width * _height * 4, NULL, GL_STREAM_DRAW_ARB);
+        ext->glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, imageSize, NULL, GL_STREAM_DRAW_ARB);
         ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
 
 #ifdef VERSE_ENABLE_MTT
         ck(muCtxSetCurrent(H->cuContext));
-        ck(muMemAlloc(&(H->deviceFrame), _width * _height * 4));
-        ck(muMemsetD8(H->deviceFrame, 0, _width * _height * 4));
+        ck(muMemAlloc(&(H->deviceFrame), imageSize));
+        if (_testImage.valid() && _testImage->getTotalSizeInBytes() == imageSize)
+            ck(muMemcpyHtoD(H->deviceFrame, _testImage->data(), imageSize));
+        else
+            ck(muMemsetD8(H->deviceFrame, 0, imageSize));
 #else
         ck(cuCtxSetCurrent(H->cuContext));
-        ck(cuMemAlloc(&(H->deviceFrame), _width * _height * 4));
-        ck(cuMemsetD8(H->deviceFrame, 0, _width * _height * 4));
+        ck(cuMemAlloc(&(H->deviceFrame), imageSize));
+        if (_testImage.valid() && _testImage->getTotalSizeInBytes() == imageSize)
+            ck(cuMemcpyHtoD(H->deviceFrame, _testImage->data(), imageSize));
+        else
+            ck(cuMemsetD8(H->deviceFrame, 0, imageSize));
 #endif
     }
     else if (_resourceType == RES_EGL)

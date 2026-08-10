@@ -93,6 +93,9 @@ namespace osgVerse
 
         GpuResourceReaderBase(CUcontext cu);
         GpuResourceReaderBase(void* eglDisplay, void* eglContext);
+
+        void setDefaultTestImage(osg::Image* image);
+        osg::Image* getDefaultTestImage() { return _testImage.get(); }
         virtual void operator()(osg::StateAttribute* sa, osg::NodeVisitor* nv) {}
 
         bool openResource(GpuResourceDemuxerMuxerContainer* c);
@@ -101,7 +104,7 @@ namespace osgVerse
         Demuxer* getDemuxer() { return _demuxer.get(); }
         const Demuxer* getDemuxer() const { return _demuxer.get(); }
 
-        virtual bool openResource(Demuxer* demuxer) = 0;
+        virtual bool openResource(Demuxer* demuxer) { return false; }
         virtual void closeResource() { _demuxer = NULL; }
 
         virtual void releaseGLObjects(osg::State* state = NULL) const;
@@ -144,6 +147,7 @@ namespace osgVerse
         };
 
         osg::ref_ptr<osg::Referenced> _handle;
+        osg::ref_ptr<osg::Image> _testImage;
         osg::ref_ptr<Demuxer> _demuxer;
         mutable GLuint _textureID;
         ResourceState _state;

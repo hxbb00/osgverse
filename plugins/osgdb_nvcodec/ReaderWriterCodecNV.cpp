@@ -44,6 +44,7 @@ public:
             {
                 _decoder = new NvDecoder(H->cuContext, true, (cudaVideoCodec)_demuxer->getVideoCodec());
                 _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
+                if (_testImage.valid() && _testImage->valid()) _testImage->scaleImage(_width, _height, 1);
             }
         }
         _numFrames = 0; return true;

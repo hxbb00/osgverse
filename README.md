@@ -189,33 +189,50 @@ Our project is already tested on graphics cards listed as below:
   - osgVerse_Test_MultiView_Shader: a test for using geometry shader to implement multi-view rendering.
 
 #### OSG-style Plugins
-1. osgdb_verse_ept: a plugin for massive point cloud based on Entwine and page them for rendering.
-2. osgdb_verse_fbx: a plugin with full-featured FBX format support.
-3. osgdb_verse_gltf: a plugin with full-featured GLTF & GLB format support.
-4. osgdb_verse_web: a plugin for HTTP and more web protocols, which may replace the curl plugin.
-5. osgdb_verse_image: a plugin for reading common image formats like JPEG and PNG. It mainly works for WASM case.
-6. osgdb_verse_ktx: a plugin for reading/writing KTX/BasisU image formats. It can work as a GLTF/3dtiles extension.
-7. osgdb_verse_webp: a plugin for reading WEBP formats. It can work as a GLTF/3dtiles extension.
-8. osgdb_verse_tiff: a plugin for TIFF and 3D TIFF image (experimental) reading.
-9. osgdb_verse_leveldb: a plugin for reading/writing from LevelDB database.
-10. osgdb_verse_mbtiles: a plugin for reading/writing from Sqlite database using MBTiles specification.
-11. osgdb_verse_tiles: a plugin for reading Cesium 3dtiles (tileset.json) and Osgb files (metadata.xml, or just the root folder).
-12. osgdb_verse_ms: a plugin for reading/writing from media streaming protocols like RTSP/RTMP/WebRTC.
-13. osgdb_verse_tms: a plugin to read tiles from TMS geographic server and render them with paging LOD support.
-14. osgdb_verse_netcdf: a plugin to read NetCDF and HDF5 files and try parsing image data from them.
-15. osgdb_verse_3dgs: a plugin to read 3D Gaussian Splatting data (.ply, .splat and .spz) for rendering.
-16. osgdb_verse_mvt: a plugin to read Mapbox Vector Tiles (.mvt / .pbf) geometry data.
-17. osgdb_verse_geojson: a plugin to read Mapbox GeoJSON (.json) geometry data.
-18. osgdb_verse_vdb: a plugin to read OpenVDB point volume and rendering it to point cloud or 3D image.
-19. osgdb_verse_ffmpeg: a plugin for video decoding/encoding with FFmpeg (enhanced to connect with codec_nv).
-20. osgdb_verse_terrain: a plugin for reading Cesium terrain (quantized-mesh format).
-20. osgdb_codec_nv: a plugin for CUDA based video decoding/encoding support and connecting with demuxers/muxers and players.
-21. osgdb_pbrlayout: a pseudo-plugin to change PBR textures' layout to osgVerse standard. It supports following options:
-  - Diffuse (D), Specular (S), Normal (N), Metallic (M), Roughness (R), Occlusion (O), Emissive (E), Ambient (A), Omitted (X)
-  - Every source texture is defined by a option character and a channel number (1-4), and separated with a ','.
-  - Example input: model.fbx.D4,M1R1X2,N3.pbrlayout (Tex0 = Diffuse x 4, Tex1 = Metallic+Roughness, Tex2 = Normal)
-  - All layouts will be converted to osgVerse standard: D4,N3,S4,O1R1M1,A3,E3
-20. TBD...
+1. Mesh and mesh tiles:
+  - osgdb_verse_fbx: a plugin with full-featured FBX format support.
+  - osgdb_verse_gltf: a plugin with full-featured GLTF & GLB format support, also with .b3dm, .i3dm and .pnts.
+  - osgdb_verse_mesh: a plugin for reading/writing common mesh formats like OBJ, PLY, STL and OFF.
+  - osgdb_verse_terrain: a plugin for reading Cesium terrain format (quantized-mesh format).
+  - osgdb_verse_tiles: a plugin for reading Cesium 3dtiles (tileset.json) and Osgb files (metadata.xml, or just the root folder).
+  - osgdb_verse_tms: a plugin to read tiles from TMS geographic server and render them with paging LOD support.
+2. Point cloud and 3D gaussian splatting:
+  - osgdb_verse_3dgs: a plugin to read/writ 3D Gaussian Splatting data (.ply, .splat, .ksplat, .spz, .sog, .lcc and .lcc2).
+  - osgdb_verse_ept: a plugin for massive point cloud based on Entwine and page them for rendering.
+  - osgdb_verse_potree: a plugin for massive point cloud based on Potree and page them for rendering.
+  - osgdb_verse_vdb: a plugin to read OpenVDB point volume and rendering it to point cloud or 3D image.
+3. Vectors and features:
+  - osgdb_verse_geojson: a plugin to read Mapbox GeoJSON (.json) geometry data.
+  - osgdb_verse_mlt: a plugin to read MapLibre Tiles (.mlt) geometry data.
+  - osgdb_verse_mvt: a plugin to read Mapbox Vector Tiles (.mvt / .pbf) geometry data.
+  - osgdb_verse_osm: a plugin to read OpenStreetMap (.osm) geometry data.
+  - osgdb_verse_shp: a plugin to read ESRI shapefiles (.shp) geometry data.
+4. Images and videos:
+  - osgdb_verse_image: a plugin for reading/writing common image formats like JPEG and PNG. It mainly works for WASM case.
+  - osgdb_verse_ktx: a plugin for reading/writing KTX/BasisU image formats. It can work as a GLTF/3dtiles extension.
+  - osgdb_verse_netcdf: a plugin to read NetCDF and HDF5 files and try parsing image data from them.
+  - osgdb_verse_tiff: a plugin for TIFF and 3D TIFF image (experimental) reading.
+  - osgdb_verse_webp: a plugin for reading/writing WEBP formats. It can work as a GLTF/3dtiles extension.
+  - osgdb_verse_ffmpeg: a plugin for video decoding/encoding with FFmpeg (enhanced with demuxer support).
+  - osgdb_verse_ms: a plugin for reading/writing from media streaming protocols like RTSP/RTMP/WebRTC (enhanced with demuxer support).
+5. Video decoder and endcoder:
+  - osgdb_codec_nv: a plugin for CUDA based video decoding/encoding support and connecting with demuxers/muxers and players.
+  - osgdb_codec_va: a plugin for libVA / libGBM based video decoding support and connecting with demuxers and players.
+6. Vision devices:
+  - osgdb_device_inu: a plugin to implement interfaces of VisionDevice with InuDev RGBD cameras and sensors.
+7. Database supports:
+  - osgdb_verse_leveldb: a plugin for reading/writing from LevelDB database.
+  - osgdb_verse_mbtiles: a plugin for reading/writing from Sqlite database using MBTiles specification.
+  - osgdb_verse_odbc: a plugin for reading/writing from ODBC database (e.g., mysql) and Sqlite.
+8. Physics low-level engines:
+  - osgdb_verse_bullet: a plugin to implement interfaces of PhysicsEngine with Bullet3.
+9. Others:
+  - osgdb_verse_web: a plugin for HTTP and more web protocols, which may replace the curl plugin.
+  - osgdb_pbrlayout: a pseudo-plugin to change PBR textures' layout to osgVerse standard. It supports following options:
+    - Diffuse (D), Specular (S), Normal (N), Metallic (M), Roughness (R), Occlusion (O), Emissive (E), Ambient (A), Omitted (X)
+    - Every source texture is defined by a option character and a channel number (1-4), and separated with a ','.
+    - Example input: model.fbx.D4,M1R1X2,N3.pbrlayout (Tex0 = Diffuse x 4, Tex1 = Metallic+Roughness, Tex2 = Normal)
+    - All layouts will be converted to osgVerse standard: D4,N3,S4,O1R1M1,A3,E3
 
 #### Assets
 1. models: 3D models for test use, mainly in GLTF format.

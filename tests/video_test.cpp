@@ -23,13 +23,13 @@ int main(int argc, char** argv)
 {
     osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
     std::string file; bool recordeMode = arguments.read("--record");
-    if (!arguments.read("--file", file))
+    std::string testImg; bool testMode = arguments.read("--test", testImg);
+    if (!recordeMode && !testMode && !arguments.read("--file", file))
     {
         std::cout << "Please specify a movie file name or stream URL with --file."
                   << std::endl; return 1;
     }
-    if (file.empty())
-    { file = "record.mp4.verse_ffmpeg"; recordeMode = true; }
+    if (file.empty()) { file = "record.mp4.verse_ffmpeg"; recordeMode = true; }
 
     CUcontext cuContext = osgVerse::CudaAlgorithm::initializeContext(0);
     osg::ref_ptr<osg::MatrixTransform> root = new osg::MatrixTransform;
@@ -37,8 +37,18 @@ int main(int argc, char** argv)
     osg::ref_ptr<osgVerse::GpuResourceDemuxerMuxerContainer> videoRecorder;
 
     osgDB::Options* opt = new osgDB::Options; opt->setPluginData("Context", cuContext);
-    if (recordeMode)
-    {
+    if (testMode)
+    {   // Show a test image to see if external-texture can work
+        videoTexture = new osgVerse::ExternalTexture2D(cuContext);
+        videoTexture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
+        videoTexture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
+
+        osg::ref_ptr<osgVerse::GpuResourceReaderBase> defReader = new osgVerse::GpuResourceReaderBase(cuContext);
+        defReader->setDefaultTestImage(osgDB::readImageFile(testImg));
+        videoTexture->setResourceReader(defReader.get());
+    }
+    else if (recordeMode)
+    {   // Encode and output video
         osgVerse::GpuResourceReaderWriterContainer* container =
             dynamic_cast<osgVerse::GpuResourceReaderWriterContainer*>(osgDB::readObjectFile("encoder.codec_nv", opt));
         if (!container)
@@ -55,7 +65,7 @@ int main(int argc, char** argv)
         // TODO: add container1->getWriter() to camera drawcallback
     }
     else
-    {
+    {   // Decode and play video
         osgVerse::GpuResourceReaderWriterContainer* container =
             dynamic_cast<osgVerse::GpuResourceReaderWriterContainer*>(osgDB::readObjectFile("decoder.codec_nv", opt));
         if (!container)
@@ -81,8 +91,11 @@ int main(int argc, char** argv)
 
         // Add audio container if needed
         container->getReader()->setAudioContainer(osgVerse::AudioPlayer::instance());
+    }
 
-        // Set up scene graph
+    // Set up scene graph
+    if (videoTexture.valid())
+    {
         osg::Geometry* quad = osg::createTexturedQuadGeometry(
             osg::Vec3(), osg::X_AXIS * 1.6f, osg::Z_AXIS * 0.9f, 0.0f, 1.0f, 1.0f, 0.0f);
         quad->getOrCreateStateSet()->setTextureAttributeAndModes(0, videoTexture.get());
