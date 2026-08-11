@@ -103,6 +103,7 @@
 | tinyexr          | Embedded |           | -                  | BSD          | https://github.com/syoyo/tinyexr |
 | tinyfiledialogs  | Embedded | 3.18.2    | UI                 | Zlib         | https://sourceforge.net/projects/tinyfiledialogs |
 | tinyspline       | Embedded |           | Modeling           | MIT          | https://github.com/msteinbeck/tinyspline |
+| Trellis2++       | Embedded | 20260811  | AI (GGML)          | MIT          | https://github.com/localai-org/trellis2cpp |
 | tweeny           | Embedded |           | Animation          | MIT          | https://github.com/mobius3/tweeny |
 | ufbx             | Embedded | 0.22.0    | verse_fbx          | MIT /Public  | https://github.com/ufbx/ufbx |
 | VHACD            | Embedded | 4.1       | Modeling           | BSD3         | https://github.com/kmammou/v-hacd |
