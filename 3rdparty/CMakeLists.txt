@@ -522,17 +522,24 @@ SET(INTERACTIVEMESHBOOL_SOURCE_FILES
     InteractiveMeshBool/foctree.cpp InteractiveMeshBool/foctree.h
 )
 
-SET(POINTCLOUDSEG_SOURCE_FILES
-    PointCloudSeg/ClusterGrowPLinkage.cpp PointCloudSeg/ClusterGrowPLinkage.h
-    PointCloudSeg/PointGrowAngleDis.cpp PointCloudSeg/PointGrowAngleDis.h
-    PointCloudSeg/PointGrowAngleOnly.cpp PointCloudSeg/PointGrowAngleOnly.h
-    PointCloudSeg/PCAFunctions.cpp PointCloudSeg/PCAFunctions.h PointCloudSeg/utils.h
+SET(DEPTHANYTHING3_SOURCE_FILES
+    depthanything3/model_loader.cpp depthanything3/backend.cpp depthanything3/image_io.cpp
+    depthanything3/preprocess.cpp depthanything3/rope2d.cpp depthanything3/uv_posembed.cpp
+    depthanything3/attention.cpp depthanything3/vit_block.cpp depthanything3/dino_backbone.cpp
+    depthanything3/dpt_blocks.cpp depthanything3/winograd.cpp depthanything3/dpt_head.cpp
+    depthanything3/gs_head.cpp depthanything3/gs_adapter.cpp depthanything3/reconstruct.cpp
+    depthanything3/colmap_export.cpp depthanything3/cam_pose.cpp depthanything3/linalg.cpp
+    depthanything3/sim3.cpp depthanything3/stream.cpp depthanything3/fuse.cpp
+    depthanything3/tsdf.cpp depthanything3/icp.cpp depthanything3/posegraph.cpp
+    depthanything3/ray_pose.cpp depthanything3/nested.cpp depthanything3/engine.cpp
+    depthanything3/quantize.cpp depthanything3/da_capi.cpp depthanything3/da_capi.h
 )
 
 SOURCE_GROUP("ApproxMVBB Files" FILES ${APPROXMVBB_SOURCE_FILES})
 SOURCE_GROUP("Blend2D Files" FILES ${BLEND2D_SOURCE_FILES})
 SOURCE_GROUP("ByteTrack Files" FILES ${BYTETRACK_SOURCE_FILES})
 SOURCE_GROUP("Box3D Files" FILES ${BOX3D_SOURCE_FILES})
+SOURCE_GROUP("Depth-Anything3 Files" FILES ${DEPTHANYTHING3_SOURCE_FILES})
 SOURCE_GROUP("DiscreGrid Files" FILES ${DISCREGRID_SOURCE_FILES})
 SOURCE_GROUP("FIR & IIR Files" FILES ${FILTER_SOURCE_FILES})
 SOURCE_GROUP("HDBScan Files" FILES ${HDBSCAN_SOURCE_FILES})
@@ -552,7 +559,6 @@ SOURCE_GROUP("NormalMap Files" FILES ${NORMALMAP_SOURCE_FILES})
 SOURCE_GROUP("OzzAnimation Files" FILES ${OZZ_SOURCE_FILES})
 SOURCE_GROUP("PinYin-IME Files" FILES ${PINYIN_SOURCE_FILES})
 SOURCE_GROUP("PMP Files" FILES ${PMP_MCUT_SOURCE_FILES})
-SOURCE_GROUP("PointCloudSegmentation Files" FILES ${POINTCLOUDSEG_SOURCE_FILES})
 SOURCE_GROUP("QuadriFlow Files" FILES ${QUADRIFLOW_SOURCE_FILES})
 SOURCE_GROUP("Rasterizer Files" FILES ${RASTERIZER_SOURCE_FILES})
 SOURCE_GROUP("RecastNavigation Files" FILES ${RECAST_SOURCE_FILES})
@@ -578,7 +584,7 @@ SET(LIBRARY_FILES
     ${BOX3D_SOURCE_FILES} ${DISCREGRID_SOURCE_FILES} ${FILTER_SOURCE_FILES} ${HDBSCAN_SOURCE_FILES} ${IMGUI_SOURCE_FILES}
     ${KTX_SOURCE_FILES} ${LASZIP_SOURCE_FILES} ${LEVELDB_SOURCE_FILES} ${LIBHV_SOURCE_FILES} ${MARL_SOURCE_FILES}
     ${MBEDTLS_SOURCE_FILES} ${MESHOPTIMIZER_SOURCE_FILES} ${METIS_SOURCE_FILES} ${NORMALMAP_SOURCE_FILES}
-    ${OZZ_SOURCE_FILES} ${PINYIN_SOURCE_FILES} ${PMP_MCUT_SOURCE_FILES} ${POINTCLOUDSEG_SOURCE_FILES} ${RECAST_SOURCE_FILES}
+    ${OZZ_SOURCE_FILES} ${PINYIN_SOURCE_FILES} ${PMP_MCUT_SOURCE_FILES} ${RECAST_SOURCE_FILES}
     ${RLOTTIE_SOURCE_FILES} ${SHAPELIB_SOURCE_FILES} ${SMPLXPP_SOURCE_FILES} ${SPZ_SOURCE_FILES} ${TINYSPLINE_SOURCE_FILES}
     ${TWEENY_SOURCE_FILES}
 )
@@ -596,6 +602,14 @@ IF(CINOLIB_FOUND)
     SET(LIBRARY_FILES ${LIBRARY_FILES} ${INTERACTIVEMESHBOOL_SOURCE_FILES})
     INCLUDE_DIRECTORIES(${CINOLIB_INCLUDE_DIR})
 ENDIF(CINOLIB_FOUND)
+
+IF(GGML_FOUND AND VERSE_SUPPORT_CPP17)
+    IF("avx512" IN_LIST VERSE_SIMD_FEATURES)
+        SET(DEPTHANYTHING3_SOURCE_FILES ${DEPTHANYTHING3_SOURCE_FILES} winograd.cpp)
+    ENDIF()
+    SET(LIBRARY_FILES ${LIBRARY_FILES} ${DEPTHANYTHING3_SOURCE_FILES})
+    INCLUDE_DIRECTORIES(${GGML_INCLUDE_DIR})
+ENDIF()
 
 IF("${VERSE_SYSTEM_ARCHITECT}" MATCHES "ARM")
     SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ftree-vectorize -ffast-math")
@@ -655,7 +669,7 @@ ELSEIF("sse2" IN_LIST VERSE_SIMD_FEATURES)
 ENDIF()
 
 IF(NOT USE_WASM_OPTIONS)
-    # libktx and Blend2D NOT compile with Emscripten at present?
+    # SIMD-based libktx and Blend2D NOT compile with Emscripten at present?
     IF("avx2" IN_LIST VERSE_SIMD_FEATURES)
         ADD_DEFINITIONS(-DBL_BUILD_OPT_AVX2 -DBASISU_SUPPORT_SSE=1)
         IF(CMAKE_SIZEOF_VOID_P EQUAL 8)  # only for X64

@@ -31,6 +31,7 @@
 | ByteTrack-cpp    | Embedded | 20260327  | AI                 | MIT          | https://github.com/Vertical-Beach/ByteTrack-cpp |
 | CDT              | Embedded | 1.4.0     | Modeling           | MPL2         | https://github.com/artem-ogre/CDT |
 | Clipper2         | Embedded | 1.3.0     | Modeling           | Boost        | https://github.com/collmot/Clipper2/tree/feat/cpp11-support |
+| DepthAnything3++ | Embedded | 20260811  | AI (GGML)          | MIT          | https://github.com/mudler/depth-anything.cpp |
 | Discregrid       | Embedded |           | Modeling           | MIT          | https://github.com/InteractiveComputerGraphics/Discregrid |
 | Eigen            | Embedded |           | -                  | MPL2         | https://gitlab.com/libeigen/eigen |
 | exprtk           | Embedded |           | Modeling           | MIT          | https://github.com/ArashPartow/exprtk |
@@ -45,7 +46,7 @@
 | imnode-editor    | Embedded | 20251211  | UI                 | MIT          | https://github.com/thedmd/imgui-node-editor |
 | implot           | Embedded | 20251211  | UI                 | MIT          | https://github.com/epezent/implot |
 | imspinner        | Embedded | 20251211  | UI                 | MIT          | https://github.com/dalerank/imspinner |
-| InteractiveMesh  | Embedded | 20260403  | Modeling           | MIT          | https://github.com/gcherchi/InteractiveAndRobustMeshBooleans |
+| InteractiveMesh  | Embedded | 20260403  | Modeling (cinolib) | MIT          | https://github.com/gcherchi/InteractiveAndRobustMeshBooleans |
 | ktx              | Embedded |           | verse_ktx          | Apache2 (+)  | https://github.com/KhronosGroup/KTX-Software |
 | laplace_deform   | Embedded |           | -                  | -            | |
 | laszip           | Embedded |           | verse_ept          | Apache2      | https://github.com/LASzip/LASzip |
@@ -75,11 +76,11 @@
 | pinyin           | Embedded |           | UI                 | -            | |
 | pmp-library      | Embedded |           | Modeling           | MIT          | https://github.com/pmp-library/pmp-library |
 | PMTiles          | Embedded | 20260210  | verse_mbtiles      | BSD3         | https://github.com/protomaps/PMTiles |
-| PointCloudSeg    | Embedded | 20260411  | Modeling           | BSD2         | https://github.com/xiaohulugo/PointCloudSegmentation |
 | PoissonGenerator | Embedded |           | Pipeline           | -            | |
 | polylabel        | Embedded | 2.0.1     | Modeling           | ISC          | https://github.com/mapbox/polylabel |
 | protozero        | EMbedded | 1.7.1     | verse_mvt          | BSD2         | https://github.com/mapbox/protozero |
 | pybind11         | Embedded | 2.13.6    | Script             | BSD          | https://github.com/pybind/pybind11 |
+| QuadriFlow       | Embedded | 1.0       | Modeling (libIGL)  | BSD3 (+)     | https://github.com/hjwdzh/QuadriFlow |
 | rapidjson        | Embedded |           | -                  | MIT (+)      | https://github.com/Tencent/rapidjson |
 | rapidxml         | Embedded |           | -                  | Boost / MIT  | https://rapidxml.sourceforge.net/ |
 | rasterizer       | Embedded |           | Pipeline           | -            | https://github.com/rawrunprotected/rasterizer |

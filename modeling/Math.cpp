@@ -31,8 +31,6 @@
 #endif
 #include "3rdparty/clipper2/clipper.h"
 #include "3rdparty/nanoflann.hpp"
-#include "3rdparty/PointCloudSeg/utils.h"
-#include "3rdparty/PointCloudSeg/ClusterGrowPLinkage.h"
 #include "Math.h"
 const float ZERO_TOLERANCE = float(1e-5);
 
@@ -949,33 +947,6 @@ int PointCloudQuery::findInPolytope(const osg::Polytope& poly, std::vector<Point
             });
     }
     return (int)resultData.size();
-}
-
-/* PointCloudSegmentation */
-
-PointCloudSegmentation::PointCloudSegmentation()
-:   _pcaIterations(100), _planeMode(0), _theta(0.0)
-{}
-
-void PointCloudSegmentation::setPairwiseLinkageFactors(int k, double theta, int planeMode)
-{ _pcaIterations = k; _planeMode = planeMode; _theta = theta; }
-
-std::vector<PointCloudSegmentation::IndexList> PointCloudSegmentation::execute(const std::vector<osg::Vec3d>& points)
-{
-    PointCloud<double> pointCloud;
-    pointCloud.pts.resize(points.size());
-    memcpy(pointCloud.pts.data(), points.data(), points.size() * sizeof(osg::Vec3d));
-    if (points.empty()) return std::vector<PointCloudSegmentation::IndexList>();
-
-    std::vector<PCAInfo> pcaInfos; PCAFunctions pcaer;
-    pcaer.PCA(pointCloud, _pcaIterations, pcaInfos);
-    if (pcaInfos.empty()) return std::vector<PointCloudSegmentation::IndexList>();
-    
-    std::vector<PointCloudSegmentation::IndexList> clusters;
-    ClusterGrowPLinkage segmenter(_pcaIterations, _theta, (PLANE_MODE)_planeMode);
-    segmenter.setData(pointCloud, pcaInfos);
-    segmenter.run(clusters);
-    return clusters;
 }
 
 /* GeometryAlgorithm */
