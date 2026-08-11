@@ -24,6 +24,8 @@ IF(VERSE_SUPPORT_CPP17)
     ADD_DEFINITIONS(-DVERSE_WITH_BYTETRACK)
     IF(GGML_FOUND)
         ADD_DEFINITIONS(-DVERSE_WITH_DEPTHANYTHING3)
+        SET(LIBRARY_FILES ${LIBRARY_FILES} DepthAnythingEngine.h DepthAnythingEngine.cpp)
+        SET(LIBRARY_INCLUDE_FILES ${LIBRARY_INCLUDE_FILES} DepthAnythingEngine.h)
     ELSE(GGML_FOUND)
         MESSAGE("[osgVerse] Dependency GGML not found. "
                 "osgVerseAI features will be ignored: 'depth-anything3'.")

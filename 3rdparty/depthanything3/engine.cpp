@@ -287,6 +287,7 @@ bool Engine::depth_pose_multi(const std::vector<Image>& imgs, std::vector<ViewRe
     }
     return true;
 }
+
 bool Engine::reconstruct(const Image& img, Gaussians& g, int& H, int& W){
     Preprocessed p;
     if (!preprocess(img, ml_.config(), p)) { DA_LOG("reconstruct: preprocess failed"); return false; }
@@ -327,6 +328,53 @@ bool Engine::reconstruct(const Image& img, Gaussians& g, int& H, int& W){
     }
     return true;
 }
+
+// WangRui 20260811... for RGBD inputs
+bool Engine::reconstruct_ex(const Image& img, Gaussians& g, int& H, int& W,
+                            std::function<void (std::vector<float>&, int, int)> depthFunc) {
+    Preprocessed p;
+    if (!preprocess(img, ml_.config(), p)) { DA_LOG("reconstruct: preprocess failed"); return false; }
+    H = p.H; W = p.W;
+
+    // One backbone pass: feats[4] feed depth + gs_head; cam_tokens[3] feeds pose.
+    DinoBackbone bb(ml_, be_);
+    std::vector<std::vector<float>> feats, cam_tokens;
+    if (!bb.forward(p.chw, H, W, feats, cam_tokens)) { DA_LOG("reconstruct: backbone failed"); return false; }
+    if (feats.size() < 4 || cam_tokens.size() < 4) { DA_LOG("reconstruct: missing out layers"); return false; }
+
+    DptHead head(ml_, be_); std::vector<float> depth, conf;
+    if (!head.depth(feats, H, W, depth, conf)) { DA_LOG("reconstruct: depth head failed"); return false; }
+    CamPose cam(ml_, be_); std::array<float,9> pe; std::array<float,12> ext; std::array<float,9> intr;
+    if (!cam.pose(cam_tokens[3], H, W, pe, ext, intr)) { DA_LOG("reconstruct: cam pose failed"); return false; }
+
+    GsHead gs(ml_, be_); std::vector<float> raw_gs, gs_conf;
+    if (!gs.raw_gaussians(feats, p.chw, H, W, raw_gs, gs_conf)) { DA_LOG("reconstruct: gs_head failed"); return false; }
+    
+    GsAdapter ad; if (depthFunc) depthFunc(depth, H, W);  // to modify depths before build gaussians
+    if (!ad.build(raw_gs, depth, gs_conf, ext, intr, H, W, g)) { DA_LOG("reconstruct: gs_adapter failed"); return false; }
+    g.ext = ext; g.intr = intr; g.H = H; g.W = W;  // input camera, for input-view rendering
+
+    // Colour each gaussian by its own source pixel (de-normalize p.chw, the exact
+    // model input). DA3's learned SH-DC colour is a near-grey flat base; the true
+    // photo colour gives a faithful input-view presentation (same convention as the
+    // point cloud). g.colors empty => callers fall back to SH-DC.
+    {
+        const auto& mean = ml_.config().img_mean;
+        const auto& std  = ml_.config().img_std;
+        if (mean.size() >= 3 && std.size() >= 3 && (int)p.chw.size() >= 3*H*W && g.N == H*W) {
+            const size_t HW = (size_t)H * W;
+            g.colors.resize((size_t)g.N * 3);
+            for (size_t pix = 0; pix < HW; ++pix)
+                for (int c = 0; c < 3; ++c) {
+                    float v = p.chw[(size_t)c*HW + pix] * std[c] + mean[c];
+                    g.colors[pix*3 + c] = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
+                }
+        }
+    }
+    return true;
+}
+//////
+
 bool Engine::reconstruct_path(const std::string& image_path, Gaussians& g, int& H, int& W){
     Image img; if (!load_image_rgb(image_path, img)) { DA_LOG("reconstruct: load image failed"); return false; }
     return reconstruct(img, g, H, W);

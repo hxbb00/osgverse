@@ -4,6 +4,7 @@
 #include "image_io.hpp"
 #include "gs_adapter.hpp"
 #include "nested.hpp"
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -99,6 +100,11 @@ public:
     // Full 3D-Gaussian reconstruction (DA3-GIANT only): backbone -> depth + cam
     // pose + GSDPT raw_gs -> GaussianAdapter -> world-space Gaussians (N=H*W).
     bool reconstruct(const Image& img, Gaussians& g, int& H, int& W);
+
+    // WangRui 20260811... for RGBD inputs
+    bool reconstruct_ex(const Image& img, Gaussians& g, int& H, int& W,
+                        std::function<void (std::vector<float>&, int, int)> depthFunc);
+
     bool reconstruct_path(const std::string& image_path, Gaussians& g, int& H, int& W);
     // Nested metric depth: anyview GIANT (depth+conf+pose) + metric (depth+sky)
     // branches -> NestedAligner -> final metric-scale depth + scaled extrinsics.
