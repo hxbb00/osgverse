@@ -112,7 +112,9 @@ IcpResult icp_point_to_plane(const std::vector<double>& src_xyz,
         double H[36] = {0}; double g[6] = {0};
         long c = 0;
         const double w_delta = p.huber_delta;
+#if !defined(_MSC_VER) 
         #pragma omp parallel for reduction(+:H[:36], g[:6], c) schedule(dynamic, 512)
+#endif
         for (int i = 0; i < ns; ++i) {
             double d2;
             int j = hash.nearest(&P[3*i], p.max_corr_dist, d2);

@@ -18,10 +18,14 @@
 #      define TEST_VULKAN_IMPLEMENTATION 1
 #   else
 #      define TEST_VULKAN_IMPLEMENTATION 0
-#endif
+#   endif
 
+#  ifdef VERSE_WITH_SDL2
 #   include <SDL.h>
 #   include <SDL_syswm.h>
+#  else
+#   include <SDL3/SDL.h>
+#  endif
 USE_GRAPICSWINDOW_IMPLEMENTATION(SDL)
 #endif
 USE_GRAPICSWINDOW_IMPLEMENTATION(GLFW)

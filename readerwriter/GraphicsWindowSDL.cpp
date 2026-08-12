@@ -1,7 +1,11 @@
 #include "GraphicsWindowSDL.h"
 #include <osg/DeleteHandler>
-#include <SDL.h>
-#include <SDL_syswm.h>
+#ifdef VERSE_WITH_SDL2
+#   include <SDL.h>
+#   include <SDL_syswm.h>
+#else
+#   include <SDL3/SDL.h>
+#endif
 #include <iostream>
 
 #if defined(SDL_VIDEO_DRIVER_COCOA)
@@ -24,6 +28,27 @@ typedef void* (EGLAPIENTRYP PFNEGLGETVKOBJECTSVERSEPROC)(EGLDisplay dpy, EGLSurf
 #endif
 
 using namespace osgVerse;
+#ifdef VERSE_WITH_SDL2
+#   include <SDL_syswm.h>
+#   define SDL_EVENT_MOUSE_MOTION SDL_MOUSEMOTION
+#   define SDL_EVENT_MOUSE_BUTTON_DOWN SDL_MOUSEBUTTONDOWN
+#   define SDL_EVENT_MOUSE_BUTTON_UP SDL_MOUSEBUTTONUP
+#   define SDL_EVENT_MOUSE_WHEEL SDL_MOUSEWHEEL
+#   define SDL_EVENT_KEY_UP SDL_KEYUP
+#   define SDL_EVENT_KEY_DOWN SDL_KEYDOWN
+#   define SDL_EVENT_QUIT SDL_QUIT
+#   define SDL_KEY_SYMBOL(ev) (ev).key.keysym.sym
+#   define SDL_KEY_MODIFIER(ev) (ev).key.keysym.mod
+#   define SDL_CREATE_WINDOW(H, title, x, y, w, h, fl) \
+        { H = SDL_CreateWindow((title), (x), (y), (w), (h), (fl)); }
+#   define SDL_GET_DISPLAYS(c) c = SDL_GetNumVideoDisplays();
+#else
+#   define SDL_KEY_SYMBOL(ev) (ev).key.key
+#   define SDL_KEY_MODIFIER(ev) (ev).key.mod
+#   define SDL_CREATE_WINDOW(H, title, x, y, w, h, fl) \
+        { H = SDL_CreateWindow((title), (w), (h), (fl)); SDL_SetWindowPosition(H, (x), (y)); }
+#   define SDL_GET_DISPLAYS(c) SDL_GetDisplays(&c);
+#endif
 
 #if defined(VERSE_GLES_DESKTOP)
 static void EGLAPIENTRY eglErrorCallback(EGLenum error, const char* command, EGLint messageType,
@@ -38,6 +63,7 @@ namespace
     static int getModKey()
     {
         SDL_Keymod modstates = SDL_GetModState();
+#ifdef VERSE_WITH_SDL2
         if (modstates & KMOD_LCTRL) return osgGA::GUIEventAdapter::KEY_Control_L;
         else if (modstates & KMOD_RCTRL) return osgGA::GUIEventAdapter::KEY_Control_R;
         else if (modstates & KMOD_LALT) return osgGA::GUIEventAdapter::KEY_Alt_L;
@@ -46,6 +72,16 @@ namespace
         else if (modstates & KMOD_RSHIFT) return osgGA::GUIEventAdapter::KEY_Shift_R;
         else if (modstates & KMOD_CAPS) return osgGA::GUIEventAdapter::KEY_Caps_Lock;
         else if (modstates & KMOD_NUM) return osgGA::GUIEventAdapter::KEY_Num_Lock;
+#else
+        if (modstates & SDL_KMOD_LCTRL) return osgGA::GUIEventAdapter::KEY_Control_L;
+        else if (modstates & SDL_KMOD_RCTRL) return osgGA::GUIEventAdapter::KEY_Control_R;
+        else if (modstates & SDL_KMOD_LALT) return osgGA::GUIEventAdapter::KEY_Alt_L;
+        else if (modstates & SDL_KMOD_RALT) return osgGA::GUIEventAdapter::KEY_Alt_R;
+        else if (modstates & SDL_KMOD_LSHIFT) return osgGA::GUIEventAdapter::KEY_Shift_L;
+        else if (modstates & SDL_KMOD_RSHIFT) return osgGA::GUIEventAdapter::KEY_Shift_R;
+        else if (modstates & SDL_KMOD_CAPS) return osgGA::GUIEventAdapter::KEY_Caps_Lock;
+        else if (modstates & SDL_KMOD_NUM) return osgGA::GUIEventAdapter::KEY_Num_Lock;
+#endif
         else return 0;
     }
 
@@ -96,25 +132,39 @@ class SDLWindowingSystem : public osg::GraphicsContext::WindowingSystemInterface
 public:
     SDLWindowingSystem()
     {
+#ifdef VERSE_WITH_SDL2
         if (SDL_Init(SDL_INIT_VIDEO) < 0)
+#else
+        if (!SDL_Init(SDL_INIT_VIDEO))
+#endif
         { OSG_WARN << "[GraphicsWindowSDL] Failed: " << SDL_GetError() << std::endl; return; }
     }
 
     virtual unsigned int getNumScreens(const osg::GraphicsContext::ScreenIdentifier& screenIdentifier =
                                        osg::GraphicsContext::ScreenIdentifier())
-    { return SDL_GetNumVideoDisplays(); }
+    { int count = 0; SDL_GET_DISPLAYS(count); return (unsigned int)count; }
 
     virtual void getScreenSettings(const osg::GraphicsContext::ScreenIdentifier& identifier,
                                    osg::GraphicsContext::ScreenSettings& resolution)
     {
+#ifdef VERSE_WITH_SDL2
         SDL_DisplayMode mode;
         if (SDL_GetCurrentDisplayMode(identifier.displayNum, &mode) == 0)
+#else
+        int count = 0; SDL_DisplayID* displays = SDL_GetDisplays(&count);
+        SDL_DisplayID primaryID = (displays == NULL) ? 0 : displays[0];
+        const SDL_DisplayMode* modePtr = SDL_GetCurrentDisplayMode(primaryID);
+        if (!modePtr) { OSG_WARN << "[SDLWindowingSystem] getScreenSettings() failed: " << SDL_GetError() << "\n"; }
+
+        const SDL_DisplayMode& mode = *modePtr;
+        if (true)
+#endif
         {
             resolution.width = mode.w; resolution.height = mode.h;
             resolution.refreshRate = mode.refresh_rate;
         }
         else
-            OSG_WARN << "[SDLWindowingSystem] getScreenSettings() failed: " << SDL_GetError() << std::endl;
+            OSG_WARN << "[SDLWindowingSystem] getScreenSettings() failed: " << SDL_GetError() << "\n";
     }
 
     virtual bool setScreenSettings(const osg::GraphicsContext::ScreenIdentifier& identifier,
@@ -127,11 +177,20 @@ public:
     virtual void enumerateScreenSettings(const osg::GraphicsContext::ScreenIdentifier& identifier,
                                          osg::GraphicsContext::ScreenSettingsList& resolutionList)
     {
+#ifdef VERSE_WITH_SDL2
         int numModes = SDL_GetNumDisplayModes(identifier.displayNum);
         for (int i = 0; i < numModes; ++i)
         {
             SDL_DisplayMode mode; osg::GraphicsContext::ScreenSettings settings;
             if (SDL_GetDisplayMode(i, 0, &mode) != 0) continue;
+#else
+        int numModes = 0;
+        SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(identifier.displayNum, &numModes);
+        for (int i = 0; i < numModes; ++i)
+        {
+            osg::GraphicsContext::ScreenSettings settings; if (modes == NULL) continue;
+            SDL_DisplayMode& mode = *(modes[i]);
+#endif
 
             settings.width = mode.w; settings.height = mode.h;
             settings.refreshRate = mode.refresh_rate;
@@ -224,9 +283,12 @@ void GraphicsWindowSDL::initialize()
 
     // Create window
     int winX = 50, winY = 50, winW = 1280, winH = 720;
+    unsigned int flags = SDL_WINDOW_OPENGL;
+#ifdef VERSE_WITH_SDL2
+    flags |= SDL_WINDOW_SHOWN;
+#endif
     if (_traits.valid())
     {
-        unsigned int flags = SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL;
 #if defined(SDL_VIDEO_DRIVER_COCOA)
         flags &= (~SDL_WINDOW_OPENGL); flags |= SDL_WINDOW_METAL;
 #endif
@@ -234,21 +296,33 @@ void GraphicsWindowSDL::initialize()
         if (!_traits->windowDecoration) flags |= SDL_WINDOW_BORDERLESS;
         winX = _traits->x; winY = _traits->y;
         winW = _traits->width; winH = _traits->height;
+#if !defined(VERSE_GLES_DESKTOP)
+        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, _traits->red);
+        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, _traits->green);
+        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, _traits->blue);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, _traits->depth);
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, _traits->alpha);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, _traits->stencil);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, _traits->doubleBuffer ? 1 : 0);
+        SDL_GL_SetAttribute(SDL_GL_STEREO, _traits->quadBufferStereo ? 1 : 0);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, _traits->sampleBuffers);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, _traits->samples);
+        //SDL_GL_SetSwapInterval(_traits->vsync ? 1 : 0);
+#endif
 
         const char* winName = _traits->windowName.empty() ? NULL : _traits->windowName.c_str();
         if (_traits->screenNum > 0)
         {
-            int displayCount = SDL_GetNumVideoDisplays();
+            int displayCount = 0; SDL_GET_DISPLAYS(displayCount);
             if (_traits->screenNum < displayCount)
             {
                 int num = _traits->screenNum + 1;
-                _sdlWindow = SDL_CreateWindow(
-                    winName, SDL_WINDOWPOS_CENTERED_DISPLAY(num), SDL_WINDOWPOS_CENTERED_DISPLAY(num),
-                    winW, winH, flags);
+                winX = SDL_WINDOWPOS_CENTERED_DISPLAY(num), winY = SDL_WINDOWPOS_CENTERED_DISPLAY(num);
+                SDL_CREATE_WINDOW(_sdlWindow, winName, winX, winY, winW, winH, flags);
             }
         }
         else
-            _sdlWindow = SDL_CreateWindow(winName, winX, winY, winW, winH, flags);
+            SDL_CREATE_WINDOW(_sdlWindow, winName, winX, winY, winW, winH, flags);
 
 #if defined(VERSE_GLES_DESKTOP)
         // Config EGL by ourselves so that to set different backends of Google Angle!
@@ -288,12 +362,12 @@ void GraphicsWindowSDL::initialize()
             (PFNEGLDEBUGMESSAGECONTROLKHRPROC)(eglGetProcAddress("eglDebugMessageControlKHR"));
         PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT =
             (PFNEGLGETPLATFORMDISPLAYEXTPROC)(eglGetProcAddress("eglGetPlatformDisplayEXT"));
-#if false
+#   if false
         PFNEGLCREATEDEVICEANGLEPROC eglCreateDeviceANGLE =
             (PFNEGLCREATEDEVICEANGLEPROC)(eglGetProcAddress("eglCreateDeviceANGLE"));
         PFNEGLRELEASEDEVICEANGLEPROC eglReleaseDeviceANGLE =
             (PFNEGLRELEASEDEVICEANGLEPROC)(eglGetProcAddress("eglReleaseDeviceANGLE"));
-#endif
+#   endif
         if (eglDebugMessageControlKHR != NULL)
         {
             EGLAttrib controls[] = {
@@ -357,25 +431,12 @@ void GraphicsWindowSDL::initialize()
             OSG_WARN << "[GraphicsWindowSDL] Failed to create EGL surface: " << std::hex
                      << eglGetError() << std::dec << std::endl; return;
         }
-#else
-        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, _traits->red);
-        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, _traits->green);
-        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, _traits->blue);
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, _traits->depth);
-        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, _traits->alpha);
-        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, _traits->stencil);
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, _traits->doubleBuffer ? 1 : 0);
-        SDL_GL_SetAttribute(SDL_GL_STEREO, _traits->quadBufferStereo ? 1 : 0);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, _traits->sampleBuffers);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, _traits->samples);
-        //SDL_GL_SetSwapInterval(_traits->vsync ? 1 : 0);
-#endif
+#endif  // defined(VERSE_GLES_DESKTOP)
     }
     else
     {
-        _sdlWindow = SDL_CreateWindow(
-            "osgVerse::GraphicsWindowSDL", winX, winY, winW, winH,
-            SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+        SDL_CREATE_WINDOW(_sdlWindow, "osgVerse::GraphicsWindowSDL",
+                          winX, winY, winW, winH, flags | SDL_WINDOW_RESIZABLE);
     }
 
     if (_sdlWindow == NULL)
@@ -467,7 +528,11 @@ void GraphicsWindowSDL::closeImplementation()
     eglDestroySurface(display, surface);
 #else
     SDL_GLContext context = (SDL_GLContext)_glContext;
+#  ifdef VERSE_WITH_SDL2
     SDL_GL_DeleteContext(context);
+#  else
+    SDL_GL_DestroyContext(context);
+#  endif
 #endif
     SDL_DestroyWindow(_sdlWindow);
 }
@@ -484,7 +549,11 @@ bool GraphicsWindowSDL::makeCurrentImplementation()
     return ok;
 #else
     SDL_GLContext context = (SDL_GLContext)_glContext;
+#  ifdef VERSE_WITH_SDL2
     return SDL_GL_MakeCurrent(_sdlWindow, context) == 0;
+#  else
+    return SDL_GL_MakeCurrent(_sdlWindow, context);
+#  endif
 #endif
 }
 
@@ -529,38 +598,37 @@ void GraphicsWindowSDL::checkEvents()
         osgGA::EventQueue* eq = getEventQueue();
         switch (event.type)
         {
-        case SDL_MOUSEMOTION:
+        case SDL_EVENT_MOUSE_MOTION:
             if (event.motion.x > 0 || event.motion.y > 0)
                 eq->mouseMotion(event.motion.x, event.motion.y); break;
-        case SDL_MOUSEBUTTONDOWN:
-            {
-                if (event.button.clicks == 2)
-                    eq->mouseDoubleButtonPress(event.button.x, event.button.y, event.button.button);
-                else
-                    eq->mouseButtonPress(event.button.x, event.button.y, event.button.button); 
-                break;
-            }
-        case SDL_MOUSEBUTTONUP:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            if (event.button.clicks == 2)
+                eq->mouseDoubleButtonPress(event.button.x, event.button.y, event.button.button);
+            else
+                eq->mouseButtonPress(event.button.x, event.button.y, event.button.button); 
+            break;
+        case SDL_EVENT_MOUSE_BUTTON_UP:
             eq->mouseButtonRelease(event.button.x, event.button.y, event.button.button); break;
-        case SDL_MOUSEWHEEL:
+        case SDL_EVENT_MOUSE_WHEEL:
             if (event.wheel.y < 0) eq->mouseScroll(osgGA::GUIEventAdapter::ScrollingMotion::SCROLL_DOWN);
             else if (event.wheel.y > 0) eq->mouseScroll(osgGA::GUIEventAdapter::ScrollingMotion::SCROLL_UP); break;
-        case SDL_KEYUP:
+        case SDL_EVENT_KEY_UP:
             {
-                int key = getKey(event.key.keysym.sym), state = event.key.keysym.mod; if (key == 0) break;
+                int key = getKey(SDL_KEY_SYMBOL(event)), state = SDL_KEY_MODIFIER(event); if (key == 0) break;
                 if (state == 0) eq->getCurrentEventState()->setModKeyMask(0);
                 eq->keyRelease((osgGA::GUIEventAdapter::KeySymbol)key, 0);  // modkey state will be kept if passed 0
                 _lastKey = 0; _lastModKey = 0;
             } break;
-        case SDL_KEYDOWN:
+        case SDL_EVENT_KEY_DOWN:
             {
-                int key = getKey(event.key.keysym.sym), mod = getModKey(); if (key == 0) break;
+                int key = getKey(SDL_KEY_SYMBOL(event)), mod = getModKey(); if (key == 0) break;
                 if (key != _lastKey || mod != _lastModKey)
                 {
                     eq->keyPress((osgGA::GUIEventAdapter::KeySymbol)key, mod);
                     _lastKey = key; _lastModKey = mod;
                 }
             } break;
+#ifdef VERSE_WITH_SDL2
         case SDL_WINDOWEVENT:
             if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
             {
@@ -581,7 +649,16 @@ void GraphicsWindowSDL::checkEvents()
                     eq->mouseScroll(osgGA::GUIEventAdapter::ScrollingMotion::SCROLL_DOWN);
             }
             break;
-        case SDL_QUIT: eq->closeWindow(); break;
+#else
+        case SDL_EVENT_WINDOW_RESIZED:
+            eq->windowResize(0, 0, event.window.data1, event.window.data2);
+            resized(0, 0, event.window.data1, event.window.data2);
+            break;
+        case SDL_EVENT_FINGER_MOTION:
+            // TODO
+            break;
+#endif
+        case SDL_EVENT_QUIT: eq->closeWindow(); break;
         default: break;
         }
     }
@@ -593,14 +670,22 @@ void GraphicsWindowSDL::checkEvents()
 void GraphicsWindowSDL::grabFocus()
 {
 #if !defined(VERSE_WASM)
+#  ifdef VERSE_WITH_SDL2
     if (_valid) SDL_SetWindowInputFocus(_sdlWindow);
+#  else
+    if (_valid) SDL_RaiseWindow(_sdlWindow);
+#  endif
 #endif
 }
 
 void GraphicsWindowSDL::grabFocusIfPointerInWindow()
 {
 #if !defined(VERSE_WASM)
+#  ifdef VERSE_WITH_SDL2
     if (_valid) SDL_SetWindowInputFocus(_sdlWindow);
+#  else
+    if (_valid) SDL_RaiseWindow(_sdlWindow);
+#  endif
 #endif
 }
 
@@ -614,7 +699,11 @@ bool GraphicsWindowSDL::setWindowDecorationImplementation(bool flag)
 {
     if (!_valid) return false;
 #if !defined(VERSE_WASM)
+#  ifdef VERSE_WITH_SDL2
     SDL_SetWindowBordered(_sdlWindow, flag ? SDL_TRUE : SDL_FALSE); return true;
+#  else
+    SDL_SetWindowBordered(_sdlWindow, flag); return true;
+#  endif
 #else
     return false;
 #endif
@@ -636,6 +725,7 @@ void GraphicsWindowSDL::setCursor(osgViewer::GraphicsWindow::MouseCursor cursor)
     SDL_Cursor* sdlCursor = NULL;
     switch (cursor)
     {
+#ifdef VERSE_WITH_SDL2
     case TextCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_IBEAM); break;
     case CrosshairCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR); break;
     case WaitCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAIT); break;
@@ -646,6 +736,18 @@ void GraphicsWindowSDL::setCursor(osgViewer::GraphicsWindow::MouseCursor cursor)
     case TopLeftCorner: case BottomRightCorner: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_SIZENWSE); break;
     case TopRightCorner: case BottomLeftCorner: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_SIZENESW); break;
     default: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW); break;
+#else
+    case TextCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT); break;
+    case CrosshairCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR); break;
+    case WaitCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAIT); break;
+    case HandCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER); break;
+    case NoCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NOT_ALLOWED); break;
+    case LeftRightCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_EW_RESIZE); break;
+    case UpDownCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NS_RESIZE); break;
+    case TopLeftCorner: case BottomRightCorner: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NWSE_RESIZE); break;
+    case TopRightCorner: case BottomLeftCorner: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NESW_RESIZE); break;
+    default: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT); break;
+#endif
     }
     SDL_SetCursor(sdlCursor); SDL_SetCursor(NULL);
 #endif

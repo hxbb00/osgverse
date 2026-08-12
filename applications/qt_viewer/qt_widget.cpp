@@ -43,8 +43,9 @@ void OsgSceneWidget::paintGL()
 
 void OsgSceneWidget::resizeGL(int width, int height)
 {
-    _graphicsWindow->getEventQueue()->windowResize(this->x(), this->y(), width, height);
-    _graphicsWindow->resized(this->x(), this->y(), width, height);
+    qreal w = width * devicePixelRatioF(), h = height * devicePixelRatioF();
+    _graphicsWindow->getEventQueue()->windowResize(this->x(), this->y(), w, h);
+    _graphicsWindow->resized(this->x(), this->y(), w, h);
     paintGL();  // paint once to avoid flicker while resizing the widget
 }
 

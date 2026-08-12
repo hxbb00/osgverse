@@ -17,8 +17,8 @@ IF(VISION_INUDEV_FOUND)
 
     SET_PROPERTY(TARGET ${LIB_NAME} PROPERTY FOLDER "PLUGINS")
     TARGET_COMPILE_OPTIONS(${LIB_NAME} PUBLIC -D_SCL_SECURE_NO_WARNINGS)
-    TARGET_LINK_LIBRARIES(${LIB_NAME} osgVerseDependency InuStreams InuCommonUtilities)
-    LINK_OSG_LIBRARY(${LIB_NAME} OpenThreads osg osgDB osgUtil)
+    TARGET_LINK_LIBRARIES(${LIB_NAME} osgVerseDependency osgVerseReaderWriter InuStreams InuCommonUtilities)
+    LINK_OSG_LIBRARY(${LIB_NAME} OpenThreads osg osgDB osgUtil osgGA)
 
     INSTALL(TARGETS ${LIB_NAME} EXPORT ${LIB_NAME}
             RUNTIME DESTINATION ${INSTALL_PLUGINDIR} COMPONENT libosgverse

@@ -137,7 +137,6 @@ void MainWindow::removeLastView()
 int main(int argc, char** argv)
 {
     QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    QApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
     QApplication app(argc, argv);
 
 #if USE_QMAINWINDOW
