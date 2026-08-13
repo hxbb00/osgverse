@@ -7,12 +7,19 @@
 #include <osg/Camera>
 #include <mutex>
 
+#if defined(_WIN32) && !defined(_WIN32_WCE) && !defined(__SCITECH_SNAP__)
+#   define _EGLAPIENTRY __stdcall
+#else
+#   define _EGLAPIENTRY
+#endif
+
 #if defined(_WIN64) || defined(__LP64__)
 typedef unsigned long long CUdeviceptr_v2;
 #else
 typedef unsigned int CUdeviceptr_v2;
 #endif
 typedef CUdeviceptr_v2 CUdeviceptr;
+typedef long int egl_intptr_t;
 
 #ifdef VERSE_ENABLE_MTT
 typedef struct MUctx_st* CUcontext;
@@ -54,8 +61,9 @@ namespace osgVerse
     class ExternalTexture2D : public osg::Texture2D
     {
     public:
-        ExternalTexture2D(void* cuContext);
+        ExternalTexture2D();
         ExternalTexture2D(const ExternalTexture2D& copy, const osg::CopyOp& op = osg::CopyOp::SHALLOW_COPY);
+        virtual GLenum getTextureTarget() const { return _textureTarget; }
 
         void setResourceReader(GpuResourceReaderBase* reader);
         const GpuResourceReaderBase* getResourceReader() const;
@@ -65,7 +73,7 @@ namespace osgVerse
 
     protected:
         virtual ~ExternalTexture2D();
-        void* _cuContext;
+        int _textureTarget;
     };
 
     // Gpu resource reader: load video frames from Demuxer and decode to texture
@@ -92,7 +100,10 @@ namespace osgVerse
         };
 
         GpuResourceReaderBase(CUcontext cu);
-        GpuResourceReaderBase(void* eglDisplay, void* eglContext);
+        GpuResourceReaderBase(void* eglDisplay);
+
+        int getTextureTarget() const { return _textureTarget; }
+        int getResourcePixelFormat() const { return _pixelFormat; }
 
         void setDefaultTestImage(osg::Image* image);
         osg::Image* getDefaultTestImage() { return _testImage.get(); }
@@ -142,8 +153,10 @@ namespace osgVerse
 
         struct EglResourceHandle : public osg::Referenced
         {
-            void* display; void* context; void* image;
-            EglResourceHandle(void* d, void* c) : display(d), context(c), image(NULL) {}
+            void *display, *context; void *image, *glEGLImageTargetTexture2DOES;
+            EglResourceHandle(void* d, void* c) : display(d), context(c), image(NULL),
+                                                  glEGLImageTargetTexture2DOES(NULL) {}
+            void createImageFromDefaultImage(osg::Image& image);
         };
 
         osg::ref_ptr<osg::Referenced> _handle;
@@ -152,7 +165,7 @@ namespace osgVerse
         mutable GLuint _textureID;
         ResourceState _state;
         ResourceType _resourceType;
-        int _width, _height;
+        int _width, _height, _textureTarget, _pixelFormat;
         mutable bool _vendorStatus;
         mutable std::mutex _mutex;
     };

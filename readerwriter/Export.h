@@ -22,8 +22,7 @@ namespace osgVerse
         void* eglDisplay;    // EGLDisplay
         void* eglSurface;    // EGLSurface
         void* eglContext;    // EGLContext
-        GraphicsWindowHandle() : nativeHandle(NULL), eglDisplay(NULL),
-                                 eglSurface(NULL), eglContext(NULL) {}
+        GraphicsWindowHandle() : nativeHandle(NULL), eglDisplay(NULL), eglSurface(NULL), eglContext(NULL) {}
     };
 }
 

@@ -1,7 +1,7 @@
 SET(LIB_NAME osgVersePipeline)
 SET(LIBRARY_INCLUDE_FILES
     Pipeline.h DeferredCallback.h UserInputModule.h ShadowModule.h LightModule.h HistoryBufferCallback.h
-    ResourceManager.h LightDrawable.h SkyBox.h NodeSelector.h MultiEffectNode.h
+    ResourceManager.h LightDrawable.h SkyBox.h NodeSelector.h MultiEffectNode.h ExternalTexture2D.h
     SymbolManager.h Drawer2D.h IncrementalCompiler.h IntersectionManager.h Rasterizer.h
     ShaderLibrary.h RenderCallbackXR.h NISUpscaler.h Utilities.h Global.h Allocator.h
 )
@@ -9,7 +9,7 @@ SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     Pipeline.cpp PipelineStandard.cpp PipelineLoader.cpp DeferredCallback.cpp UserInputModule.cpp
     ShadowModule.cpp LightModule.cpp LightDrawable.cpp HistoryBufferCallback.cpp ResourceManager.cpp
     SkyBox.cpp NodeSelector.cpp MultiEffectNode.cpp SymbolManager.cpp Drawer2D.cpp IncrementalCompiler.cpp
-    IntersectionManager.cpp Rasterizer.cpp ShaderLibrary.cpp RenderCallbackXR.cpp
+    IntersectionManager.cpp Rasterizer.cpp ShaderLibrary.cpp RenderCallbackXR.cpp ExternalTexture2D.cpp
     NISUpscaler.cpp Utilities.cpp UtilitiesEx.cpp
 )
 
@@ -28,19 +28,26 @@ ELSEIF(VERSE_USE_EXTERNAL_GLES3)
     ADD_DEFINITIONS(-DGLEW_EGL)
 ENDIF()
 
+IF(VERSE_USE_EXTERNAL_GLES)  # FIXME: enable EGL under X11?
+    IF(GBM_FOUND AND UNIX)
+        ADD_DEFINITIONS(-DVERSE_WITH_GBM=1)
+    ENDIF()
+ENDIF()
+
 IF(CUDA_FOUND AND VERSE_BUILD_WITH_CUDA)
     # Under Ubuntu with CUDA 12.8-13.0, see below to solve the math_functions.h exceptions:
     # https://forums.developer.nvidia.com/t/error-exception-specification-is-incompatible-for-cospi-sinpi-cospif-sinpif-with-glibc-2-41/323591/3
-    SET(LIBRARY_FILES ${LIBRARY_FILES} ExternalTexture2D.cpp ExternalTexture2D.h
+    SET(LIBRARY_FILES ${LIBRARY_FILES}
         CudaUtils/BitDepth.cu CudaUtils/ColorSpace.cu CudaUtils/ColorSpace.h
         CudaUtils/Letterbox.cu CudaUtils/CudaUtilities.cu)
-    ADD_DEFINITIONS(-DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING)
+    ADD_DEFINITIONS(-DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING -DVERSE_WITH_CUDA=1)
     NEW_CUDA_LIBRARY(${LIB_NAME} STATIC)
     TARGET_LINK_LIBRARIES(${LIB_NAME} ${CUDA_CUDA_LIBRARY})
 ELSEIF(MUSA_FOUND AND VERSE_BUILD_WITH_MUSA)
-    SET(LIBRARY_FILES ${LIBRARY_FILES} ExternalTexture2D.cpp ExternalTexture2D.h
+    SET(LIBRARY_FILES ${LIBRARY_FILES}
         MusaUtils/BitDepth.mu MusaUtils/ColorSpace.mu MusaUtils/ColorSpace.h
         MusaUtils/Letterbox.mu MusaUtils/CudaUtilities.mu)
+    ADD_DEFINITIONS(-DVERSE_WITH_CUDA=1)
     NEW_CUDA_LIBRARY(${LIB_NAME} STATIC)
     TARGET_LINK_LIBRARIES(${LIB_NAME} ${MUSA_MUSA_LIBRARY})
 ELSE()

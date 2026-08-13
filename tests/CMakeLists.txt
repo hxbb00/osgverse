@@ -55,6 +55,9 @@ ENDMACRO(NEW_CUDA_EXAMPLE)
 
 INCLUDE_DIRECTORIES(. ../3rdparty/libhv ../3rdparty/libhv/all)
 ADD_DEFINITIONS(-DHV_STATICLIB)
+IF(CUDA_FOUND AND VERSE_BUILD_WITH_CUDA)
+    ADD_DEFINITIONS(-DVERSE_WITH_CUDA=1)
+ENDIF()
 
 IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_TEST(osgVerse_Test_Compressing compressing_test.cpp)
@@ -80,6 +83,7 @@ NEW_EXAMPLE(osgVerse_Test_Shadow shadow_test.cpp)  # Shadow algorithm and effici
 NEW_EXAMPLE(osgVerse_Test_Earth earth_test.cpp)  # Lightweight earth, atmosphere and ocean creation example
 NEW_EXAMPLE(osgVerse_Test_3DGS gaussian_splatting_test.cpp)  # 3D gaussian splatting load and render example
 NEW_EXAMPLE(osgVerse_Test_HUD_Text hud_text_test.cpp)  # HUD texts rendering and dynamic changing example
+NEW_EXAMPLE(osgVerse_Test_Video video_test.cpp)  # Hardware video decoding/encoding example (NV Codec or libVA)
 IF(ONNXRUNTIME_FOUND)
     NEW_EXAMPLE(osgVerse_Test_Onnx onnx_engine_test.cpp)  # ONNX-based AI model load and inference example
 ENDIF(ONNXRUNTIME_FOUND)
@@ -104,10 +108,6 @@ IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_EXAMPLE(osgVerse_Test_Symbols symbols_test.cpp)  # Massive symbol/label example  // FIXME: show on earth, with picking and UI
     NEW_EXAMPLE(osgVerse_Test_Tween_Animation tween_animation_test.cpp)  # Tween animation path example  // FIXME: with simple UI
     NEW_EXAMPLE(osgVerse_Test_Vision_Device vision_device_test.cpp)  # Vision device (webcam, RGBD...) example  // FIXME: with simple UI
-
-    IF(CUDA_FOUND AND VERSE_BUILD_WITH_CUDA)
-        NEW_EXAMPLE(osgVerse_Test_Video video_test.cpp)  # Hardware video encoding example
-    ENDIF(CUDA_FOUND AND VERSE_BUILD_WITH_CUDA)
 
     IF(OSG_MAJOR_VERSION GREATER 2 AND OSG_MINOR_VERSION GREATER 5)
         NEW_EXAMPLE(osgVerse_Test_Scripting scripting_test.cpp)  # Script usage example  // FIXME: with simple hint UI
