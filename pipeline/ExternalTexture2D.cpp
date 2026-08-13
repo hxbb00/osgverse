@@ -10,7 +10,6 @@
 
 #   define EGL_EGLEXT_PROTOTYPES
 #   include <EGL/egl.h>
-#   include <EGL/eglext.h>
 #endif
 
 #include <iostream>
@@ -66,7 +65,7 @@ typedef void (GL_APIENTRY* PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum target, v
 struct texture_storage_metadata_t
 {
     int fourcc;
-    EGLuint64KHR modifiers;
+    uint64_t modifiers;
     EGLint stride;
     EGLint offset;
 };
@@ -100,33 +99,37 @@ void read_fd(int sock, int *fd, void *data, size_t data_len)
 	memmove(fd, CMSG_DATA(cmsg), sizeof(fd));
 }
 
-void GpuResourceReaderBase::EglResourceHandle::createTestImageFromSocket()
+static void createTestImageFromSocket(GpuResourceReaderBase::EglResourceHandle* H)
 {
     // Copied from https://gitlab.com/blaztinn/dma-buf-texture-sharing
     // See article https://blaztinn.gitlab.io/post/dmabuf-texture-sharing for details
     int texture_dmabuf_fd = 0;
-    struct texture_storage_metadata_t texture_storage_metadata;
+    struct texture_storage_metadata_t metadata;
     const char* CLIENT_FILE = "/tmp/test_client";
 
     int sock = create_socket(CLIENT_FILE);
-    read_fd(sock, &texture_dmabuf_fd, &texture_storage_metadata, sizeof(texture_storage_metadata));
-    close(sock);
-
-    EGLAttrib const attribute_list[] = {
-        EGL_WIDTH, 256, EGL_HEIGHT, 256,
-        EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_ARGB8888,
-        EGL_DMA_BUF_PLANE0_FD_EXT, texture_dmabuf_fd,
-        EGL_DMA_BUF_PLANE0_OFFSET_EXT, texture_storage_metadata.offset,
-        EGL_DMA_BUF_PLANE0_PITCH_EXT, texture_storage_metadata.stride,
-        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (uint32_t)(texture_storage_metadata.modifiers & ((((uint64_t)1) << 33) - 1)),
-        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (uint32_t)((texture_storage_metadata.modifiers>>32) & ((((uint64_t)1) << 33) - 1)),
-        EGL_NONE};
-    image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attribute_list); close(texture_dmabuf_fd);
+    read_fd(sock, &texture_dmabuf_fd, &metadata, sizeof(texture_storage_metadata)); close(sock);
+    H->createImage(texture_dmabuf_fd, 256, 256, DRM_FORMAT_ARGB8888, metadata.offset,
+                   metadata.stride, metadata.modifiers); close(texture_dmabuf_fd);
 }
-#else
-void GpuResourceReaderBase::EglResourceHandle::createTestImageFromSocket()
-{ OSG_WARN << "[GpuResourceReaderBase] createTestImageFromSocket() not supported\n"; }
 #endif
+
+void GpuResourceReaderBase::EglResourceHandle::createImage(int dmabuf_fd, int w, int h, int fourcc,
+                                                           int offset, int stride, uint64_t modifiers)
+{
+#if defined(VERSE_WITH_GBM)
+    EGLAttrib const attr[] = {
+        EGL_WIDTH, w, EGL_HEIGHT, h,
+        EGL_LINUX_DRM_FOURCC_EXT, fourcc,
+        EGL_DMA_BUF_PLANE0_FD_EXT, dmabuf_fd,
+        EGL_DMA_BUF_PLANE0_OFFSET_EXT, offset,
+        EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
+        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (uint32_t)(modifiers & ((((uint64_t)1) << 33) - 1)),
+        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (uint32_t)((modifiers >> 32) & ((((uint64_t)1) << 33) - 1)),
+        EGL_NONE };
+    image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attr);
+#endif
+}
 
 namespace
 {
@@ -290,7 +293,9 @@ void GpuResourceReaderBase::load(const osg::Texture2D& texture, osg::State& stat
     {
         EglResourceHandle* H = static_cast<EglResourceHandle*>(_handle.get());
 #ifdef VERSE_WITH_GBM
-        if (_testImage.valid()) H->createTestImageFromSocket();  // tested with external server, not given image
+#  if TEST_GBM_EGL_CLIENT
+        if (_testImage.valid()) createTestImageFromSocket(H);  // tested with external server, not given image
+#  endif
         H->glEGLImageTargetTexture2DOES = (void*)eglGetProcAddress("glEGLImageTargetTexture2DOES");
 #else
         OSG_FATAL << "[GpuResourceReaderBase] No GBM/DRM dependencies for use" << std::endl;
@@ -361,18 +366,26 @@ void GpuResourceReaderBase::subload(const osg::Texture2D& texture, osg::State& s
 
 bool GpuResourceReaderBase::getDeviceFrameBuffer(CUdeviceptr* devFrameOut, int* pitchOut)
 {
-    // FIXME: consider use a queue because reader may return multiple data in one frame
     if (_resourceType == RES_CUDA)
     {
         CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
-        if (!H->deviceFrame) return false;
-        *devFrameOut = (CUdeviceptr)H->deviceFrame;
+        if (H->deviceFrame != 0)
+        {
+            // FIXME: consider use a queue because reader may return multiple data in one frame
+            *devFrameOut = (CUdeviceptr)H->deviceFrame;
+            *pitchOut = _width * 4; return true;
+        }
     }
-    else if (_resourceType == RES_EGL)
+    return false;
+}
+
+bool GpuResourceReaderBase::getDeviceDescriptor(const std::vector<int>& desc, int layers)
+{
+    if (_resourceType == RES_EGL)
     {
-        // TODO: get DRM buf and update/recreate EGL image? or in a different method?
+        // TODO: get DRM buf attributes and update/recreate EGL image
     }
-    *pitchOut = _width * 4; return true;
+    return false;
 }
 
 namespace

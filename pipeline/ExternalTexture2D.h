@@ -7,19 +7,12 @@
 #include <osg/Camera>
 #include <mutex>
 
-#if defined(_WIN32) && !defined(_WIN32_WCE) && !defined(__SCITECH_SNAP__)
-#   define _EGLAPIENTRY __stdcall
-#else
-#   define _EGLAPIENTRY
-#endif
-
 #if defined(_WIN64) || defined(__LP64__)
 typedef unsigned long long CUdeviceptr_v2;
 #else
 typedef unsigned int CUdeviceptr_v2;
 #endif
 typedef CUdeviceptr_v2 CUdeviceptr;
-typedef long int egl_intptr_t;
 
 #ifdef VERSE_ENABLE_MTT
 typedef struct MUctx_st* CUcontext;
@@ -137,6 +130,7 @@ namespace osgVerse
     protected:
         virtual ~GpuResourceReaderBase() {}
         bool getDeviceFrameBuffer(CUdeviceptr* devFrameOut, int* pitchOut);
+        bool getDeviceDescriptor(const std::vector<int>& desc, int layers);
 
         struct CudaResourceHandle : public osg::Referenced
         {
@@ -152,7 +146,7 @@ namespace osgVerse
             void *display, *context; void *image, *glEGLImageTargetTexture2DOES; bool dirty;
             EglResourceHandle(void* d, void* c) : display(d), context(c), image(NULL),
                                                   glEGLImageTargetTexture2DOES(NULL), dirty(true) {}
-            void createTestImageFromSocket();
+            void createImage(int fd, int w, int h, int fourcc, int offset, int stride, uint64_t modifiers);
         };
 
         osg::ref_ptr<osg::Referenced> _handle;
