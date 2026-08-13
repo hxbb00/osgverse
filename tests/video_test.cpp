@@ -36,36 +36,6 @@ static osgVerse::GraphicsWindowHandle* getEglHandle(osg::GraphicsContext* gc)
     if (sdl) return sdl->getHandle(); if (glfw) return glfw->getHandle(); return NULL;
 }
 
-static osg::Program* createExternalOesProgram(const std::string& texSamplerName)
-{
-    std::string vertCode, fragCode;
-    vertCode = std::string(
-        "VERSE_VS_OUT vec4 uv, color;\n"
-        "void main() {\n"
-        "    uv = osg_MultiTexCoord0; color = osg_Color;\n"
-        "    gl_Position = VERSE_MATRIX_MVP * osg_Vertex;\n"
-        "}\n");
-    fragCode = std::string(
-        "#extension GL_OES_EGL_image_external : require\n"
-        "uniform mediump samplerExternalOES ") + texSamplerName + std::string(";\n"
-        "VERSE_FS_IN vec4 uv, color;\n"
-        "VERSE_FS_OUT vec4 fragData;\n"
-        "void main() {\n"
-        "    fragData = texture2D(") + texSamplerName + std::string(", uv.xy);\n"
-        "    VERSE_FS_FINAL(fragData);\n"
-        "}\n");
-
-    osg::Shader* vs = new osg::Shader(osg::Shader::VERTEX, vertCode);
-    osg::Shader* fs = new osg::Shader(osg::Shader::FRAGMENT, fragCode);
-    int cxtVer = 0, glslVer = 0; osgVerse::guessOpenGLVersions(cxtVer, glslVer);
-    osgVerse::Pipeline::createShaderDefinitions(vs, cxtVer, glslVer);
-    osgVerse::Pipeline::createShaderDefinitions(fs, cxtVer, glslVer);
-
-    osg::ref_ptr<osg::Program> prog = new osg::Program;
-    vs->setName("Unlit_VS"); prog->addShader(vs); fs->setName("Unlit_FS"); prog->addShader(fs);
-    prog->setName("EXTERNALOES_PROGRAM"); return prog.release();
-}
-
 int main(int argc, char** argv)
 {
     osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
@@ -79,7 +49,6 @@ int main(int argc, char** argv)
     if (file.empty()) { file = "record.mp4.verse_ffmpeg"; recordeMode = true; }
 
     CUcontext cuContext = osgVerse::CudaAlgorithm::initializeContext(0);
-    osg::ref_ptr<osg::Program> specVideoProgram;
     osg::ref_ptr<osgVerse::ExternalTexture2D> videoTexture;
     osg::ref_ptr<osgVerse::GpuResourceDemuxerMuxerContainer> videoRecorder;
 
@@ -109,7 +78,6 @@ int main(int argc, char** argv)
         }
         
         osg::ref_ptr<osgVerse::GpuResourceReaderBase> defReader = new osgVerse::GpuResourceReaderBase(H->eglDisplay);
-        specVideoProgram = createExternalOesProgram("baseTexture");
 #endif
         defReader->setDefaultTestImage(osgDB::readImageFile(testImg));
         
@@ -172,8 +140,6 @@ int main(int argc, char** argv)
         osg::Geometry* quad = osg::createTexturedQuadGeometry(
             osg::Vec3(), osg::X_AXIS * 1.6f, osg::Z_AXIS * 0.9f, 0.0f, 1.0f, 1.0f, 0.0f);
         quad->getOrCreateStateSet()->setTextureAttributeAndModes(0, videoTexture.get());
-        if (specVideoProgram.valid())
-            quad->getOrCreateStateSet()->setAttribute(specVideoProgram.get());
 
         osg::ref_ptr<osg::Geode> geode = new osg::Geode;
         geode->addDrawable(quad); root->addChild(geode.get());

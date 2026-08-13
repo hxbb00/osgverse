@@ -6,8 +6,11 @@
 #   include <linux/dma-buf.h>
 #   include <linux/dma-heap.h>
 #   include <fcntl.h>
-#   include <unistd.h> 
+#   include <unistd.h>
+
+#   define EGL_EGLEXT_PROTOTYPES
 #   include <EGL/egl.h>
+#   include <EGL/eglext.h>
 #endif
 
 #include <iostream>
@@ -33,10 +36,8 @@
 #   define EGL_DMA_BUF_PLANE0_FD_EXT         0x3272
 #   define EGL_DMA_BUF_PLANE0_OFFSET_EXT     0x3273
 #   define EGL_DMA_BUF_PLANE0_PITCH_EXT      0x3274
-#endif
-
-#ifndef GL_TEXTURE_EXTERNAL_OES
-#   define GL_TEXTURE_EXTERNAL_OES           0x8D65
+#   define EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT 0x3443
+#   define EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT 0x3444
 #endif
 
 #if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
@@ -55,38 +56,76 @@
 
 using namespace osgVerse;
 typedef void (GL_APIENTRY* PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum target, void* image);
+#define TEST_GBM_EGL_CLIENT 0
 
-void GpuResourceReaderBase::EglResourceHandle::createImageFromDefaultImage(osg::Image& input)
-#ifdef VERSE_WITH_GBM
+#if defined(VERSE_WITH_GBM) && TEST_GBM_EGL_CLIENT
+// Copied from https://gitlab.com/blaztinn/dma-buf-texture-sharing
+// See article https://blaztinn.gitlab.io/post/dmabuf-texture-sharing for details
+#  include <sys/socket.h>
+#  include <sys/un.h>
+struct texture_storage_metadata_t
 {
-    int heap_fd = open("/dev/dma_heap/system", O_RDONLY | O_CLOEXEC);
-    if (heap_fd < 0) { OSG_WARN << "[GpuResourceReaderBase] Failed to open dma_heap\n"; return; }
+    int fourcc;
+    EGLuint64KHR modifiers;
+    EGLint stride;
+    EGLint offset;
+};
 
-    struct dma_heap_allocation_data heap_data;
-    heap_data.fd = 0; heap_data.heap_flags = 0;
-    heap_data.len = input.s() * input.t() * 4;
-    heap_data.fd_flags = O_RDWR | O_CLOEXEC;
-    int ret = ioctl(heap_fd, DMA_HEAP_IOCTL_ALLOC, &heap_data);
-    if (ret < 0) { OSG_WARN << "[GpuResourceReaderBase] Failed to io-control dma_heap\n"; return; }
+int create_socket(const char *path)
+{
+	int sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+	struct sockaddr_un addr;
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	strcpy(addr.sun_path, path);
+	unlink(path);
 
-    int dma_buf_fd = heap_data.fd;
-    void* cpu_addr = mmap(NULL, heap_data.len, PROT_READ | PROT_WRITE, MAP_SHARED, dma_buf_fd, 0);
-    if (cpu_addr == MAP_FAILED) { OSG_WARN << "[GpuResourceReaderBase] Failed to map dma_heap\n"; return; }
-    else { memcpy(cpu_addr, input.data(), heap_data.len); munmap(cpu_addr, heap_data.len); }
+	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) exit(-1);
+	return sock;
+}
 
-    const egl_intptr_t attrs[] = {
-        EGL_WIDTH, input.s(), EGL_HEIGHT, input.t(),
-        EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_RGBA8888,
-        EGL_DMA_BUF_PLANE0_FD_EXT, dma_buf_fd,
-        EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-        EGL_DMA_BUF_PLANE0_PITCH_EXT, input.s() * 4,
-        EGL_IMAGE_PRESERVED_KHR, 1, EGL_NONE
-    };
-    image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attrs);
-    close(heap_fd);
+void read_fd(int sock, int *fd, void *data, size_t data_len)
+{
+	struct msghdr msg = {0};
+	struct iovec io = {.iov_base = data, .iov_len = data_len};
+	msg.msg_iov = &io;
+	msg.msg_iovlen = 1;
+
+	char c_buffer[256];
+	msg.msg_control = c_buffer;
+	msg.msg_controllen = sizeof(c_buffer);
+	if (recvmsg(sock, &msg, 0) < 0) exit(-1);
+
+	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+	memmove(fd, CMSG_DATA(cmsg), sizeof(fd));
+}
+
+void GpuResourceReaderBase::EglResourceHandle::createTestImageFromSocket()
+{
+    // Copied from https://gitlab.com/blaztinn/dma-buf-texture-sharing
+    // See article https://blaztinn.gitlab.io/post/dmabuf-texture-sharing for details
+    int texture_dmabuf_fd = 0;
+    struct texture_storage_metadata_t texture_storage_metadata;
+    const char* CLIENT_FILE = "/tmp/test_client";
+
+    int sock = create_socket(CLIENT_FILE);
+    read_fd(sock, &texture_dmabuf_fd, &texture_storage_metadata, sizeof(texture_storage_metadata));
+    close(sock);
+
+    EGLAttrib const attribute_list[] = {
+        EGL_WIDTH, 256, EGL_HEIGHT, 256,
+        EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_ARGB8888,
+        EGL_DMA_BUF_PLANE0_FD_EXT, texture_dmabuf_fd,
+        EGL_DMA_BUF_PLANE0_OFFSET_EXT, texture_storage_metadata.offset,
+        EGL_DMA_BUF_PLANE0_PITCH_EXT, texture_storage_metadata.stride,
+        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (uint32_t)(texture_storage_metadata.modifiers & ((((uint64_t)1) << 33) - 1)),
+        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (uint32_t)((texture_storage_metadata.modifiers>>32) & ((((uint64_t)1) << 33) - 1)),
+        EGL_NONE};
+    image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attribute_list); close(texture_dmabuf_fd);
 }
 #else
-{ OSG_WARN << "[GpuResourceReaderBase] createImageFromDefaultImage() not supported\n"; }
+void GpuResourceReaderBase::EglResourceHandle::createTestImageFromSocket()
+{ OSG_WARN << "[GpuResourceReaderBase] createTestImageFromSocket() not supported\n"; }
 #endif
 
 namespace
@@ -116,17 +155,11 @@ bool GpuResourceWriterBase::openResource(GpuResourceDemuxerMuxerContainer* c)
 
 GpuResourceReaderBase::GpuResourceReaderBase(CUcontext cu)
 :   osg::Texture2D::SubloadCallback(), _textureID(0), _state(INVALID), _width(0), _height(0), _vendorStatus(false)
-{
-    _handle = new CudaResourceHandle(cu); _resourceType = RES_CUDA;
-    _textureTarget = GL_TEXTURE_2D; _pixelFormat = GL_BGRA;
-}
+{ _handle = new CudaResourceHandle(cu); _resourceType = RES_CUDA; _pixelFormat = GL_BGRA; }
 
 GpuResourceReaderBase::GpuResourceReaderBase(void* eglDisplay)
 :   osg::Texture2D::SubloadCallback(), _textureID(0), _state(INVALID), _width(0), _height(0), _vendorStatus(false)
-{
-    _handle = new EglResourceHandle(eglDisplay, NULL); _resourceType = RES_EGL;
-    _textureTarget = GL_TEXTURE_EXTERNAL_OES; _pixelFormat = GL_BGRA;
-}
+{ _handle = new EglResourceHandle(eglDisplay, NULL); _resourceType = RES_EGL; _pixelFormat = GL_BGRA; }
 
 bool GpuResourceReaderBase::openResource(GpuResourceDemuxerMuxerContainer* c)
 { return (c && c->getDemuxer()) ? openResource(c->getDemuxer()) : false; }
@@ -191,7 +224,7 @@ osg::Texture::TextureObject* GpuResourceReaderBase::generateTextureObject(
 #endif
 {
     osg::ref_ptr<osg::Texture::TextureObject> obj =
-        osg::Texture::generateTextureObject(&texture, state.getContextID(), _textureTarget);
+        osg::Texture::generateTextureObject(&texture, state.getContextID(), GL_TEXTURE_2D);
     _textureID = obj->id(); return obj.get();
 }
 
@@ -257,8 +290,7 @@ void GpuResourceReaderBase::load(const osg::Texture2D& texture, osg::State& stat
     {
         EglResourceHandle* H = static_cast<EglResourceHandle*>(_handle.get());
 #ifdef VERSE_WITH_GBM
-        if (_testImage.valid() && _testImage->getTotalSizeInBytes() == imageSize)
-            H->createImageFromDefaultImage(*_testImage);
+        if (_testImage.valid()) H->createTestImageFromSocket();  // tested with external server, not given image
         H->glEGLImageTargetTexture2DOES = (void*)eglGetProcAddress("glEGLImageTargetTexture2DOES");
 #else
         OSG_FATAL << "[GpuResourceReaderBase] No GBM/DRM dependencies for use" << std::endl;
@@ -267,9 +299,9 @@ void GpuResourceReaderBase::load(const osg::Texture2D& texture, osg::State& stat
 
     if (_resourceType != RES_EGL)
     {
-        glBindTexture(_textureTarget, _textureID);
-        glTexImage2D(_textureTarget, 0, GL_RGBA8, _width, _height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glBindTexture(_textureTarget, 0);
+        glBindTexture(GL_TEXTURE_2D, _textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, _width, _height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 }
 
@@ -306,20 +338,24 @@ void GpuResourceReaderBase::subload(const osg::Texture2D& texture, osg::State& s
         _mutex.unlock();
 
         if (ext) ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, H->pbo);
-        glBindTexture(_textureTarget, _textureID);
-        glTexSubImage2D(_textureTarget, 0, 0, 0, _width, _height, _pixelFormat, GL_UNSIGNED_BYTE, 0);
+        glBindTexture(GL_TEXTURE_2D, _textureID);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, _width, _height, _pixelFormat, GL_UNSIGNED_BYTE, 0);
         if (ext) ext->glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
     }
     else if (_resourceType == RES_EGL)
     {
         EglResourceHandle* H = static_cast<EglResourceHandle*>(_handle.get());
-        if (H->glEGLImageTargetTexture2DOES)
+        if (H->dirty && H->image)
         {
-            PFNGLEGLIMAGETARGETTEXTURE2DOESPROC func = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)H->glEGLImageTargetTexture2DOES;
-            glBindTexture(_textureTarget, _textureID); func(_textureTarget, H->image);
+            if (!H->glEGLImageTargetTexture2DOES)
+                { OSG_WARN << "[GpuResourceReaderBase] glEGLImageTargetTexture2DOES not found\n"; }
+            else
+            {
+                PFNGLEGLIMAGETARGETTEXTURE2DOESPROC func = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)H->glEGLImageTargetTexture2DOES;
+                glBindTexture(GL_TEXTURE_2D, _textureID); func(GL_TEXTURE_2D, H->image);
+            }
+            H->dirty = false;
         }
-        else
-            { OSG_WARN << "[GpuResourceReaderBase] glEGLImageTargetTexture2DOES not found\n"; }
     }
 }
 
@@ -365,11 +401,11 @@ namespace
     };
 }
 
-ExternalTexture2D::ExternalTexture2D() : osg::Texture2D(), _textureTarget(GL_TEXTURE_2D)
+ExternalTexture2D::ExternalTexture2D() : osg::Texture2D()
 {}
 
 ExternalTexture2D::ExternalTexture2D(const ExternalTexture2D& copy, const osg::CopyOp& op)
-:   osg::Texture2D(copy, op), _textureTarget(copy._textureTarget)
+:   osg::Texture2D(copy, op)
 {}
 
 ExternalTexture2D::~ExternalTexture2D()
@@ -381,11 +417,7 @@ ExternalTexture2D::~ExternalTexture2D()
 void ExternalTexture2D::setResourceReader(GpuResourceReaderBase* reader)
 {
     ResourceUpdateCallback* cb = NULL;
-    if (reader)
-    {
-        cb = new ResourceUpdateCallback(reader);
-        _textureTarget = reader->getTextureTarget();
-    }
+    if (reader) cb = new ResourceUpdateCallback(reader);
     setSubloadCallback(reader); setUpdateCallback(cb);
 }
 

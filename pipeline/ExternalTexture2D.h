@@ -63,7 +63,6 @@ namespace osgVerse
     public:
         ExternalTexture2D();
         ExternalTexture2D(const ExternalTexture2D& copy, const osg::CopyOp& op = osg::CopyOp::SHALLOW_COPY);
-        virtual GLenum getTextureTarget() const { return _textureTarget; }
 
         void setResourceReader(GpuResourceReaderBase* reader);
         const GpuResourceReaderBase* getResourceReader() const;
@@ -73,7 +72,6 @@ namespace osgVerse
 
     protected:
         virtual ~ExternalTexture2D();
-        int _textureTarget;
     };
 
     // Gpu resource reader: load video frames from Demuxer and decode to texture
@@ -101,8 +99,6 @@ namespace osgVerse
 
         GpuResourceReaderBase(CUcontext cu);
         GpuResourceReaderBase(void* eglDisplay);
-
-        int getTextureTarget() const { return _textureTarget; }
         int getResourcePixelFormat() const { return _pixelFormat; }
 
         void setDefaultTestImage(osg::Image* image);
@@ -153,10 +149,10 @@ namespace osgVerse
 
         struct EglResourceHandle : public osg::Referenced
         {
-            void *display, *context; void *image, *glEGLImageTargetTexture2DOES;
+            void *display, *context; void *image, *glEGLImageTargetTexture2DOES; bool dirty;
             EglResourceHandle(void* d, void* c) : display(d), context(c), image(NULL),
-                                                  glEGLImageTargetTexture2DOES(NULL) {}
-            void createImageFromDefaultImage(osg::Image& image);
+                                                  glEGLImageTargetTexture2DOES(NULL), dirty(true) {}
+            void createTestImageFromSocket();
         };
 
         osg::ref_ptr<osg::Referenced> _handle;
@@ -165,7 +161,7 @@ namespace osgVerse
         mutable GLuint _textureID;
         ResourceState _state;
         ResourceType _resourceType;
-        int _width, _height, _textureTarget, _pixelFormat;
+        int _width, _height, _pixelFormat;
         mutable bool _vendorStatus;
         mutable std::mutex _mutex;
     };
