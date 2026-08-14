@@ -159,23 +159,28 @@ osgVerse/
 
 ### Quick Build (Recommended)
 
-Use the provided setup scripts:
-
-**Linux/macOS:**
-```bash
-./Setup.sh [optional_path]
-```
+Use the provided setup scripts. The first argument selects the build mode
+(`DEFAULT` | `CORE` | `GLES2` | `GLES3` | `WEBGL1` | `WEBGL2` | `ANDROID`);
+run without arguments to choose interactively. `WEBGL1/2` also require the
+emsdk path as the second argument.
 
 **Windows:**
 ```cmd
-Setup.bat [optional_path]
+Setup.bat DEFAULT       :: Desktop OpenGL -> build/verse_def, install -> build/sdk_def
+Setup.bat GLES3         :: OpenGL ES 3   -> build/verse_es,  install -> build/sdk_es
+Setup.bat WEBGL2 D:\emsdk   :: WebAssembly  -> build/verse_wasm2, install -> build/sdk_wasm2
 ```
+
+**Linux/macOS:** same modes with `./Setup.sh DEFAULT` etc.
 
 The script will:
 1. Download OpenSceneGraph if not present
 2. Build third-party libraries
 3. Build OpenSceneGraph
 4. Build osgVerse
+
+Each mode keeps its own build tree under `build/`, so multiple modes can be
+built side by side (e.g. `verse_def` for desktop, `verse_wasm2` for web).
 
 ### Manual Build
 
@@ -211,23 +216,20 @@ cmake --build . --target install --config Release
 
 **WebAssembly (Emscripten):**
 ```bash
-./Setup.sh /path/to/emsdk
-# Select option 3 (WebGL 1) or 4 (WebGL 2)
+./Setup.sh WEBGL2 /path/to/emsdk
 ```
 
 **Android:**
 ```bash
-# Set ANDROID_SDK and ANDROID_NDK environment variables
+# Set ANDROID_SDK and ANDROID_NDK environment variables first
 export ANDROID_SDK=/path/to/sdk
 export ANDROID_NDK=/path/to/ndk
-./Setup.sh
-# Select option 5 (Android)
+./Setup.sh ANDROID
 ```
 
 **OpenGL ES:**
 ```bash
-./Setup.sh /path/to/gles/libs
-# Select option 2 (GLES)
+./Setup.sh GLES3        # or GLES2
 ```
 
 ## Code Style Guidelines
@@ -293,10 +295,27 @@ Tests are in `tests/` directory and categorized as:
 - And many more...
 
 ### Running Tests
-Tests are built automatically when `VERSE_BUILD_EXAMPLES=ON`. Run from build directory:
+Tests are built when `VERSE_BUILD_EXAMPLES=ON` (default). In each mode's
+build tree (e.g. `build/verse_def`), binaries land in `bin/` and are also
+installed to `build/sdk_<mode>/bin`. To build and run a single test:
+
 ```bash
-./bin/osgVerse_Test_Pipeline
+cd build/verse_def                      # or the mode you configured
+cmake --build . --target osgVerse_Test_Pipeline --config Release
+bin/osgVerse_Test_Pipeline              # Windows: bin\osgVerse_Test_Pipeline.exe
 ```
+
+Common usage (see each test's own `arguments.read(...)` calls for the full list):
+```bash
+bin/osgVerse_Test_Pipeline --screen 1              # select monitor for multi-screen
+bin/osgVerse_Test_Pipeline --with-history          # enable history buffer pass
+bin/osgVerse_Test_Pipeline --user-module-pre       # add a pre-final-stage UI pass
+bin/osgVerse_Test_Pipeline --openxr                # XR rendering
+```
+
+Note: `osgVerse_Test_Physics_Basic` etc. only build when their optional deps
+(Bullet/FFmpeg/Draco) are found; missing targets usually mean a dep was not
+detected, not a build failure.
 
 ## Development Conventions
 
@@ -334,9 +353,39 @@ Use export macros for cross-platform compatibility:
 
 ### Pipeline Architecture
 The rendering pipeline uses a stage-based architecture:
-- `Pipeline`: Main orchestrator
-- `Pipeline::Stage`: Individual render pass
-- Modules (ShadowModule, LightModule, etc.) extend functionality
+- `Pipeline`: Main orchestrator; owns stages, modules, and framebuffer graph
+- `Pipeline::Stage`: Individual render pass (GBuffer, shadow, forward, final...)
+- Modules extend behavior: `ShadowModule`, `LightModule`, `UserInputModule`
+- `StandardPipelineParameters`: config struct passed to `Pipeline::setup()`
+
+**Integration pattern (all examples/tests use it):** subclass `osgViewer::Viewer`,
+override `createRenderer(camera)` and return `pipeline->createRenderer(camera)`.
+Or use `osgVerse::StandardPipelineViewer` (defined in `pipeline/Pipeline.h`,
+implemented in `pipeline/PipelineStandard.cpp`) for a ready-made viewer. See
+`tests/pipeline_test.cpp` and `tests/shadow_test.cpp`. A `Global.h`
+`osgVerse::globalInitialize(argc, argv)` call must run before creating the viewer.
+
+**Shader compatibility layer:** shaders must NOT use raw GLSL keywords. Write them
+with the `VERSE_*` macros injected by `ShaderLibrary::createShaderDefinitions()`
+(see `pipeline/ShaderLibrary.cpp`): `VERSE_MATRIX_MVP`, `VERSE_TEX1D/2D/3D/CUBE`,
+`VERSE_VS_IN/OUT`, `VERSE_FS_IN`, `VERSE_FS_FINAL`, `VERSE_lambertDiffuse`,
+`VERSE_blinnPhongSpecular`. This keeps one shader source working on OpenGL,
+GLES and WebGL. Without these macros shaders will fail on ES/WASM.
+
+**Static build plugin registration:** with `VERSE_STATIC_BUILD`/`OSG_LIBRARY_STATIC`,
+each test/plugin must call `USE_OSG_PLUGINS()`, `USE_VERSE_PLUGINS()`, and
+`USE_GRAPICSWINDOW_IMPLEMENTATION(SDL/GLFW)` at the top of `main()` or plugins
+won't load. See `tests/pipeline_test.cpp` for the exact `#ifdef` block.
+
+### Serialization Wrappers (wrappers/)
+Custom osgVerse classes are serialized through `osgDB::ObjectWrapper`
+serializers. Each wrapper is a cpp file in `wrappers/` that builds an
+`osgDB::ObjectWrapper` using macros like `ADD_USER_SERIALIZER`,
+`ADD_VECTOR_SERIALIZER`, `REGISTER_METHOD` (see `wrappers/Geometry_FixedWrapper.cpp`
+and `wrappers/WrapperMethods.cpp`). These keep `.osg/.osgb` scenes with custom
+node types working with stock `osgDB::readNodeFile`. `updateOsgBinaryWrappers()`
+fixes binary wrappers after loading; it is called by external tools via
+`osgVerse::updateOsgBinaryWrappers(...)`.
 
 ### Memory Management
 - Uses OSG's reference counting (`osg::ref_ptr`)

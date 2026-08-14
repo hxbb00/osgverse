@@ -82,4 +82,33 @@
 | 模型/动画 | animation    | 优化     |                    | initial  | 支持初步的粒子系统，基于计算着色器 | |
 | 脚本      | ui           | 新增     |                    | initial  | 考虑SWIG的方式接入C#和Python等脚本语言 | |
 | 脚本      | ui           | 新增     | 80%                | initial  | 使用Serialization映射OSG和osgVerse的核心函数 | OSG函数已经全部映射完成 |
+| 例程      | ai            | 新增     |                    |          | 编写测试程序验证TrellisPipeline，演示基于AI的3D模型生成 | 对应ai/TrellisPipeline.h |
+| 例程      | ai            | 新增     |                    |          | 编写测试程序验证ObjectTracker，演示AI推理输出的多目标跟踪 | 对应ai/Utilities.h |
+| 例程      | animation     | 新增     |                    |          | 编写测试程序验证VectorSmoother和TimeOut，演示数据滤波和时间控制 | 对应animation/Utilities.h |
+| 例程      | modeling      | 新增     |                    |          | 编写测试程序验证FFDModeler和BSplineVolume，演示自由变形 | 对应modeling/FFDModeler.h |
+| 例程      | modeling      | 新增     |                    |          | 编写测试程序验证MeshDeformer，演示网格变形/蒙皮 | 对应modeling/MeshDeformer.h |
+| 例程      | modeling      | 新增     |                    |          | 编写测试程序验证AnnotationCluster，演示标注聚类显示 | 对应modeling/AnnotationCluster.h |
+| 例程      | modeling      | 新增     |                    |          | 编写测试程序验证MathExpression，演示数学表达式解析求值 | 对应modeling/Math.h |
+| 例程      | modeling      | 新增     |                    |          | 编写测试程序验证PointCloudQuery，演示点云查询 | 对应modeling/Math.h |
+| 例程      | modeling      | 新增     |                    |          | 编写测试程序验证DynamicPointLine/Polyline/Polygon，演示动态线/面绘制 | 对应modeling/DynamicGeometry.h |
+| 例程      | modeling      | 新增     |                    |          | 重新编写TextureMapping和ConvexHull的测试程序 | 原测试已废弃(deprecated) |
+| 例程      | pipeline      | 新增     |                    |          | 编写测试程序验证NISUpscaler，演示NVIDIA图像上采样 | 对应pipeline/NISUpscaler.h |
+| 例程      | pipeline      | 新增     |                    |          | 编写测试程序验证TsfFramework，演示Windows TSF文本输入法 | 对应pipeline/TsfFramework.h |
+| 例程      | pipeline      | 新增     |                    |          | 编写测试程序验证MultiEffectNode，演示多效果节点 | 对应pipeline/MultiEffectNode.h |
+| 例程      | pipeline      | 新增     |                    |          | 编写测试程序验证TangentSpaceVisitor和NormalMapGenerator，演示法线贴图生成 | 对应pipeline/Utilities.h |
+| 例程      | pipeline      | 新增     |                    |          | 编写测试程序验证TextureCopier，演示纹理拷贝 | 对应pipeline/Utilities.h |
+| 例程      | pipeline      | 新增     |                    |          | 编写测试程序验证PipelineLoader，演示通过脚本管理Pipeline | 对应pipeline/PipelineLoader.cpp |
+| 例程      | readerwriter  | 新增     |                    |          | 编写测试程序验证GraphicsWindowWin32NV窗口实现 | 对应readerwriter/GraphicsWindowWin32NV.h |
+| 例程      | readerwriter  | 新增     |                    |          | 编写测试程序验证VulkanManager，演示Vulkan扩展接入 | 对应readerwriter/VulkanExtension.h |
+| 例程      | readerwriter  | 新增     |                    |          | 编写测试程序验证WebFetcher，演示网络资源获取 | 对应readerwriter/Utilities.h |
+| 例程      | readerwriter  | 新增     |                    |          | 编写测试程序验证MaterialGraph，演示材质简化/烘焙 | 对应readerwriter/MaterialGraph.h |
+| 例程      | readerwriter  | 新增     |                    |          | 编写测试程序验证NamedObjectFinder，演示按名字查找对象 | 对应readerwriter/NamedObjectFinder.h |
+| 例程      | readerwriter  | 新增     |                    |          | 编写测试程序验证SaverGLTF和LoaderFBX，演示GLTF导出和FBX导入 | 对应readerwriter/SaveSceneGLTF.h、LoadSceneFBX.h |
+| 例程      | readerwriter  | 新增     |                    |          | 编写测试程序验证FeatureDefinition和EncodedFrameObject | 对应readerwriter/FeatureDefinition.h、Utilities.h |
+| 例程      | readerwriter  | 新增     |                    |          | 为FixedFunctionOptimizer编写测试程序 | 仅经defaultInitParameters间接使用，无直接演示 |
+| 例程      | ui            | 新增     |                    |          | 编写测试程序验证SpiderEditor，演示节点图编辑器 | 对应ui/ImGuiComponents.h |
+| 例程      | ui            | 新增     |                    |          | 编写测试程序验证Timeline，演示时间轴控件 | 对应ui/ImGuiComponents.h |
+| 例程      | ui            | 新增     |                    |          | 编写测试程序验证VirtualKeyboard和FileDialog | 对应ui/ImGuiComponents.h |
+| 例程      | ui            | 新增     |                    |          | 编写测试程序验证常用UI组件(Label/Button/CheckBox/ComboBox/InputField/Slider/ListView等) | 对应ui/ImGuiComponents.h |
+| 例程      | ui            | 新增     |                    |          | 编写测试程序验证ImGuiManager的3D/RTT模式(addToTexture等) | 对应ui/ImGui3D.cpp |
 |<img width=40/>|          |<img width=40/>|<img width=40/>|          | | |

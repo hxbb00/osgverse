@@ -13,6 +13,8 @@
 // 需要添加在代码文件起始位置的头文件
 #include <osgDB/FileNameUtils>
 #include <osgDB/FileUtils>
+#include <osgDB/ReaderWriter>
+#include <fstream>
 
 // 假设要加载/写出的文件扩展名为.ext，这里继承osgDB::ReaderWriter创建它的读写类
 // 这个读写类必须隶属于一个独立的插件库工程，通过CMake的ADD_LIBRARY脚本建立一个名为osgdb_verse_ext的动态库文件

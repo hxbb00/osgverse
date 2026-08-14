@@ -1,24 +1,20 @@
 ---
 name: project
-description: 基于osgVerse创建新的CMake工程，建立测试程序或者插件库，并且编译运行
+description: 基于osgVerse创建新的CMake工程、测试程序或插件库，编写osgVerse/OpenSceneGraph代码（几何体、纹理、GLSL着色器、渲染到纹理、动画、多线程、网络、UI、交互、读取器）并编译运行。当用户要求新建工程、编写osgVerse代码、参考代码模板、创建插件/可执行程序时使用。
 homepage: https://gitee.com/xarray/osgverse
 metadata: {"nanobot":{"emoji":"🌤️","requires":{"bins":["cmake", "git"]}}}
 ---
 
 # Creation
 
-任何情况下，都请在Windows系统的`E:\BotWorkspace`或者Unix系统的`~/BotWorkspace`下工作，如果这个目录不存在，你可以建立它。但是请不要在这个目录之外删除、修改或者创建任何文件与目录。如果这个目录不存在又无法被建立，则直接停止你后续的工作并汇报即可。
+在当前 osgVerse 仓库根目录下工作（或用户指定的工作目录），遵循 `.codebuddy` 与 `AGENTS.md` 中已有的工程约定，不要在其他位置创建或修改文件。
 
-默认系统中已有`cmake`，`git`这些指令，不需要再单独搜索它们的路径。如果用户指示查找和阅读某个代码文件，请按照下面的顺序在`BotWorkspace`目录中查找
-- 查找`BotWorkspace`根目录
-- 查找`BotWorkspace/osgVerse`目录
-- 查找`BotWorkspace/OpenSceneGraph`目录
-- 如果用户指示查找某个代码仓库，则首先尝试使用git将这个仓库下载到`BotWorkspace`根目录中
+默认系统中已有`cmake`，`git`这些指令，不需要再单独搜索它们的路径。如果用户指示查找和阅读某个代码文件，请优先在osgVerse仓库目录中查找；如果用户指示查找某个代码仓库，则首先尝试使用git将这个仓库下载到工作目录中。
 
-创建新工程前，**必须**验证osgVerse编译结果的完整性：
-- 默认情况下，检查`BotWorkspace/osgverse/build/sdk/lib/cmake/osgVerse/osgVerseConfig.cmake`文件是否存在
-- 如果要求使用CORE模式，则检查`BotWorkspace/osgverse/build/sdk_core/lib/cmake/osgVerse/osgVerseConfig.cmake`文件是否存在
-- 如果要求使用GLES2或者GLES3模式，则检查`BotWorkspace/osgverse/build/sdk_es/lib/cmake/osgVerse/osgVerseConfig.cmake`文件是否存在
+创建新工程前，**必须**验证osgVerse编译结果的完整性。编译结果位于osgVerse仓库根目录的`build`子目录中：
+- 默认情况下，检查`build/sdk/lib/cmake/osgVerse/osgVerseConfig.cmake`文件是否存在
+- 如果要求使用CORE模式，则检查`build/sdk_core/lib/cmake/osgVerse/osgVerseConfig.cmake`文件是否存在
+- 如果要求使用GLES2或者GLES3模式，则检查`build/sdk_es/lib/cmake/osgVerse/osgVerseConfig.cmake`文件是否存在
 如果缺少文件，则执行`compiler` Skill中的能力，重新编译OpenSceneGraph和osgVerse。
 
 ## Solution template
@@ -32,19 +28,19 @@ IF(osgVerse_FOUND)
 ENDIF()
 ```
 
-创建工程的解决方案文件的时候，通过下面的参数来帮助查找osgVerse库：
+创建工程的解决方案文件的时候，通过下面的参数来帮助查找osgVerse库（`<osgVerse-root>`为osgVerse仓库根目录的绝对路径）：
 ```bash
-cmake .. -DosgVerse_DIR=<../../osgverse/build/sdk/lib/cmake/osgVerse>
+cmake .. -DosgVerse_DIR=<osgVerse-root>/build/sdk/lib/cmake/osgVerse
 ```
 
 如果是针对CORE模式编译的osgVerse，则脚本参数改为：
 ```bash
-cmake .. -DosgVerse_DIR=<../../osgverse/build/sdk_core/lib/cmake/osgVerse>
+cmake .. -DosgVerse_DIR=<osgVerse-root>/build/sdk_core/lib/cmake/osgVerse
 ```
 
 如果是针对GLES2或者GLES3模式编译的osgVerse，则脚本参数改为：
 ```bash
-cmake .. -DosgVerse_DIR=<../../osgverse/build/sdk_es/lib/cmake/osgVerse>
+cmake .. -DosgVerse_DIR=<osgVerse-root>/build/sdk_es/lib/cmake/osgVerse
 ```
 
 ## Library project

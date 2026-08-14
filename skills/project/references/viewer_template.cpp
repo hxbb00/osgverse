@@ -2,7 +2,7 @@
 // 功能测试用的可执行程序标准模板
 // @skill-status: partial
 // @skill-category: executable, test
-// @dependencies: osgVerseReaderWriter, osgVerseReaderPipeline
+// @dependencies: osgVerseReaderWriter, osgVersePipeline
 // 
 // 注意，本模板只提供参考的框架，应根据实际需求和输入参数进行修改。标注为TODO的部分是**必须**根据具体情况进行填充的
 // 一些输入变量的赋值写作...，仅作示意用途，需要根据实际情况设置正确的值
@@ -14,6 +14,8 @@
 #include <osgVerse/pipeline/Pipeline.h>
 #include <osgVerse/pipeline/Utilities.h>
 #include <osgVerse/pipeline/Global.h>
+#include <osgVerse/readerwriter/Utilities.h>   // defaultInitParameters()
+#include <osgVerse/wrappers/Export.h>          // updateOsgBinaryWrappers()
 #include <osgViewer/Viewer>
 #include <osgViewer/ViewerEventHandlers>
 

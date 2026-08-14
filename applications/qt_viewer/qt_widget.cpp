@@ -8,8 +8,15 @@ OsgSceneWidget::OsgSceneWidget(QWidget* parent)
     : QOpenGLWidget(parent), _lastModifiers(0), _firstFrame(true)
 {
     QSurfaceFormat format;
+#if defined(OSG_GL3_AVAILABLE)
+    format.setRenderableType(QSurfaceFormat::OpenGL);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    format.setVersion(4, 0);
+#else
     format.setRenderableType(QSurfaceFormat::OpenGL);
     format.setProfile(QSurfaceFormat::CompatibilityProfile);
+#endif
+    format.setDepthBufferSize(24); format.setStencilBufferSize(8);
     format.setSamples(4); setFormat(format);
     _graphicsWindow = new osgViewer::GraphicsWindowEmbedded(
         this->x(), this->y(), this->width(), this->height());

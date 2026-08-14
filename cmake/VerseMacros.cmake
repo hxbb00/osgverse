@@ -180,8 +180,7 @@ MACRO(FIND_DEPENDENCE_EX DEP_NAME INCLUDE_NAMES LIB_NAMES INC_PATH_POSTFIX BE_QU
                 PATHS ${THIRDPARTY_ROOT}/lib ${USR_SEARCH_PATH}/lib
                 ${USR_SEARCH_PATH}/${FIND_LIB_POSTFIX} ${USR_SEARCH_PATH}/lib/${FIND_SUBLIB_POSTFIX}
                 ${USR_SEARCH_PATH}/local/lib ${USR_SEARCH_PATH}/local/${FIND_LIB_POSTFIX}
-                NO_CMAKE_FIND_ROOT_PATH
-            )
+                NO_CMAKE_FIND_ROOT_PATH)
 
             IF(${DEP_NAME}_INCLUDE_DIR AND ${DEP_NAME}_LIB_DIR)
                 # Don't add *_INCLUDE_DIR here, to avoid too many confusingly global include paths

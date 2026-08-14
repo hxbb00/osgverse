@@ -26,13 +26,14 @@ LINK_OSG_LIBRARY(${LIB_NAME} OpenThreads osg osgDB osgUtil osgGA osgViewer)
 TARGET_COMPILE_OPTIONS(${LIB_NAME} PUBLIC -D_SCL_SECURE_NO_WARNINGS)
 
 IF(EFFEKSEER_FOUND)
-    TARGET_LINK_LIBRARIES(${LIB_NAME} debug Effekseer${VERSE_DEBUG_POSTFIX} optimized Effekseer)
-    TARGET_LINK_LIBRARIES(${LIB_NAME} debug EffekseerRendererCommon${VERSE_DEBUG_POSTFIX}
-                                      optimized EffekseerRendererCommon)
-    TARGET_LINK_LIBRARIES(${LIB_NAME} debug EffekseerRendererGL${VERSE_DEBUG_POSTFIX}
-                                      optimized EffekseerRendererGL)
-    TARGET_LINK_LIBRARIES(${LIB_NAME} debug EffekseerSoundDSound${VERSE_DEBUG_POSTFIX}
-                                      optimized EffekseerSoundDSound)
+    #TARGET_LINK_LIBRARIES(${LIB_NAME} debug Effekseer${VERSE_DEBUG_POSTFIX} optimized Effekseer)
+    #TARGET_LINK_LIBRARIES(${LIB_NAME} debug EffekseerRendererCommon${VERSE_DEBUG_POSTFIX}
+    #                                  optimized EffekseerRendererCommon)
+    #TARGET_LINK_LIBRARIES(${LIB_NAME} debug EffekseerRendererGL${VERSE_DEBUG_POSTFIX}
+    #                                  optimized EffekseerRendererGL)
+    #TARGET_LINK_LIBRARIES(${LIB_NAME} debug EffekseerSoundDSound${VERSE_DEBUG_POSTFIX}
+    #                                  optimized EffekseerSoundDSound)
+    TARGET_LINK_LIBRARIES(${LIB_NAME} Effekseer EffekseerRendererCommon EffekseerRendererGL EffekseerSoundDSound)
 ENDIF(EFFEKSEER_FOUND)
 
 INSTALL(TARGETS ${LIB_NAME} EXPORT ${LIB_NAME}

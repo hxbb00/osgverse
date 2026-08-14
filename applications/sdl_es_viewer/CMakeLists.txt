@@ -17,7 +17,7 @@ IF(SDL3_FOUND)
     TARGET_LINK_LIBRARIES(${EXE_NAME} SDL3)
 ELSEIF(SDL2_FOUND)
     TARGET_LINK_LIBRARIES(${EXE_NAME} SDL2 SDL2main)
-ENDIF(SDL2_FOUND)
+ENDIF()
 TARGET_LINK_LIBRARIES(${EXE_NAME} osgVerseReaderWriter osgVerseAnimation osgVersePipeline
                       osgVerseWrappers osgVerseModeling osgVerseScript osgVerseUI osgVerseAI
                       osgVerseDependency ${EXTERNAL_LIBRARIES})

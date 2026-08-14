@@ -1,13 +1,13 @@
 ---
 name: compiler
-description: 测试osgVerse在各个常见系统平台的编译情况
+description: 编译/构建osgVerse与OpenSceneGraph，使用Setup脚本切换图形接口平台（DEFAULT/CORE/GLES2/GLES3/WEBGL1/WEBGL2/ANDROID），处理编译失败、重置编译、依赖库安装等编译相关问题。当用户提到编译、构建、Setup脚本、构建失败、切换图形平台、重置编译时使用。
 homepage: https://gitee.com/xarray/osgverse
 metadata: {"nanobot":{"emoji":"🌤️","requires":{"bins":["cmake", "git"]}}}
 ---
 
 # Compilation
 
-任何情况下，都请在Windows系统的E:\BotWorkspace或者Unix系统的~/BotWorkspace下工作，如果这个目录不存在，你可以建立它。但是请不要在这个目录之外删除、修改或者创建任何文件与目录。如果这个目录不存在又无法被建立，则直接停止你后续的工作并汇报即可。
+在当前 osgVerse 仓库根目录下工作（或用户指定的工作目录），遵循 `.codebuddy` 与 `AGENTS.md` 中已有的工程约定，不要在其他位置创建或修改文件。
 
 osgVerse的代码仓库地址为：https://gitee.com/xarray/osgverse 或者 https://github.com/xarray/osgverse
 正常情况下，签出代码请执行
