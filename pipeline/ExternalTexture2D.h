@@ -146,7 +146,8 @@ namespace osgVerse
             void *display, *context; void *image, *glEGLImageTargetTexture2DOES; bool dirty;
             EglResourceHandle(void* d, void* c) : display(d), context(c), image(NULL),
                                                   glEGLImageTargetTexture2DOES(NULL), dirty(true) {}
-            void createImage(int fd, int w, int h, int fourcc, int offset, int stride, uint64_t modifiers);
+            void createImage(int fd, int w, int h, int fourcc, int offset, int stride,
+                             unsigned int modifiersL, unsigned int modifiersH);
         };
 
         osg::ref_ptr<osg::Referenced> _handle;

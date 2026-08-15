@@ -48,7 +48,6 @@ int main(int argc, char** argv)
     }
     if (file.empty()) { file = "record.mp4.verse_ffmpeg"; recordeMode = true; }
 
-    CUcontext cuContext = osgVerse::CudaAlgorithm::initializeContext(0);
     osg::ref_ptr<osgVerse::ExternalTexture2D> videoTexture;
     osg::ref_ptr<osgVerse::GpuResourceDemuxerMuxerContainer> videoRecorder;
 
@@ -63,22 +62,23 @@ int main(int argc, char** argv)
     viewer.setSceneData(root.get());
     viewer.setUpViewOnSingleScreen(0);
 
+#ifdef VERSE_WITH_CUDA
+    CUcontext inputContext = osgVerse::CudaAlgorithm::initializeContext(0);
+#else
+    osgVerse::GraphicsWindowHandle* H = getEglHandle(viewer.getCamera()->getGraphicsContext());
+    if (!H || (H && !H->eglDisplay))
+    {
+        OSG_WARN << "No Cuda or EGL context found. No method to play video on GPU device." << std::endl;
+        return 0;
+    }
+    void* inputContext = H->eglDisplay;
+#endif
+
     // Test, encode or decode video
-    osgDB::Options* opt = new osgDB::Options; opt->setPluginData("Context", cuContext);
+    osgDB::Options* opt = new osgDB::Options; opt->setPluginData("Context", inputContext);
     if (testMode)
     {   // Show a test image to see if external-texture can work
-#ifdef VERSE_WITH_CUDA
-        osg::ref_ptr<osgVerse::GpuResourceReaderBase> defReader = new osgVerse::GpuResourceReaderBase(cuContext);
-#else
-        osgVerse::GraphicsWindowHandle* H = getEglHandle(viewer.getCamera()->getGraphicsContext());
-        if (!H || (H && !H->eglDisplay))
-        {
-            OSG_WARN << "No Cuda or EGL context found. No method to play video on GPU device." << std::endl;
-            return 0;
-        }
-        
-        osg::ref_ptr<osgVerse::GpuResourceReaderBase> defReader = new osgVerse::GpuResourceReaderBase(H->eglDisplay);
-#endif
+        osg::ref_ptr<osgVerse::GpuResourceReaderBase> defReader = new osgVerse::GpuResourceReaderBase(inputContext);
         defReader->setDefaultTestImage(osgDB::readImageFile(testImg));
         
         // Create the texture
@@ -155,6 +155,6 @@ int main(int argc, char** argv)
     }
 
     if (videoTexture.valid()) videoTexture->releaseGpuData();
-    osgVerse::CudaAlgorithm::deinitializeContext(cuContext);
+    osgVerse::CudaAlgorithm::deinitializeContext(inputContext);
     return 0;
 }

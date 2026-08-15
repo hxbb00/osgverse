@@ -50,16 +50,14 @@ public:
         _numFrames = 0; return true;
     }
 
-    virtual void releaseCuda()
+    virtual void releaseGpu()
     {
         if (getResourceType() == RES_CUDA)
         {
-            CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
-            _mutex.lock();
-            ck(cuMemFree(H->deviceFrame)); H->pbo = 0; _demuxer = NULL;
+            _demuxer = NULL;
             if (_decoder != NULL) delete _decoder; _decoder = NULL;
-            _mutex.unlock();
         }
+        osgVerse::GpuResourceReaderBase::releaseGpu();
     }
 
     virtual void operator()(osg::StateAttribute* sa, osg::NodeVisitor* nv)

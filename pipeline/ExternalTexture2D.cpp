@@ -109,13 +109,16 @@ static void createTestImageFromSocket(GpuResourceReaderBase::EglResourceHandle* 
 
     int sock = create_socket(CLIENT_FILE);
     read_fd(sock, &texture_dmabuf_fd, &metadata, sizeof(texture_storage_metadata)); close(sock);
+
+    unsigned int modL = (uint32_t)(metadata.modifiers & ((((uint64_t)1) << 33) - 1));
+    unsigned int modH = (uint32_t)((metadata.modifiers >> 32) & ((((uint64_t)1) << 33) - 1));
     H->createImage(texture_dmabuf_fd, 256, 256, DRM_FORMAT_ARGB8888, metadata.offset,
-                   metadata.stride, metadata.modifiers); close(texture_dmabuf_fd);
+                   metadata.stride, modL, modH); close(texture_dmabuf_fd);
 }
 #endif
 
-void GpuResourceReaderBase::EglResourceHandle::createImage(int dmabuf_fd, int w, int h, int fourcc,
-                                                           int offset, int stride, uint64_t modifiers)
+void GpuResourceReaderBase::EglResourceHandle::createImage(int dmabuf_fd, int w, int h, int fourcc, int offset,
+                                                           int stride, unsigned int modifiersL, unsigned int modifiersH)
 {
 #if defined(VERSE_WITH_GBM)
     EGLAttrib const attr[] = {
@@ -124,10 +127,9 @@ void GpuResourceReaderBase::EglResourceHandle::createImage(int dmabuf_fd, int w,
         EGL_DMA_BUF_PLANE0_FD_EXT, dmabuf_fd,
         EGL_DMA_BUF_PLANE0_OFFSET_EXT, offset,
         EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
-        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (uint32_t)(modifiers & ((((uint64_t)1) << 33) - 1)),
-        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (uint32_t)((modifiers >> 32) & ((((uint64_t)1) << 33) - 1)),
-        EGL_NONE };
-    image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attr);
+        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, modifiersL,
+        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, modifiersH, EGL_NONE };
+    image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attr); dirty = true;
 #endif
 }
 
@@ -381,9 +383,14 @@ bool GpuResourceReaderBase::getDeviceFrameBuffer(CUdeviceptr* devFrameOut, int* 
 
 bool GpuResourceReaderBase::getDeviceDescriptor(const std::vector<int>& desc, int layers)
 {
-    if (_resourceType == RES_EGL)
+    if (_resourceType == RES_EGL && desc.size() > 5)
     {
-        // TODO: get DRM buf attributes and update/recreate EGL image
+        // Get DRM buf attributes and create EGL image
+        EglResourceHandle* H = static_cast<EglResourceHandle*>(_handle.get());
+#ifdef VERSE_WITH_GBM
+        if (H->image != NULL && H->display != NULL) eglDestroyImage(H->display, H->image);
+#endif
+        H->createImage(desc[0], _width, _height, desc[1], desc[2], desc[3], desc[4], desc[5]);
     }
     return false;
 }

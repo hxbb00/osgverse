@@ -18,7 +18,7 @@ namespace osgVerse
 
         bool initialize();
         bool decode(const uint8_t* data, int size, long long pts);
-        bool getDecodedFrame(uint8_t** frameData, int* pitch, long long* pts);
+        bool convert();
         void releaseFrame();
 
         struct ExportedBufferData
@@ -26,35 +26,34 @@ namespace osgVerse
             int fd, drmPrimePitch, drmPrimeOffset;
             uint64_t drmPrimeModifier;
         };
-        bool exportDecodedFrame(std::vector<ExportedBufferData>& bufferData);
+        bool exportDecodedFrame(int& fourcc, std::vector<ExportedBufferData>& bufferData);
         
         int getWidth() const { return _width; }
         int getHeight() const { return _height; }
         int getBitDepth() const { return _bitDepth; }
-        
-        struct gbm_bo* getGBMBuffer() { return _gbmBuffer; }
         uint32_t getFramebufferID() const { return _framebufferID; }
-        void* getEglImage() const { return _eglImage; }
+        bool isInitialized() const { return _initialized; }
 
     private:
         bool setupVAAPI();
         bool setupGBM();
         bool createSurface();
         bool createBuffer();
-        bool syncSurface();
+        bool syncSurface(bool origin);
         void cleanupVAAPI();
         void cleanupGBM();
 
         VADisplay _vaDisplay;
         VAConfigID _vaConfig;
+        VAConfigID _vppConfig;
         VAContextID _vaContext;
+        VAContextID _vppContext;
         VASurfaceID _vaSurface;
-        VABufferID _vaBuffer;
+        VASurfaceID _vaSurfaceRGB; 
         
         struct gbm_device* _gbmDevice;
         struct gbm_surface* _gbmSurface;
         struct gbm_bo* _gbmBuffer;
-        void* _eglImage;
         std::mutex _mutex;
         
         long long _currentPTS;
