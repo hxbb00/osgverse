@@ -42,6 +42,7 @@ ADD_SUBDIRECTORY(osgdb_vacodec)
 
 # vision devices
 ADD_SUBDIRECTORY(osgdb_inudev)
+ADD_SUBDIRECTORY(osgdb_webcam)
 
 # physics
 ADD_SUBDIRECTORY(osgdb_bullet)
