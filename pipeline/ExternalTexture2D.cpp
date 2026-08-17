@@ -57,6 +57,30 @@ using namespace osgVerse;
 typedef void (GL_APIENTRY* PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum target, void* image);
 #define TEST_GBM_EGL_CLIENT 0
 
+namespace
+{
+    inline bool check(int e, int iLine, const char* szFile)
+    {
+        if (e < 0)
+        {
+            OSG_WARN << "General error " << e << " at line " << iLine << " in file " << szFile;
+            return false;
+        }
+        return true;
+    }
+
+    static std::string fourccToString(uint32_t fourcc)
+    {
+        std::string result; result.resize(4);
+        result[0] = static_cast<char>(fourcc & 0xFF);
+        result[1] = static_cast<char>((fourcc >> 8) & 0xFF);
+        result[2] = static_cast<char>((fourcc >> 16) & 0xFF);
+        result[3] = static_cast<char>((fourcc >> 24) & 0xFF);
+        return result;
+    }
+}
+#define ck(call) check(call, __LINE__, __FILE__)
+
 #if defined(VERSE_WITH_GBM) && TEST_GBM_EGL_CLIENT
 // Copied from https://gitlab.com/blaztinn/dma-buf-texture-sharing
 // See article https://blaztinn.gitlab.io/post/dmabuf-texture-sharing for details
@@ -129,23 +153,26 @@ void GpuResourceReaderBase::EglResourceHandle::createImage(int dmabuf_fd, int w,
         EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
         EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, modifiersL,
         EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, modifiersH, EGL_NONE };
+    if (image != NULL && display != NULL) eglDestroyImage(display, image);
     image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attr); dirty = true;
+    if (!image)
+    {
+        OSG_WARN << "[GpuResourceReaderBase] Failed to create EGL image for DRM buffer, video-fourcc = "
+                 << std::hex << fourcc << std::dec << " (" << fourccToString(fourcc) << ")" << std::endl;
+        
+        EGLAttrib const attr2[] = {
+            EGL_WIDTH, w, EGL_HEIGHT, h,
+            EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_R8,
+            EGL_DMA_BUF_PLANE0_FD_EXT, dmabuf_fd,
+            EGL_DMA_BUF_PLANE0_OFFSET_EXT, offset,
+            EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
+            EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, modifiersL,
+            EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, modifiersH, EGL_NONE };
+        image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attr2);  // try again?
+        if (image != NULL) { OSG_WARN << "[GpuResourceReaderBase] R8 is used as a temporary result..." << std::endl; }
+    }
 #endif
 }
-
-namespace
-{
-    inline bool check(int e, int iLine, const char* szFile)
-    {
-        if (e < 0)
-        {
-            OSG_WARN << "General error " << e << " at line " << iLine << " in file " << szFile;
-            return false;
-        }
-        return true;
-    }
-}
-#define ck(call) check(call, __LINE__, __FILE__)
 
 GpuResourceWriterBase::GpuResourceWriterBase(CUcontext cu)
 :   osg::Camera::DrawCallback(), _muxerParent(NULL)
@@ -390,7 +417,8 @@ bool GpuResourceReaderBase::getDeviceDescriptor(const std::vector<int>& desc, in
 #ifdef VERSE_WITH_GBM
         if (H->image != NULL && H->display != NULL) eglDestroyImage(H->display, H->image);
 #endif
-        H->createImage(desc[0], _width, _height, desc[1], desc[2], desc[3], desc[4], desc[5]);
+        H->createImage(desc[0], _width, _height, desc[1], desc[2],
+                       desc[3], desc[4], desc[5]); return true;
     }
     return false;
 }

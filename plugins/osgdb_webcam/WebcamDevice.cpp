@@ -10,12 +10,12 @@
 
 namespace osgVerse
 {
-    WebcamDevice::WebcamDevice()
+    WebcamDevice::WebcamDevice(const std::string& name, int idx)
     {
         _serialNumber = "N/A";
         _firmwareVersion = "1.0";
-        _deviceName.clear();
-        _deviceIndex = 0;
+        _deviceName = name;
+        _deviceIndex = idx;
         _width = 640; _height = 480;
         _fps = 30.0f; _pixelFormatHint = 0;
         _frameIndex = 0; _stopThread = false;
@@ -54,8 +54,8 @@ namespace osgVerse
         if (isStreaming(StreamType::All)) stopAllStreams();
         if (_capture) { _capture->close(); _capture.reset(); }
         setState(DeviceState::Disconnected);
-
         configure(opts);
+
         _capture.reset(WebcamCapture::create());
         if (!_capture)
         {

@@ -60,7 +60,7 @@ namespace osgVerse
         unsigned int _framebufferID;
         int _videoCodec, _drmFD;
         int _width, _height, _bitDepth;
-        bool _initialized, _frameReady;
+        bool _initialized, _frameReady, _useVPP;
     };
 
 }

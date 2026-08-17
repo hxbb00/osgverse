@@ -35,6 +35,7 @@ ADD_SUBDIRECTORY(osgdb_webp)
 # video demuxer / muxer
 ADD_SUBDIRECTORY(osgdb_ffmpeg)
 ADD_SUBDIRECTORY(osgdb_mediastream)
+ADD_SUBDIRECTORY(osgdb_video)
 
 # video decoder / encoder
 ADD_SUBDIRECTORY(osgdb_nvcodec)

@@ -9,8 +9,8 @@ using namespace osgVerse;
 VaapiDecoder::VaapiDecoder(int videoCodec, int width, int height)
 :   _vaDisplay(nullptr), _vaConfig(VA_INVALID_ID), _vppConfig(VA_INVALID_ID), _vaContext(VA_INVALID_ID),
     _vppContext(_vppContext), _vaSurface(VA_INVALID_SURFACE), _vaSurfaceRGB(VA_INVALID_SURFACE),
-    _currentPTS(0), _framebufferID(0), _videoCodec(videoCodec), _drmFD(-1),
-    _width(width), _height(height), _bitDepth(8), _initialized(false), _frameReady(false)
+    _currentPTS(0), _framebufferID(0), _videoCodec(videoCodec), _drmFD(-1), _width(width), _height(height),
+    _bitDepth(8), _initialized(false), _frameReady(false), _useVPP(true)
 {}
 
 VaapiDecoder::~VaapiDecoder()
@@ -101,7 +101,7 @@ bool VaapiDecoder::setupVAAPI()
         OSG_WARN << "[VaapiDecoder] Failed to create VA config: " << vaErrorStr(status) << std::endl;
         vaTerminate(_vaDisplay); _vaDisplay = nullptr; return false;
     }
-    
+
     VAConfigAttrib attrib2 = {};
     attrib2.type = VAConfigAttribRTFormat;
     attrib2.value = VA_RT_FORMAT_RGB32;
@@ -109,8 +109,9 @@ bool VaapiDecoder::setupVAAPI()
                             &attrib2, 1, &_vppConfig);
     if (status != VA_STATUS_SUCCESS)
     {
-        OSG_WARN << "[VaapiDecoder] Failed to create VPP config: " << vaErrorStr(status) << std::endl;
-        return false;
+        OSG_WARN << "[VaapiDecoder] Failed to create VPP config: " << vaErrorStr(status)
+                 << ", RGB conversion will be disabled" << std::endl;
+        _useVPP = false;
     }
     return true;
 }
@@ -140,6 +141,7 @@ bool VaapiDecoder::createSurface()
         vaDestroySurfaces(_vaDisplay, &_vaSurface, 1);
         _vaSurface = VA_INVALID_SURFACE; return false;
     }
+    if (!_useVPP) return true;
 
     // Surface for converted RGB output
     VASurfaceAttrib rgbAttribs[1];
@@ -186,21 +188,21 @@ bool VaapiDecoder::decode(const uint8_t* data, int size, long long pts)
     status = vaBeginPicture(_vaDisplay, _vaContext, _vaSurface);
     if (status != VA_STATUS_SUCCESS)
     {
-        OSG_WARN << "[VaapiDecoder] Failed to begin picture: " << vaErrorStr(status) << std::endl;
+        OSG_WARN << "[VaapiDecoder] BeginPicture failed: " << vaErrorStr(status) << std::endl;
         vaDestroyBuffer(_vaDisplay, buffers[0]); return false;
     }
     
     status = vaRenderPicture(_vaDisplay, _vaContext, buffers, 1);
     if (status != VA_STATUS_SUCCESS) {
-        OSG_WARN << "[VaapiDecoder] Failed to render picture: " << vaErrorStr(status) << std::endl;
+        OSG_WARN << "[VaapiDecoder] RenderPicture failed: " << vaErrorStr(status) << std::endl;
         vaEndPicture(_vaDisplay, _vaContext); vaDestroyBuffer(_vaDisplay, buffers[0]); return false;
     }
     
     status = vaEndPicture(_vaDisplay, _vaContext);
     if (status != VA_STATUS_SUCCESS)
     {
-        OSG_WARN << "[VaapiDecoder] Failed to end picture: " << vaErrorStr(status) << std::endl;
-        vaDestroyBuffer(_vaDisplay, buffers[0]); return false;
+        //OSG_WARN << "[VaapiDecoder] EndPicture failed: " << vaErrorStr(status) << std::endl;
+        //vaDestroyBuffer(_vaDisplay, buffers[0]); return false;
     }
     
     syncSurface(true); vaDestroyBuffer(_vaDisplay, buffers[0]);
@@ -211,6 +213,7 @@ bool VaapiDecoder::convert()
 {
     VABufferID buffers[1];
     if (!_initialized || !_frameReady || _vaSurface == VA_INVALID_SURFACE) return false;
+    if (!_useVPP || _vppConfig == VA_INVALID_ID) return true;
     std::lock_guard<std::mutex> lock(_mutex);
 
     VAProcPipelineParameterBuffer pipelineParam;
@@ -246,8 +249,8 @@ bool VaapiDecoder::convert()
     status = vaEndPicture(_vaDisplay, _vppContext);
     if (status != VA_STATUS_SUCCESS)
     {
-        OSG_WARN << "[VaapiDecoder] VPP EndPicture failed: " << vaErrorStr(status) << std::endl;
-        vaDestroyBuffer(_vaDisplay, buffers[0]); return false;
+        //OSG_WARN << "[VaapiDecoder] VPP EndPicture failed: " << vaErrorStr(status) << std::endl;
+        //vaDestroyBuffer(_vaDisplay, buffers[0]); return false;
     }
 
     syncSurface(false); vaDestroyBuffer(_vaDisplay, buffers[0]);
@@ -270,17 +273,18 @@ bool VaapiDecoder::syncSurface(bool origin)
 
 bool VaapiDecoder::exportDecodedFrame(int& fourcc, std::vector<ExportedBufferData>& bufferData)
 {
-    if (!_initialized || _vaSurfaceRGB == VA_INVALID_SURFACE) return false;
+    VASurfaceID surface = (!_useVPP ? _vaSurface : _vaSurfaceRGB);
+    if (!_initialized || surface == VA_INVALID_SURFACE) return false;
     std::lock_guard<std::mutex> lock(_mutex);
 
     VADRMPRIMESurfaceDescriptor desc = {};
     VAStatus status = vaExportSurfaceHandle(
-        _vaDisplay, _vaSurfaceRGB, VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2,
+        _vaDisplay, surface, VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2,
         VA_EXPORT_SURFACE_READ_ONLY | VA_EXPORT_SURFACE_SEPARATE_LAYERS, &desc);
     if (status != VA_STATUS_SUCCESS)
     {
         status = vaExportSurfaceHandle(
-            _vaDisplay, _vaSurfaceRGB, VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME,
+            _vaDisplay, surface, VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME,
             VA_EXPORT_SURFACE_READ_ONLY, &desc);
     }
     

@@ -13,6 +13,9 @@
 
 namespace osgVerse
 {
+    /** To use libVA under Linux with NVIDIA card:
+        - sudo apt-get install nvidia-vaapi-driver
+     */
     class VaapiResourceReader : public osgVerse::GpuResourceReaderBase
     {
     public:

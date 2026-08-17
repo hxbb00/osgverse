@@ -90,7 +90,11 @@ int main(int argc, char** argv)
     else if (recordeMode)
     {   // Encode and output video
         osgVerse::GpuResourceReaderWriterContainer* container =
+#ifdef VERSE_WITH_CUDA
             dynamic_cast<osgVerse::GpuResourceReaderWriterContainer*>(osgDB::readObjectFile("encoder.codec_nv", opt));
+#else
+            dynamic_cast<osgVerse::GpuResourceReaderWriterContainer*>(osgDB::readObjectFile("encoder.codec_va", opt));
+#endif
         if (!container)
         {
             OSG_WARN << "No encoder found for video recording" << std::endl;
@@ -107,7 +111,11 @@ int main(int argc, char** argv)
     else
     {   // Decode and play video
         osgVerse::GpuResourceReaderWriterContainer* container =
+#ifdef VERSE_WITH_CUDA
             dynamic_cast<osgVerse::GpuResourceReaderWriterContainer*>(osgDB::readObjectFile("decoder.codec_nv", opt));
+#else
+            dynamic_cast<osgVerse::GpuResourceReaderWriterContainer*>(osgDB::readObjectFile("decoder.codec_va", opt));
+#endif
         if (!container)
         {
             OSG_WARN << "No decoder found for video playing" << std::endl;
@@ -155,6 +163,8 @@ int main(int argc, char** argv)
     }
 
     if (videoTexture.valid()) videoTexture->releaseGpuData();
+#ifdef VERSE_WITH_CUDA
     osgVerse::CudaAlgorithm::deinitializeContext(inputContext);
+#endif
     return 0;
 }

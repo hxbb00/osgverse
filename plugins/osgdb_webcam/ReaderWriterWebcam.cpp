@@ -33,8 +33,11 @@ public:
     {
         if (!acceptsExtension(osgDB::getFileExtension(file)))
             return ReadResult::FILE_NOT_HANDLED;
+        
+        std::string devName = osgDB::getStrippedName(file); int idx = atoi(devName.c_str());
+        if ((idx == 0 && devName == "0") || idx > 0) devName.clear();
 
-        osg::ref_ptr<osgVerse::WebcamDevice> dev = new osgVerse::WebcamDevice;
+        osg::ref_ptr<osgVerse::WebcamDevice> dev = new osgVerse::WebcamDevice(devName, idx);
         if (!dev->connect(options)) return ReadResult::ERROR_IN_READING_FILE;
         return dev.get();
     }

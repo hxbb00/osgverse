@@ -216,11 +216,13 @@ Our project is already tested on graphics cards listed as below:
   - osgdb_verse_webp: a plugin for reading/writing WEBP formats. It can work as a GLTF/3dtiles extension.
   - osgdb_verse_ffmpeg: a plugin for video decoding/encoding with FFmpeg (enhanced with demuxer support).
   - osgdb_verse_ms: a plugin for reading/writing from media streaming protocols like RTSP/RTMP/WebRTC (enhanced with demuxer support).
+  - osgdb_verse_video: a plugin for demuxing common video formats and working with decoders to play them.
 5. Video decoder and endcoder:
   - osgdb_codec_nv: a plugin for CUDA based video decoding/encoding support and connecting with demuxers/muxers and players.
   - osgdb_codec_va: a plugin for libVA / libGBM based video decoding support and connecting with demuxers and players.
 6. Vision devices:
   - osgdb_device_inu: a plugin to implement interfaces of VisionDevice with InuDev RGBD cameras and sensors.
+  - osgdb_device_webcam: a plugin to implement interfaces of VisionDevice with common webcams. (Windows / Linux)
 7. Database supports:
   - osgdb_verse_leveldb: a plugin for reading/writing from LevelDB database.
   - osgdb_verse_mbtiles: a plugin for reading/writing from Sqlite database using MBTiles specification.

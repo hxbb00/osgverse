@@ -29,7 +29,7 @@ namespace osgVerse
     class WebcamDevice : public VisionInputDevice
     {
     public:
-        WebcamDevice();
+        WebcamDevice(const std::string& name, int idx);
         virtual ~WebcamDevice();
 
         // VisionInputDevice interface
