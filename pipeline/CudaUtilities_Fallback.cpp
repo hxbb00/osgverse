@@ -9,7 +9,7 @@ CudaAlgorithm::TextureResource::TextureResource(osg::Texture*, int, bool) : reso
 CudaAlgorithm::TextureResource::~TextureResource() {}
 void CudaAlgorithm::TextureResource::unmap(int contextID, bool copyToTexture) {}
 CUdeviceptr CudaAlgorithm::TextureResource::map(size_t& size, int contextID, bool copyFromTexture)
-{ OSG_WARN << "[TextureResource] CUDA/MUSA not compiled\n"; return NULL; }
+{ OSG_WARN << "[TextureResource] CUDA/MUSA not compiled\n"; return 0; }
 
 namespace osgVerse
 {

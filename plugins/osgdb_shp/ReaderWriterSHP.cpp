@@ -50,21 +50,26 @@ virtual ReadResult readNode(const std::string& path, const Options* options) con
     if (shp == NULL) return ReadResult::FILE_NOT_HANDLED;
     osg::ref_ptr<osgVerse::FeatureCollection> fc = parseShapeData(fileName, shp); SHPClose(shp);
 
-    osg::ref_ptr<osg::Geometry> geom = new osg::Geometry;
-    geom->setUseDisplayList(false); geom->setUseVertexBufferObjects(true);
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode; osg::ref_ptr<osg::Geometry> geom;
     for (size_t i = 0; i < fc->features.size(); ++i)
     {
+        if (!geom)
+        {
+            geom = new osg::Geometry; geode->addDrawable(geom.get());
+            geom->setUseDisplayList(false); geom->setUseVertexBufferObjects(true);
+        }
+
         osgVerse::Feature* feature = fc->features[i];
         osgVerse::addFeatureToGeometry(*feature, geom.get(), true);
+        if (geom->getNumPrimitiveSets() > 1024) geom = NULL;
     }
 
-    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
     if (options)
     {
         int toInc = atoi(options->getPluginStringData("IncludeFeatures").c_str());
-        if (toInc > 0) geom->setUserData(fc.get());
+        if (toInc > 0) geode->setUserData(fc.get());
     }
-    geode->addDrawable(geom.get()); return geode.get();
+    return geode.get();
 }
 
 virtual ReadResult readImage(const std::string& path, const Options* options) const

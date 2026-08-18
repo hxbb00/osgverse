@@ -21,6 +21,7 @@
 #include <readerwriter/Utilities.h>
 #include <modeling/GaussianGeometry.h>
 #include <animation/TweenAnimation.h>
+#include <ui/Utilities.h>
 #include <wrappers/Export.h>
 #include <iostream>
 #include <sstream>
@@ -272,7 +273,8 @@ int main(int argc, char** argv)
     // For SingleThreaded & CullDrawThreadPerContext it seems OK
     viewer.setThreadingModel(osgViewer::Viewer::SingleThreaded);
 
-    /* FIXME: is it necessary?
+#if false
+    // FIXME: is it necessary for debug functions?
     // WGL_CONTEXT_DEBUG_BIT_ARB / GLX_CONTEXT_DEBUG_BIT_ARB = 0x0001
     // WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB / GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB = 0x0002
     int flags = 0x0001 | 0x0002;
@@ -280,7 +282,8 @@ int main(int argc, char** argv)
     viewer.getCamera()->setGraphicsContext(gc.get());
     viewer.getCamera()->setProjectionMatrix(osg::Matrix::perspective(
         30., (double)1920 / (double)1080, 1., 100.));
-    viewer.getCamera()->setViewport(new osg::Viewport(0, 0, 1920, 1080));*/
+    viewer.getCamera()->setViewport(new osg::Viewport(0, 0, 1920, 1080));
+#endif
 
     // Always call viewer.setUp*() before setupStandardPipeline()!
     int screenNo = 0; arguments.read("--screen", screenNo);

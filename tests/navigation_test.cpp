@@ -14,6 +14,7 @@
 #include <VerseCommon.h>
 #include <pipeline/IntersectionManager.h>
 #include <pipeline/Pipeline.h>
+#include <ui/Utilities.h>
 #include <ai/RecastManager.h>
 
 #ifndef _DEBUG
@@ -24,9 +25,18 @@ namespace backward { backward::SignalHandling sh; }
 class InteractiveHandler : public osgGA::GUIEventHandler
 {
 public:
-    InteractiveHandler(osg::Group* root, osg::Node* ag, osgVerse::RecastManager* rm)
-        : _agentNode(ag), _root(root), _recast(rm)
-    { _axesNode = osgDB::readNodeFile("axes.osgt.5,5,5.scale"); }
+    typedef osgVerse::HeadUpDisplayCanvas::Direction Direction;
+    typedef osgVerse::HeadUpDisplayCanvas::Anchor Anchor;
+    InteractiveHandler(osg::Group* root, osgVerse::HeadUpDisplayCanvas* h, osg::Node* ag, osgVerse::RecastManager* rm)
+        : _agentNode(ag), _canvas(h), _root(root), _recast(rm)
+    {
+        _axesNode = osgDB::readNodeFile("axes.osgt.5,5,5.scale");
+        _canvas->createText("main", L"Alt+click or double-click to create new agent",
+                            32, 800, 40, "root", Direction::ROW, Anchor::BOTTOM);
+        
+        _canvas->createText("ok", L"OK", 24, 100, 40, "root", Direction::ROW, Anchor::BOTTOM | Anchor::RIGHT);
+        _canvas->setAsButton("ok", []() {});
+    }
 
     virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
     {
@@ -94,6 +104,7 @@ protected:
     osg::ref_ptr<osg::Node> _agentNode, _axesNode;
     osg::observer_ptr<osg::Group> _root, _selectedAgent;
     osg::observer_ptr<osgVerse::RecastManager> _recast;
+    osgVerse::HeadUpDisplayCanvas* _canvas;
 };
 
 int main(int argc, char** argv)
@@ -154,12 +165,15 @@ int main(int argc, char** argv)
     //    osgVerse::createHeightField(terrain.get(), 4096, 4096)));
     //root->addChild(geode);
 
+    osgVerse::HeadUpDisplayCanvas hudCanvas;
+    root->addChild(hudCanvas.create(1920, 1080));
+
 #if false
     osgVerse::StandardPipelineViewer viewer;
 #else
     osgViewer::Viewer viewer;
 #endif
-    viewer.addEventHandler(new InteractiveHandler(root.get(), agentNode.get(), recast.get()));
+    viewer.addEventHandler(new InteractiveHandler(root.get(), &hudCanvas, agentNode.get(), recast.get()));
     viewer.addEventHandler(new osgViewer::StatsHandler);
     viewer.addEventHandler(new osgViewer::WindowSizeHandler);
     viewer.setCameraManipulator(new osgGA::TrackballManipulator);

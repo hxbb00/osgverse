@@ -1,6 +1,7 @@
 #include <modeling/Utilities.h>
 #include <pipeline/Utilities.h>
 #include <pipeline/Drawer2D.h>
+#include <osg/io_utils>
 #include <osg/Geometry>
 #include <osg/TriangleIndexFunctor>
 #include <osgUtil/Tessellator>
@@ -14,59 +15,59 @@ namespace
         void operator()(unsigned int i1, unsigned int i2, unsigned int i3)
         { triangles.push_back(i1); triangles.push_back(i2); triangles.push_back(i3); }
     };
-}
 
-static osg::PrimitiveSet* createDelaunayTriangulation(
-        osg::Geometry& geom, const std::vector<osg::ref_ptr<osg::DrawArrays>>& primitives)
-{
-    geom.removePrimitiveSet(0, geom.getNumPrimitiveSets());
-    for (size_t i = 0; i < primitives.size(); ++i)
-        geom.addPrimitiveSet(primitives[i].get());
-
-    osg::ref_ptr<osgUtil::Tessellator> tscx = new osgUtil::Tessellator;
-    tscx->setWindingType(osgUtil::Tessellator::TESS_WINDING_ODD);
-    tscx->setTessellationType(osgUtil::Tessellator::TESS_TYPE_POLYGONS);
-    tscx->setTessellationNormal(osg::Z_AXIS);
-    tscx->retessellatePolygons(geom);
-
-    osg::TriangleIndexFunctor<TriangleCollector> f; geom.accept(f);
-    if (f.triangles.size() < 65535)
-        return new osg::DrawElementsUShort(GL_TRIANGLES, f.triangles.begin(), f.triangles.end());
-    else
-        return new osg::DrawElementsUInt(GL_TRIANGLES, f.triangles.begin(), f.triangles.end());
-}
-
-static void findAndAddPrimitiveSet(osg::Geometry& geom, osg::PrimitiveSet& p, size_t vStart, bool asNewPrimitiveSet)
-{
-    // Reorder vertex indices according to vStart
-    osg::TriangleIndexFunctor<TriangleCollector> f; p.accept(f);
-    for (size_t i = 0; i < f.triangles.size(); ++i) f.triangles[i] += vStart;
-
-    // Find a suitable existing primitive-set and add to it, or create a new one
-    size_t newNumTriangles = f.triangles.size(); bool applied = false;
-    if (!asNewPrimitiveSet)
+    static osg::PrimitiveSet* createDelaunayTriangulation(
+            osg::Geometry& geom, const std::vector<osg::ref_ptr<osg::DrawArrays>>& primitives)
     {
-        for (size_t i = 0; i < geom.getNumPrimitiveSets(); ++i)
+        geom.removePrimitiveSet(0, geom.getNumPrimitiveSets());
+        for (size_t i = 0; i < primitives.size(); ++i)
+            geom.addPrimitiveSet(primitives[i].get());
+
+        osg::ref_ptr<osgUtil::Tessellator> tscx = new osgUtil::Tessellator;
+        tscx->setWindingType(osgUtil::Tessellator::TESS_WINDING_ODD);
+        tscx->setTessellationType(osgUtil::Tessellator::TESS_TYPE_POLYGONS);
+        tscx->setTessellationNormal(osg::Z_AXIS);
+        tscx->retessellatePolygons(geom);
+
+        osg::TriangleIndexFunctor<TriangleCollector> f; geom.accept(f);
+        if (f.triangles.size() < 65535)
+            return new osg::DrawElementsUShort(GL_TRIANGLES, f.triangles.begin(), f.triangles.end());
+        else
+            return new osg::DrawElementsUInt(GL_TRIANGLES, f.triangles.begin(), f.triangles.end());
+    }
+
+    static void findAndAddPrimitiveSet(osg::Geometry& geom, osg::PrimitiveSet& p, size_t vStart, bool asNewPrimitiveSet)
+    {
+        // Reorder vertex indices according to vStart
+        osg::TriangleIndexFunctor<TriangleCollector> f; p.accept(f);
+        for (size_t i = 0; i < f.triangles.size(); ++i) f.triangles[i] += vStart;
+
+        // Find a suitable existing primitive-set and add to it, or create a new one
+        size_t newNumTriangles = f.triangles.size(); bool applied = false;
+        if (!asNewPrimitiveSet)
+        {
+            for (size_t i = 0; i < geom.getNumPrimitiveSets(); ++i)
+            {
+                if (newNumTriangles < 65535)
+                {
+                    osg::DrawElementsUShort* de0 = static_cast<osg::DrawElementsUShort*>(geom.getPrimitiveSet(i));
+                    if (de0 && de0->getMode() == GL_TRIANGLES)
+                    { de0->insert(de0->end(), f.triangles.begin(), f.triangles.end()); applied = true; break; }
+                }
+
+                osg::DrawElementsUInt* de = static_cast<osg::DrawElementsUInt*>(geom.getPrimitiveSet(i));
+                if (de && de->getMode() == GL_TRIANGLES)
+                { de->insert(de->end(), f.triangles.begin(), f.triangles.end()); applied = true; break; }
+            }
+        }
+        
+        if (!applied)
         {
             if (newNumTriangles < 65535)
-            {
-                osg::DrawElementsUShort* de0 = static_cast<osg::DrawElementsUShort*>(geom.getPrimitiveSet(i));
-                if (de0 && de0->getMode() == GL_TRIANGLES)
-                { de0->insert(de0->end(), f.triangles.begin(), f.triangles.end()); applied = true; break; }
-            }
-
-            osg::DrawElementsUInt* de = static_cast<osg::DrawElementsUInt*>(geom.getPrimitiveSet(i));
-            if (de && de->getMode() == GL_TRIANGLES)
-            { de->insert(de->end(), f.triangles.begin(), f.triangles.end()); applied = true; break; }
+                geom.addPrimitiveSet(new osg::DrawElementsUShort(GL_TRIANGLES, f.triangles.begin(), f.triangles.end()));
+            else
+                geom.addPrimitiveSet(new osg::DrawElementsUInt(GL_TRIANGLES, f.triangles.begin(), f.triangles.end()));
         }
-    }
-    
-    if (!applied)
-    {
-        if (newNumTriangles < 65535)
-            geom.addPrimitiveSet(new osg::DrawElementsUShort(GL_TRIANGLES, f.triangles.begin(), f.triangles.end()));
-        else
-            geom.addPrimitiveSet(new osg::DrawElementsUInt(GL_TRIANGLES, f.triangles.begin(), f.triangles.end()));
     }
 }
 
@@ -167,10 +168,11 @@ namespace osgVerse
                 {
                     osg::Vec3Array* subV = ptList[i].get(); size_t s0 = vaToTess->size();
                     vaToTess->insert(vaToTess->end(), subV->begin(), subV->end());
-                    polygonsToTess.push_back(new osg::DrawArrays(GL_POLYGON, s0, vaToTess->size() - s0));
+                    polygonsToTess.push_back(new osg::DrawArrays(GL_POLYGON, s0, subV->size()));
                 }
 
                 osg::ref_ptr<osg::PrimitiveSet> p = createDelaunayTriangulation(*geomToTess, polygonsToTess);
+                vaToTess = static_cast<osg::Vec3Array*>(geomToTess->getVertexArray());
                 va->insert(va->end(), vaToTess->begin(), vaToTess->end());
                 ca->insert(ca->end(), vaToTess->size(), color);
                 if (p.valid()) findAndAddPrimitiveSet(*geom, *p, vStart, asNewPrimitiveSet);

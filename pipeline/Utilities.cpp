@@ -188,7 +188,7 @@ osgDB::ReaderWriter::ReadResult GlobalReadFileCallback::readNode(const std::stri
     }
 
     std::string file = osgVerse::Utf8StringValidator::check(f) ? f
-                        : osgDB::convertStringFromCurrentCodePageToUTF8(f);
+                     : osgDB::convertStringFromCurrentCodePageToUTF8(f);
     osgDB::ReaderWriter::ReadResult rr = osgDB::ReadFileCallback::readNode(file, localOpt.get());
 
     osg::Node* resultNode = rr.getNode();

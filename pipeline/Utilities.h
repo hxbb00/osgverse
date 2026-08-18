@@ -15,8 +15,6 @@
 #include <osg/TextureCubeMap>
 #include <osg/Camera>
 #include <osgGA/GUIEventHandler>
-#include <osgText/Font>
-#include <osgText/Text>
 #include "Global.h"
 #include <functional>
 #include <mutex>
@@ -308,34 +306,6 @@ namespace osgVerse
         static osg::Texture* rawFloatingTexture3D(unsigned char* data, int w, int h, int d, bool rgb);
     };
 #define GLOBE_ATTRIBUTE_INDEX 5
-
-    /** A simple HUD text displayer */
-    struct HeadUpDisplayCanvas
-    {
-        typedef std::string ItemID;
-        enum Direction { FREE = 0, ROW = 0x002, COLUMN = 0x003, WRAP = 0x004, JUSTIFY_MIDDLE = 0,
-                         JUSTIFY_START = 0x008, JUSTIFY_END = 0x010, JUSTIFY_STRETCH = 0x018 };
-        enum Anchor { CENTER = 0, LEFT = 0x020, TOP = 0x040, RIGHT = 0x080, BOTTOM = 0x100,
-                      HFILL = 0x0A0, VFILL = 0x140, FILL = 0x1E0 };
-
-        std::map<ItemID, osg::ref_ptr<osgText::Font>> fonts;
-        std::map<ItemID, osg::ref_ptr<osgText::Text>> texts;
-        std::map<ItemID, unsigned int> layoutItems;
-        osg::ref_ptr<osg::Camera> canvasCamera;
-        osg::ref_ptr<osg::Geode> textContainer;
-        lay_context* layout;
-
-        HeadUpDisplayCanvas();
-        ~HeadUpDisplayCanvas();
-
-        /** Create a text object on HUD canvas */
-        bool createText(const ItemID& name, const std::wstring& text, int size, int width, int height,
-                        const ItemID& parent = "root", Direction dir = ROW, unsigned int anchor = CENTER,
-                        const std::string& font = "");
-
-        /** Create the HUD camera */
-        osg::Camera* create(int width, int height);
-    };
 
     /** Quick event handler for convenience */
     class QuickEventHandler : public osgGA::GUIEventHandler
