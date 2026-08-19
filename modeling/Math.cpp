@@ -1523,6 +1523,5 @@ std::vector<size_t> GeometryAlgorithm::delaunayTriangulation(const std::vector<P
         addedPoints.push_back(PointType2D(osg::Vec2(v[0], v[1]), i));
     }
     osg::TriangleIndexFunctor<TriangleCollector> f;
-    geom->accept(f);
-    return f.triangles;
+    geom->accept(f); return f.triangles;
 }

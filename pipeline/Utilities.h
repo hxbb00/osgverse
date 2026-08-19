@@ -567,16 +567,19 @@ namespace osgVerse
     USE_OSGPLUGIN(verse_ept) \
     USE_OSGPLUGIN(verse_fbx) \
     USE_OSGPLUGIN(verse_gltf) \
-    USE_OSGPLUGIN(verse_ktx) \
-    USE_OSGPLUGIN(verse_mvt) \
-    USE_OSGPLUGIN(verse_web) \
-    USE_OSGPLUGIN(verse_image) \
     USE_OSGPLUGIN(verse_mesh) \
     USE_OSGPLUGIN(verse_leveldb) \
     USE_OSGPLUGIN(verse_mbtiles) \
     USE_OSGPLUGIN(verse_tiles) \
     USE_OSGPLUGIN(verse_terrain) \
     USE_OSGPLUGIN(verse_tms) \
+    USE_OSGPLUGIN(verse_mvt) \
+    USE_OSGPLUGIN(verse_shp) \
+    USE_OSGPLUGIN(verse_geojson) \
+    USE_OSGPLUGIN(verse_image) \
+    USE_OSGPLUGIN(verse_ktx) \
+    USE_OSGPLUGIN(verse_video) \
+    USE_OSGPLUGIN(verse_web) \
     USE_OSGPLUGIN(pbrlayout)
 // Note: plugins depending on external libraries should be called manually
 //  USE_OSGPLUGIN(verse_webp)

@@ -289,19 +289,29 @@ namespace osgVerse
 #endif
         regObject->addFileExtensionAlias("ept", "verse_ept");
         regObject->addFileExtensionAlias("fbx", "verse_fbx");
-        regObject->addFileExtensionAlias("ktx", "verse_ktx");
         regObject->addFileExtensionAlias("vdb", "verse_vdb");
-        regObject->addFileExtensionAlias("mvt", "verse_mvt");
         regObject->addFileExtensionAlias("gltf", "verse_gltf");
         regObject->addFileExtensionAlias("glb", "verse_gltf");
         //regObject->addFileExtensionAlias("tiff", "verse_tiff");
-        regObject->addFileExtensionAlias("rseq", "verse_image");
         regObject->addFileExtensionAlias("json", "verse_tiles");
         regObject->addFileExtensionAlias("s3c", "verse_tiles");
+        regObject->addFileExtensionAlias("stl", "verse_mesh");
         regObject->addFileExtensionAlias("terrain", "verse_terrain");
         regObject->addFileExtensionAlias("tms", "verse_tms");
+        regObject->addFileExtensionAlias("ply", "verse_3dgs");
+        regObject->addFileExtensionAlias("splat", "verse_3dgs");
+        regObject->addFileExtensionAlias("spz", "verse_3dgs");
+        regObject->addFileExtensionAlias("sog", "verse_3dgs");
+        regObject->addFileExtensionAlias("lcc", "verse_3dgs");
+        regObject->addFileExtensionAlias("lcc2", "verse_3dgs");
+        regObject->addFileExtensionAlias("mvt", "verse_mvt");
+        regObject->addFileExtensionAlias("pbf", "verse_mvt");
+        regObject->addFileExtensionAlias("shp", "verse_shp");
+        regObject->addFileExtensionAlias("geojson", "verse_geojson");
+        regObject->addFileExtensionAlias("fgb", "verse_geojson");
         regObject->addFileExtensionAlias("webp", "verse_webp");
-        regObject->addFileExtensionAlias("stl", "verse_mesh");
+        regObject->addFileExtensionAlias("ktx", "verse_ktx");
+        regObject->addFileExtensionAlias("rseq", "verse_image");
         regObject->addFileExtensionAlias("jpg", "verse_image");
         regObject->addFileExtensionAlias("jpeg", "verse_image");
 #if defined(VERSE_WASM) || defined(VERSE_ANDROID) || defined(VERSE_IOS)

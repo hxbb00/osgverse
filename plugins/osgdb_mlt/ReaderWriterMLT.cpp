@@ -165,14 +165,14 @@ protected:
                 case mlt::metadata::tileset::GeometryType::POINT:
                     {
                         const mlt::geometry::Point* g = static_cast<const mlt::geometry::Point*>(&geom);
-                        f->addPoint(osg::Vec3(g->getCoordinate().x, g->getCoordinate().y, 0.0f));
+                        f->addPoint(osg::Vec3(g->getCoordinate().x, -g->getCoordinate().y, 0.0f));
                     }
                     f->setType(GL_POINTS); savedList[i].push_back(f); break;
                 case mlt::metadata::tileset::GeometryType::LINESTRING:
                     {
                         const mlt::geometry::MultiPoint* g = static_cast<const mlt::geometry::MultiPoint*>(&geom);
                         const mlt::CoordVec& coords = g->getCoordinates();
-                        for (size_t n = 0; n < coords.size(); ++n) f->addPoint(osg::Vec3(coords[n].x, coords[n].y, 0.0f));
+                        for (size_t n = 0; n < coords.size(); ++n) f->addPoint(osg::Vec3(coords[n].x, -coords[n].y, 0.0f));
                     }
                     f->setType(GL_LINE_STRIP); savedList[i].push_back(f); break;
                 case mlt::metadata::tileset::GeometryType::POLYGON:
@@ -182,7 +182,7 @@ protected:
                         for (size_t m = 0; m < rings.size(); ++m)
                         {
                             const mlt::geometry::Polygon::Ring& coords = rings[m]; std::vector<osg::Vec3> rData;
-                            for (size_t n = 0; n < coords.size(); ++n) rData.push_back(osg::Vec3(coords[n].x, coords[n].y, 0.0f));
+                            for (size_t n = 0; n < coords.size(); ++n) rData.push_back(osg::Vec3(coords[n].x, -coords[n].y, 0.0f));
                             f->addPoints(new osg::Vec3Array(rData.begin(), rData.end()), m == 0);
                         }
                     }
@@ -191,7 +191,7 @@ protected:
                     {
                         const mlt::geometry::MultiPoint* g = static_cast<const mlt::geometry::MultiPoint*>(&geom);
                         const mlt::CoordVec& coords = g->getCoordinates();
-                        for (size_t n = 0; n < coords.size(); ++n) f->addPoint(osg::Vec3(coords[n].x, coords[n].y, 0.0f));
+                        for (size_t n = 0; n < coords.size(); ++n) f->addPoint(osg::Vec3(coords[n].x, -coords[n].y, 0.0f));
                     }
                     f->setType(GL_POINTS); savedList[i].push_back(f); break;
                 case mlt::metadata::tileset::GeometryType::MULTILINESTRING:
@@ -201,7 +201,7 @@ protected:
                         for (size_t m = 0; m < lineList.size(); ++m)
                         {
                             const mlt::CoordVec& coords = lineList[m];
-                            for (size_t n = 0; n < coords.size(); ++n) f->addPoint(osg::Vec3(coords[n].x, coords[n].y, 0.0f));
+                            for (size_t n = 0; n < coords.size(); ++n) f->addPoint(osg::Vec3(coords[n].x, -coords[n].y, 0.0f));
                             f->setType(GL_LINE_STRIP); savedList[i].push_back(f); f = new osgVerse::Feature;
                         }
                     }
@@ -217,7 +217,7 @@ protected:
                             {
                                 const mlt::geometry::Polygon::Ring& coords = rings[m]; std::vector<osg::Vec3> rData;
                                 for (size_t n = 0; n < coords.size(); ++n)
-                                    rData.push_back(osg::Vec3(coords[n].x, coords[n].y, 0.0f));
+                                    rData.push_back(osg::Vec3(coords[n].x, -coords[n].y, 0.0f));
                                 f->addPoints(new osg::Vec3Array(rData.begin(), rData.end()), m == 0);
                             }
                             f->setType(GL_POLYGON); savedList[i].push_back(f); f = new osgVerse::Feature;

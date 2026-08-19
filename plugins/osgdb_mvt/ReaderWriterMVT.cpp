@@ -19,15 +19,15 @@ struct GeometryVisitor
     GeometryVisitor() { collection = new osgVerse::FeatureCollection; }
 
     void points_begin(const uint32_t count) { current = new osgVerse::Feature; }
-    void points_point(const vtzero::point pt) { current->addPoint(osg::Vec3(pt.x, pt.y, 0.0f)); }
+    void points_point(const vtzero::point pt) { current->addPoint(osg::Vec3(pt.x, -pt.y, 0.0f)); }
     void points_end() { current->setType(GL_POINTS); collection->push_back(current.get()); }
 
     void linestring_begin(const uint32_t count) { current = new osgVerse::Feature; }
-    void linestring_point(const vtzero::point pt) { current->addPoint(osg::Vec3(pt.x, pt.y, 0.0f)); }
+    void linestring_point(const vtzero::point pt) { current->addPoint(osg::Vec3(pt.x, -pt.y, 0.0f)); }
     void linestring_end() { current->setType(GL_LINE_STRIP); collection->push_back(current.get()); }
 
     void ring_begin(const uint32_t count) { current = new osgVerse::Feature; ringData.clear(); }
-    void ring_point(const vtzero::point pt) { ringData.push_back(osg::Vec3(pt.x, pt.y, 0.0f)); }
+    void ring_point(const vtzero::point pt) { ringData.push_back(osg::Vec3(pt.x, -pt.y, 0.0f)); }
     void ring_end(const vtzero::ring_type rt)
     {
         bool first = (rt == vtzero::ring_type::outer);

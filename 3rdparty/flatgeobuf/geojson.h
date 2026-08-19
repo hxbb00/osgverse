@@ -24,7 +24,7 @@ using namespace FlatGeobuf;
 
 namespace {
 
-uint8_t magicbytes[] = { 0x66, 0x67, 0x62, 0x03, 0x66, 0x67, 0x62, 0x01 };  // 20260819: PATCH!!
+uint8_t magicbytes[] = { 0x66, 0x67, 0x62, 0x03, 0x66, 0x67, 0x62, 0x00 };
 
 struct ColumnMeta {
     uint8_t type;
@@ -564,8 +564,8 @@ const void deserialize(
     std::vector<uint8_t> buf(sizeof(magicbytes));
     readData(buf.data(), sizeof(magicbytes));
 
-    if (memcmp(buf.data(), magicbytes, sizeof(magicbytes)))
-        throw std::invalid_argument("Not a FlatGeobuf file");  // 20260819: PATCH!!
+    if (memcmp(buf.data(), magicbytes, sizeof(magicbytes) - 1))
+        throw std::invalid_argument("Not a FlatGeobuf file");  // 20260819: not consider the last bit
 
     uint64_t offset = sizeof(magicbytes);
     const auto bytesRemaining = [&inputSize, &offset] () {
