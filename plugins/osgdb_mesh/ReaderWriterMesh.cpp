@@ -50,7 +50,7 @@ public:
         lOptions->getDatabasePathList().push_front(osgDB::getFilePath(fileName));
         lOptions->setPluginStringData("STREAM_FILENAME", osgDB::getSimpleFileName(fileName));
         
-        ReadResult rr = readNode(in, lOptions);
+        ReadResult rr = readNode(in, lOptions.get());
         lOptions->getDatabasePathList().pop_front(); return rr;
     }
 

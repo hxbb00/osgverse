@@ -36,12 +36,15 @@
 | Eigen            | Embedded |           | -                  | MPL2         | https://gitlab.com/libeigen/eigen |
 | exprtk           | Embedded |           | Modeling           | MIT          | https://github.com/ArashPartow/exprtk |
 | Fir & Iir        | Embedded |           | Animation          | MIT          | https://github.com/berndporr/iir1 |
+| FlatBuffers      | Embedded | 24.12.13  | verse_fgb          | Apache2      | https://github.com/google/flatbuffers |
+| FlatGeobuf       | Embedded | 20260819  | verse_fgb          | BSD2         | https://github.com/flatgeobuf/flatgeobuf |
 | GaussForge       | Embedded | 0.6.0     | verse_3dgs         | Apache2      | https://github.com/3dgscloud/GaussForge |
 | ghc_filesystem   | Embedded |           | -                  | MIT          | https://github.com/gulrak/filesystem |
 | glfw             | Embedded | 3.4       | ReaderWriter, WASM | ZLib         | https://github.com/glfw/glfw |
 | HDBSCAN-CPP      | Embedded | 20260720  | Modeling           | MIT          | https://github.com/rohanmohapatra/hdbscan-cpp |
 | imgui            | Embedded | 1.92.5    | UI, App            | MIT          | https://github.com/ocornut/imgui |
 | imgui-knobs      | Embedded | 20251211  | UI                 | MIT          | https://github.com/altschuler/imgui-knobs |
+| imgui_md         | Embedded | 20260819  | UI                 | MIT          | https://github.com/mekhontsev/imgui_md |
 | ImGuizmo         | Embedded | 20251211  | UI                 | MIT          | https://github.com/CedricGuillemet/ImGuizmo |
 | imnode-editor    | Embedded | 20251211  | UI                 | MIT          | https://github.com/thedmd/imgui-node-editor |
 | implot           | Embedded | 20251211  | UI                 | MIT          | https://github.com/epezent/implot |
@@ -50,7 +53,7 @@
 | ktx              | Embedded |           | verse_ktx          | Apache2 (+)  | https://github.com/KhronosGroup/KTX-Software |
 | laplace_deform   | Embedded |           | -                  | -            | |
 | laszip           | Embedded |           | verse_ept          | Apache2      | https://github.com/LASzip/LASzip |
-| layout           | Embedded |           | -                  | -            | |
+| layout           | Embedded | 20260819  | UI                 | MIT (+)      | https://github.com/randrew/layout |
 | least-squares    | Embedded |           | Modeling           | MIT          | https://github.com/Rookfighter/least-squares-cpp |
 | leveldb          | Embedded |           | verse_db           | BSD3         | https://github.com/google/leveldb |
 | libheatmap       | Embedded | 20260330  | -                  | MIT          | https://github.com/lucasb-eyer/libheatmap |
@@ -63,6 +66,7 @@
 | METIS            | Embedded | 5.2.1     | Modeling           | Apache2      | https://github.com/KarypisLab/METIS |
 | mikktspace       | Embedded |           | Pipeline           | Public       | https://github.com/mmikk/MikkTSpace |
 | miniaudio        | Embedded | 0.11.23   | ReaderWriter       | Public       | https://github.com/mackron/miniaudio |
+| minimp4          | Embedded | 20260816  | verse_video        | CC0          | https://github.com/lieff/minimp4 |
 | miniz            | Embedded |           | -                  | MIT          | https://github.com/richgel999/miniz |
 | mio              | Embedded |           | -                  | MIT          | https://github.com/vimpunk/mio |
 | nanoflann        | Embedded |           | -                  | BSD          | https://github.com/jlblancoc/nanoflann |

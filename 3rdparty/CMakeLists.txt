@@ -125,6 +125,7 @@ SET(IMGUI_SOURCE_FILES
     imgui/GraphEditor.cpp imgui/GraphEditor.h imgui/ImCurveEdit.cpp imgui/ImCurveEdit.h
     imgui/ImGradient.cpp imgui/ImGradient.h imgui/ImSequencer.cpp imgui/ImSequencer.h
     imgui/ImGuizmo.cpp imgui/ImGuizmo.h imgui/ImZoomSlider.h imgui/imspinner.h
+    imgui/imgui_md.cpp imgui/imgui_md.h imgui/md4c.c imgui/md4c.h
 
 	imgui/node-editor/imgui_bezier_math.h imgui/node-editor/imgui_extra_math.h
 	imgui/node-editor/crude_json.cpp imgui/node-editor/crude_json.h
@@ -582,15 +583,15 @@ SET(LIBRARY_FILES
     nanoid/nanoid.cpp nanoid/nanoid.h nanoid/crypto_random.cpp nanoid/crypto_random.h heatmap.c heatmap.h
     sqlite3.c sqlite3.h ufbx.c ufbx.h libdeflate.c libdeflate.h tinyexr.h dkm_parallel.hpp lsqcpp.hpp
     mikktspace.c mikktspace.h laplacian_deformation.cpp laplacian_deformation.hpp lightmapper.h miniaudio.h
-	xatlas.cpp xatlas.h mapbox/variant.hpp mapbox/geometry.hpp mapbox/polylabel.hpp mapbox/geojson.cpp
+	xatlas.cpp xatlas.h mapbox/variant.hpp mapbox/geometry.hpp mapbox/polylabel.hpp mapbox/geojson.cpp minimp4.h
     GL/glew.c GL/glew.h xxYUV/rgb2yuv.cpp xxYUV/yuv2rgb.cpp xxYUV/cpu.cpp timeout.c timeout.h pmtiles.hpp
     BSplineFitting/cubic_b_spline.cpp BSplineFitting/open_cubic_b_spline.cpp BSplineFitting/spline_curve_fitting.cpp
     clipper2/clipper.engine.cpp clipper2/clipper.offset.cpp clipper2/clipper.rectclip.cpp pybind11/pybind11.h
-    parallel_hashmap/phmap.h bc7_rdo/rgbcx.h bc7_rdo/rgbcx.cpp ${APPROXMVBB_SOURCE_FILES} ${BLEND2D_SOURCE_FILES}
-    ${BOX3D_SOURCE_FILES} ${DISCREGRID_SOURCE_FILES} ${FILTER_SOURCE_FILES} ${HDBSCAN_SOURCE_FILES} ${IMGUI_SOURCE_FILES}
-    ${KTX_SOURCE_FILES} ${LASZIP_SOURCE_FILES} ${LEVELDB_SOURCE_FILES} ${LIBHV_SOURCE_FILES} ${MARL_SOURCE_FILES}
-    ${MBEDTLS_SOURCE_FILES} ${MESHOPTIMIZER_SOURCE_FILES} ${METIS_SOURCE_FILES} ${NORMALMAP_SOURCE_FILES}
-    ${OZZ_SOURCE_FILES} ${PINYIN_SOURCE_FILES} ${PMP_MCUT_SOURCE_FILES} ${RECAST_SOURCE_FILES}
+    parallel_hashmap/phmap.h bc7_rdo/rgbcx.h bc7_rdo/rgbcx.cpp flatgeobuf/packedrtree.cpp
+    ${APPROXMVBB_SOURCE_FILES} ${BLEND2D_SOURCE_FILES} ${BOX3D_SOURCE_FILES} ${DISCREGRID_SOURCE_FILES} ${FILTER_SOURCE_FILES}
+    ${HDBSCAN_SOURCE_FILES} ${IMGUI_SOURCE_FILES} ${KTX_SOURCE_FILES} ${LASZIP_SOURCE_FILES} ${LEVELDB_SOURCE_FILES}
+    ${LIBHV_SOURCE_FILES} ${MARL_SOURCE_FILES} ${MBEDTLS_SOURCE_FILES} ${MESHOPTIMIZER_SOURCE_FILES} ${METIS_SOURCE_FILES}
+    ${NORMALMAP_SOURCE_FILES} ${OZZ_SOURCE_FILES} ${PINYIN_SOURCE_FILES} ${PMP_MCUT_SOURCE_FILES} ${RECAST_SOURCE_FILES}
     ${RLOTTIE_SOURCE_FILES} ${SHAPELIB_SOURCE_FILES} ${SMPLXPP_SOURCE_FILES} ${SPZ_SOURCE_FILES} ${TINYSPLINE_SOURCE_FILES}
     ${TWEENY_SOURCE_FILES}
 )
@@ -714,7 +715,7 @@ ELSEIF(VERSE_USE_EXTERNAL_GLES3)
     ENDIF(APPLE)
 ENDIF()
 
-INCLUDE_DIRECTORIES(libhv libhv/all libhv/mbedtls imgui stb ozz leveldb ktx ktx/basisu/zstd ktx/dfdutils
+INCLUDE_DIRECTORIES(libhv libhv/all libhv/mbedtls imgui flatgeobuf stb ozz leveldb ktx ktx/basisu/zstd ktx/dfdutils
                     metis/gklib quadriflow recastnavigation/Detour rlottie rlottie/vector nanobind smplxpp spz
                     Discregrid GaussForge "${CMAKE_BINARY_DIR}/3rdparty/leveldb" ${THIRDPARTY_INCLUDE_DIRS})
 NEW_LIBRARY(${LIB_NAME} STATIC)

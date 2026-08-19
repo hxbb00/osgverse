@@ -13,6 +13,7 @@
 #include <mapbox/geojson.hpp>
 #include <mapbox/geojson/rapidjson.hpp>
 #include <mapbox/geometry.hpp>
+#include <flatgeobuf/geojson.h>
 
 struct GeometryVisitor
 {
@@ -128,6 +129,7 @@ public:
     ReaderWriterGeoJson()
     {
         supportsExtension("verse_geojson", "osgVerse pseudo-loader");
+        supportsExtension("fgb", "FlatGeobuf feature data file");
         supportsExtension("geojson", "GEOJSON feature data file");
         supportsExtension("json", "GEOJSON feature data file");
         supportsOption("IncludeFeatures", "Add FeatureCollection as UserData of the result Geometry/Image. Default: 0");
@@ -145,9 +147,13 @@ public:
         std::string ext; std::string fileName = getRealFileName(path, ext);
         if (fileName.empty()) return ReadResult::FILE_NOT_HANDLED;
 
+        osg::ref_ptr<Options> lOptions = options ?
+            static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
+        lOptions->setPluginStringData("STREAM_FILENAME", osgDB::getSimpleFileName(fileName));
+
         std::ifstream in(fileName, std::ios::in | std::ios::binary);
         if (!in) return ReadResult::FILE_NOT_HANDLED;;
-        return readObject(in, options);
+        return readObject(in, lOptions.get());
     }
 
     virtual ReadResult readNode(const std::string& path, const Options* options) const
@@ -155,9 +161,13 @@ public:
         std::string ext; std::string fileName = getRealFileName(path, ext);
         if (fileName.empty()) return ReadResult::FILE_NOT_HANDLED;
 
+        osg::ref_ptr<Options> lOptions = options ?
+            static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
+        lOptions->setPluginStringData("STREAM_FILENAME", osgDB::getSimpleFileName(fileName));
+
         std::ifstream in(fileName, std::ios::in | std::ios::binary);
         if (!in) return ReadResult::FILE_NOT_HANDLED;;
-        return readNode(in, options);
+        return readNode(in, lOptions.get());
     }
 
     virtual ReadResult readImage(const std::string& path, const Options* options) const
@@ -165,41 +175,67 @@ public:
         std::string ext; std::string fileName = getRealFileName(path, ext);
         if (fileName.empty()) return ReadResult::FILE_NOT_HANDLED;
 
+        osg::ref_ptr<Options> lOptions = options ?
+            static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
+        lOptions->setPluginStringData("STREAM_FILENAME", osgDB::getSimpleFileName(fileName));
+
         std::ifstream in(fileName, std::ios::in | std::ios::binary);
         if (!in) return ReadResult::FILE_NOT_HANDLED;
-        return readImage(in, options);
+        return readImage(in, lOptions.get());
     }
 
     virtual ReadResult readObject(std::istream& fin, const Options* options) const
     {
+        std::string filename, ext("json");
         std::string buffer((std::istreambuf_iterator<char>(fin)),
                            std::istreambuf_iterator<char>());
         if (buffer.empty()) return ReadResult::ERROR_IN_READING_FILE;
+        if (options)
+        {
+            filename = options->getPluginStringData("STREAM_FILENAME");
+            ext = osgDB::getLowerCaseFileExtension(filename);
+        }
 
         GeojsonVisitor visitor;
         try
         {
-            mapbox::geojson::geojson data = mapbox::geojson::parse(buffer);
-            mapbox::util::apply_visitor(visitor, data);
+            if (ext == "fgb")
+                visitor(FlatGeobuf::deserialize(buffer.data(), buffer.size()));
+            else
+            {
+                mapbox::geojson::geojson data = mapbox::geojson::parse(buffer);
+                mapbox::util::apply_visitor(visitor, data);
+            }
         }
-        catch (const std::runtime_error& err)
+        catch (const std::exception& err)
             { OSG_WARN << "[ReaderWriterGeoJson] Parse failed: " << err.what() << "\n"; }
         return visitor.collection.get();
     }
 
     virtual ReadResult readNode(std::istream& fin, const Options* options) const
     {
+        std::string filename, ext("json");
         std::string buffer((std::istreambuf_iterator<char>(fin)),
                            std::istreambuf_iterator<char>());
         if (buffer.empty()) return ReadResult::ERROR_IN_READING_FILE;
+        if (options)
+        {
+            filename = options->getPluginStringData("STREAM_FILENAME");
+            ext = osgDB::getLowerCaseFileExtension(filename);
+        }
 
         GeojsonVisitor visitor;
         try
         {
-            mapbox::geojson::geojson data = mapbox::geojson::parse(buffer);
-            mapbox::util::apply_visitor(visitor, data);
+            if (ext == "fgb")
+                visitor(FlatGeobuf::deserialize(buffer.data(), buffer.size()));
+            else
+            {
+                mapbox::geojson::geojson data = mapbox::geojson::parse(buffer);
+                mapbox::util::apply_visitor(visitor, data);
+            }
         }
-        catch (const std::runtime_error& err)
+        catch (const std::exception& err)
             { OSG_WARN << "[ReaderWriterGeoJson] Parse failed: " << err.what() << "\n"; }
 
         osg::ref_ptr<osg::Geode> geode = new osg::Geode; osg::ref_ptr<osg::Geometry> geom;
@@ -226,17 +262,28 @@ public:
 
     virtual ReadResult readImage(std::istream& fin, const Options* options) const
     {
+        std::string filename, ext("json");
         std::string buffer((std::istreambuf_iterator<char>(fin)),
                            std::istreambuf_iterator<char>());
         if (buffer.empty()) return ReadResult::ERROR_IN_READING_FILE;
+        if (options)
+        {
+            filename = options->getPluginStringData("STREAM_FILENAME");
+            ext = osgDB::getLowerCaseFileExtension(filename);
+        }
 
         GeojsonVisitor visitor;
         try
         {
-            mapbox::geojson::geojson data = mapbox::geojson::parse(buffer);
-            mapbox::util::apply_visitor(visitor, data);
+            if (ext == "fgb")
+                visitor(FlatGeobuf::deserialize(buffer.data(), buffer.size()));
+            else
+            {
+                mapbox::geojson::geojson data = mapbox::geojson::parse(buffer);
+                mapbox::util::apply_visitor(visitor, data);
+            }
         }
-        catch (const std::runtime_error& err)
+        catch (const std::exception& err)
             { OSG_WARN << "[ReaderWriterGeoJson] Parse failed: " << err.what() << "\n"; }
 
         std::string wStr = options ? options->getPluginStringData("ImageWidth") : "512";
