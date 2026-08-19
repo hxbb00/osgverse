@@ -49,7 +49,7 @@ public:
     void setCellVisibilityFunc(VisibilityFunc v) { _visibilityFunc = v; }
     VisibilityFunc getCellVisibilityFunc() { return _visibilityFunc; }
 
-    typedef std::function<osg::Node* (const osg::Vec3d&, unsigned int clusterID, int count)> ClusterGroupFunc;
+    typedef std::function<osg::Node* (const osg::Vec3d&, unsigned int clusterID, unsigned int count)> ClusterGroupFunc;
     void setClusterGroupFunc(ClusterGroupFunc v) { _createClusterFunc = v; }
     ClusterGroupFunc setClusterGroupFunc() { return _createClusterFunc; }
 
@@ -69,7 +69,6 @@ public:
     
 protected:
     virtual ~AnnotationCluster() {}
-    TileInfo getTileIndexForCamera(osg::Camera* camera, const osg::Vec3d& eye, double distanceToCenter);
     double calculateZoomLevel(osg::Camera* camera, double distanceToCenter);
     void rebuildClusters(const TileInfo& tileInfo);
     void rebuild(AnnotationCell& cell, int index);
@@ -80,9 +79,8 @@ protected:
     
     VisibilityFunc _visibilityFunc;
     ClusterGroupFunc _createClusterFunc;
-    TileInfo _currentTile;
     osg::Vec3d _lastCameraPos;
-    int _recollectFlag;
+    int _recollectFlag, _currentZoom;
     bool _needUpdate, _convToLatLon;
 };
 

@@ -103,6 +103,7 @@ IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_EXAMPLE(osgVerse_Test_Pbr_Prerequisite pbr_prerequisite.cpp)  # PBR necessary textures creator example
     NEW_EXAMPLE(osgVerse_Test_Physics_Basic physics_basic_test.cpp)  # Basic rigid physics example  // FIXME: with simple hint UI # TODO: physics_walk_test...
     NEW_EXAMPLE(osgVerse_Test_Player_Animation player_animation_test.cpp)  # Player animation example  // FIXME: with simple UI
+    NEW_EXAMPLE(osgVerse_Test_POI_Cluster poi_cluster_test.cpp)  # POI features reading and clustering example  // FIXME: with simple UI
     NEW_EXAMPLE(osgVerse_Test_Point_Cloud point_cloud_test.cpp)  # Point cloud with simple picking example  // FIXME: add eye-doming, UI
     NEW_EXAMPLE(osgVerse_Test_Polygon2D polygon2d_test.cpp)  # 2D polygon processing example  // FIXME: with simple hint UI
     NEW_EXAMPLE(osgVerse_Test_Symbols symbols_test.cpp)  # Massive symbol/label example  // FIXME: show on earth, with picking and UI
