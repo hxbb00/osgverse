@@ -532,7 +532,7 @@ const void serialize(
     }
 }
 
-const void serialize(
+/*const void serialize(
     const feature_collection &fc,
     const std::function<void(void *, size_t)> &writeData,
     const bool createIndex = false)
@@ -552,7 +552,7 @@ const void serialize(std::vector<uint8_t> &flatgeobuf, const feature_collection 
         std::copy(buf, buf + size, std::back_inserter(flatgeobuf));
     };
     serialize(fc, writeData, createIndex);
-}
+}*/
 
 const void deserialize(
     const std::function<void(const void *, const size_t)> &readData,

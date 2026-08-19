@@ -189,9 +189,9 @@ bool AnnotationCluster::getLeaves(std::vector<AnnotationCell>& leaves, unsigned 
         for (auto& leaf : results)
         {
             auto indexIt = leaf.properties.find("cellIndex");
-            if (indexIt != leaf.properties.end() && indexIt->second.is<size_t>())
+            if (indexIt != leaf.properties.end() && indexIt->second.is<uint64_t>())
             {
-                size_t id = indexIt->second.get<size_t>();
+                size_t id = (size_t)indexIt->second.get<uint64_t>();
                 if (id < _cells.size()) leaves.push_back(_cells[id]);
             }
         }
@@ -258,9 +258,9 @@ void AnnotationCluster::rebuildClusters(const TileInfo& tileInfo)
                 if (node.valid()) _clusterContainer->addChild(node.get());
             }
         }
-        else if (feature.properties["cellIndex"].is<size_t>())
+        else if (feature.properties["cellIndex"].is<uint64_t>())
         {
-            size_t index = feature.properties["cellIndex"].get<size_t>();
+            size_t index = (size_t)feature.properties["cellIndex"].get<uint64_t>();
             if (index < _cells.size() && _visibilityFunc) _visibilityFunc(_cells[index], true);
         }
     }
@@ -276,7 +276,7 @@ void AnnotationCluster::rebuild(AnnotationCell& cell, int index)
     
     mapbox::feature::property_map props;
     SuperCluster* sc = static_cast<SuperCluster*>(_internal.get());
-    props["cellIndex"] = (index < 0) ? sc->features.size() : size_t(index);
+    props["cellIndex"] = (index < 0) ? (uint64_t)sc->features.size() : (uint64_t)index;
     props["label"] = cell.label;
     props["priority"] = cell.priority;
     feature.properties = props;
