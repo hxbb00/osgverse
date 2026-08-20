@@ -95,7 +95,7 @@ IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_EXAMPLE(osgVerse_Test_MCP_Server mcp_server_test.cpp)  # Basic MCP server support example
     NEW_EXAMPLE(osgVerse_Test_Media_Stream media_stream_test.cpp)  # Media playing/streaming example  // FIXME: use datachannel, remove macro
     NEW_EXAMPLE(osgVerse_Test_Mesh_Process mesh_process_test.cpp)  # Basic mesh processing example  // FIXME: with simple hint UI
-    NEW_EXAMPLE(osgVerse_Test_Navigation navigation_test.cpp)  # Mesh navigation example  // FIXME: with simple UI to add/set agents
+    NEW_EXAMPLE(osgVerse_Test_Navigation navigation_test.cpp)  # Mesh-based path-finding and navigating example with recast-nav
     NEW_EXAMPLE(osgVerse_Test_Occlusion_Cull occlusion_cull_test.cpp)  # Soft-rasterizer based culling example  // FIXME: with huge data...
     NEW_EXAMPLE(osgVerse_Test_Paging_Lod paging_lod_test.cpp)  # Paging LOD optimization and creation example  // FIXME: with simple UI
     NEW_EXAMPLE(osgVerse_Test_Particle_U3D particle_u3d_test.cpp)  # Unity-like particle effect example  // FIXME: more effects

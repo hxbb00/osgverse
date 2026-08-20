@@ -12,14 +12,9 @@ namespace
 
     void webMercatorToLatLon(double worldX, double worldY, double& lat, double& lon)
     {
-        lon = worldX * 360.0 - 180.0;
-        if (worldY <= 0.0 || worldY >= 1.0)
-            lat = 90.0 - worldY * 180.0;
-        else
-        {
-            double y = 0.5 - worldY;
-            lat = 2.0 * std::atan(std::exp(y * 2.0 * osg::PI)) * 180.0 / osg::PI - 90.0;
-        }
+        double y = 0.5 - worldY; lon = worldX * 360.0 - 180.0;
+        lat = 2.0 * std::atan(std::exp(y * 2.0 * osg::PI)) * 180.0 / osg::PI - 90.0;
+        lat = std::max(-85.05112878, std::min(85.05112878, lat));
     }
 
     void getTileBounds(int zoom, int x, int y, double& minLat, double& maxLat, 
@@ -31,10 +26,17 @@ namespace
         double minWorldY = static_cast<double>(y) / tiles;
         double maxWorldY = static_cast<double>(y + 1) / tiles;
         
-        webMercatorToLatLon(minWorldX, minWorldY, minLat, minLon);
-        webMercatorToLatLon(maxWorldX, maxWorldY, maxLat, maxLon);
-        if (minLat > maxLat) std::swap(minLat, maxLat);
-        if (minLon > maxLon) std::swap(minLon, maxLon);
+        double lat1, lon1, lat2, lon2, lat3, lon3, lat4, lon4;
+        webMercatorToLatLon(minWorldX, minWorldY, lat1, lon1);
+        webMercatorToLatLon(maxWorldX, minWorldY, lat2, lon2);
+        webMercatorToLatLon(minWorldX, maxWorldY, lat3, lon3);
+        webMercatorToLatLon(maxWorldX, maxWorldY, lat4, lon4);
+        
+        minLat = osg::inDegrees(std::min({lat1, lat2, lat3, lat4}));
+        maxLat = osg::inDegrees(std::max({lat1, lat2, lat3, lat4}));
+        minLon = osg::inDegrees(std::min({lon1, lon2, lon3, lon4}));
+        maxLon = osg::inDegrees(std::max({lon1, lon2, lon3, lon4}));
+        if (maxLon - minLon > 180.0) std::swap(minLon, maxLon);
     }
 }
 
@@ -241,7 +243,7 @@ void AnnotationCluster::rebuildClusters(const TileInfo& tileInfo)
     else if (!sc->engine)
         { OSG_WARN << "[AnnotationCluster] No supercluster engine\n"; return; }
 
-    // Get new cluster results  // FIXME: high level may contain no features... How to find that?
+    // Get new cluster results
     auto tileFeatures = sc->engine->getTile(tileInfo.zoom, tileInfo.x, tileInfo.y);
     for (auto& feature : tileFeatures)
     {

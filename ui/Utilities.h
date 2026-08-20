@@ -18,16 +18,22 @@ namespace osgVerse
     struct HeadUpDisplayCanvas
     {
         typedef std::string ItemID;
+        typedef std::pair<ItemID, osg::Vec2> ItemPosition;
         typedef std::function<void ()> OnClickEvent;
         typedef std::function<void (bool, bool)> OnSelectEvent;
-        enum Direction { FREE = 0, ROW = 0x002, COLUMN = 0x003, WRAP = 0x004, JUSTIFY_MIDDLE = 0,
-                         JUSTIFY_START = 0x008, JUSTIFY_END = 0x010, JUSTIFY_STRETCH = 0x018 };
+        enum ChildLayout { FREE = 0, ROW = 0x002, COLUMN = 0x003, WRAP = 0x004, JUSTIFY_MIDDLE = 0,
+                           JUSTIFY_START = 0x008, JUSTIFY_END = 0x010, JUSTIFY_STRETCH = 0x018 };
         enum Anchor { CENTER = 0, LEFT = 0x020, BOTTOM = 0x040, RIGHT = 0x080, TOP = 0x100,
                       HFILL = 0x0A0, VFILL = 0x140, FILL = 0x1E0 };
 
+        struct ButtonInfo
+        {
+            std::vector<osg::ref_ptr<osg::Geometry>> shapes; osg::Vec3 colors[3];
+            OnClickEvent clicked; OnSelectEvent selected;
+        };
+        std::map<ItemID, ButtonInfo> buttons;
         std::map<ItemID, osg::ref_ptr<osgText::Font>> fonts;
         std::map<ItemID, osg::ref_ptr<osgText::Text>> texts;
-        std::map<ItemID, osg::ref_ptr<osg::Geometry>> buttons;
         std::map<ItemID, unsigned int> layoutItems;
         osg::ref_ptr<osg::Camera> canvasCamera;
         osg::ref_ptr<osg::Geode> textContainer;
@@ -38,7 +44,7 @@ namespace osgVerse
 
         /** Create a text object on HUD canvas */
         bool createText(const ItemID& name, const std::wstring& text, int size, int width, int height,
-                        const ItemID& parent = "root", Direction dir = ROW, unsigned int anchor = CENTER,
+                        const ItemID& parent = "root", ChildLayout lay = FREE, unsigned int anchor = CENTER,
                         const std::string& font = "");
 
         /** Create a button on existing text object */
@@ -46,14 +52,14 @@ namespace osgVerse
                          const osg::Vec3& clickedColor = osg::Vec3(0.1f, 0.1f, 0.2f), const osg::Vec3& hoverColor = osg::Vec3(0.2f, 0.2f, 0.3f));
         
         /** Create 2 arrow buttons on existing text object */
-        //bool setAsSelector(const ItemID& name, OnSelectEvent ev, const osg::Vec3& bkColor = osg::Vec3(0.3f, 0.3f, 0.3f),
-        //                   const osg::Vec3& clickedColor = osg::Vec3(0.1f, 0.1f, 0.2f), const osg::Vec3& hoverColor = osg::Vec3(0.2f, 0.2f, 0.3f));
+        bool setAsSelector(const ItemID& name, OnSelectEvent ev, const osg::Vec3& bkColor = osg::Vec3(0.3f, 0.3f, 0.3f),
+                           const osg::Vec3& clickedColor = osg::Vec3(0.1f, 0.1f, 0.2f), const osg::Vec3& hoverColor = osg::Vec3(0.2f, 0.2f, 0.3f));
 
         /** Get items under current position */
-        std::vector<HeadUpDisplayCanvas::ItemID> getItems(float x, float y) const;
+        std::vector<ItemPosition> getItems(float x, float y, bool onlyButtons) const;
 
         /** Create the HUD camera */
-        osg::Camera* create(int width, int height);
+        osg::Camera* create(int width, int height, ChildLayout globalLayout = FREE);
     };
 
     /** Keyboard state buffering manager */

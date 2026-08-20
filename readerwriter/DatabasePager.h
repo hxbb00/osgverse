@@ -25,14 +25,14 @@ namespace osgVerse
             enum FilterResult
             { MERGE_NOW = 0, MERGE_LATER, DISCARDED };
 
-            virtual FilterResult filter(osg::PagedLOD* parent, const std::string& name, osg::Node*)
+            virtual FilterResult filter(const osg::FrameStamp& fs, osg::PagedLOD*, const std::string&, osg::Node*)
             { return MERGE_NOW; }
 
-            virtual FilterResult filter(osg::Group* parent, const std::string& name, osg::Node*)
+            virtual FilterResult filter(const osg::FrameStamp& fs, osg::Group*, const std::string&, osg::Node*)
             { return MERGE_NOW; }
 
-            virtual void merge(osg::Group* parent, std::vector<osg::ref_ptr<osg::Node>>& nodes)
-            { for (size_t i = 0; i < nodes.size(); ++i) parent->addChild(nodes[i].get()); nodes.clear(); }
+            virtual void merge(const osg::FrameStamp& fs, osg::Group* p, std::vector<osg::ref_ptr<osg::Node>>& n)
+            { for (size_t i = 0; i < n.size(); ++i) p->addChild(n[i].get()); n.clear(); }
         };
         void setDataMergeCallback(DataMergeCallback* cb) { _mergeCallback = cb; }
         DataMergeCallback* getDataMergeCallback() const { return _mergeCallback.get(); }

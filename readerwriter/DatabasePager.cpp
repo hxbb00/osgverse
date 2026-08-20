@@ -128,9 +128,9 @@ void DatabasePager::addLoadedDataToSceneGraph_Verse(const osg::FrameStamp& frame
             if (_mergeCallback.valid())
             {
                 if (plod) filterResult = _mergeCallback->filter(
-                    plod, databaseRequest->_fileName, databaseRequest->_loadedModel.get());
+                    frameStamp, plod, databaseRequest->_fileName, databaseRequest->_loadedModel.get());
                 else filterResult = _mergeCallback->filter(
-                    group.get(), databaseRequest->_fileName, databaseRequest->_loadedModel.get());
+                    frameStamp, group.get(), databaseRequest->_fileName, databaseRequest->_loadedModel.get());
             }
 
             if (filterResult == DataMergeCallback::MERGE_NOW)
@@ -167,7 +167,7 @@ void DatabasePager::addLoadedDataToSceneGraph_Verse(const osg::FrameStamp& frame
     std::map<osg::ref_ptr<osg::Group>, std::vector<osg::ref_ptr<osg::Node>>>::iterator itr;
     for (itr = _loadedNodes.begin(); itr != _loadedNodes.end();)
     {
-        if (_mergeCallback.valid()) _mergeCallback->merge(itr->first.get(), itr->second);
+        if (_mergeCallback.valid()) _mergeCallback->merge(frameStamp, itr->first.get(), itr->second);
         if (!itr->second.empty()) itr++; else itr = _loadedNodes.erase(itr);
     }
 }

@@ -121,22 +121,38 @@ function(DETECT_X64_MICRO_ARCHITECTURE out_vendor out_arch)
       else()
         # https://en.wikichip.org/wiki/intel/cpuid#Family_6
         set(architecture_lookup_hash
-            183 "raptorlake"   186 "raptorlake"    165 "cometlake"
-            167 "rocketlake"   151 "alderlake"     154 "alderlake"
-            87  "knl"          133 "knm"            92  "goldmont"
-            90  "silvermont"    76 "silvermont"    102 "cannonlake"
-            140 "tigerlake"    141 "tigerlake"
-            142 "kabylake"     158 "coffelake"
-            85  "skylake-avx512"
-            78  "skylake"       94  "skylake"
-            61  "broadwell"     71  "broadwell"     79  "broadwell"   86  "broadwell"
-            60  "haswell"       69  "haswell"       70  "haswell"     63  "haswell"
-            58  "ivy-bridge"    62  "ivy-bridge"
-            42  "sandy-bridge"  45  "sandy-bridge"
-            31  "westmere"      37  "westmere"      44  "westmere"    47  "westmere"
-            26  "nehalem"       30  "nehalem"       31  "nehalem"     46  "nehalem"
-            23  "penryn"        29  "penryn"
-            14  "core"          15  "merom"         28  "atom"
+            143 "sapphire-rapids"                   173 "granite-rapids"                                  # Xeon
+            207 "emerald-rapids"                    221 "clearwater-forest"
+            150 "elkhartlake"   156 "jasperlake"    182 "grandridge"                                      # Atom
+            204 "pantherlake"   213 "wildcatlake"   215 "bartlettlake"                                    # Core/Ultra (2023~)
+            170 "meteorlake"    189 "lunarlake"
+            181 "arrowlake"                                                                               # Arrow Lake-U / Meteor Lake Refresh
+            197 "arrowlake"                                                                               # Arrow Lake-S
+            198 "arrowlake"                                                                               # Arrow Lake-H/HX
+            183 "raptorlake"    186 "raptorlake"                                                          # Raptor Lake (13th/14th Gen Core, 2022-2024)
+            167 "rocketlake"                                                                              # Rocket Lake (11th Gen Core Desktop, 14nm, 2021)
+            151 "alderlake"     154 "alderlake"                                                           # Alder Lake (12th Gen Core P+E, 2021)
+            165 "cometlake"                                                                               # Comet Lake (10th Gen Core, 14nm, 2020)
+            140 "tigerlake"     141 "tigerlake"                                                           # Tiger Lake (11th Gen Core Mobile, 10nm SuperFin, 2020)
+            102 "cannonlake"                                                                              # Cannon Lake (10nm, 2018)
+            158 "coffelake"                                                                               # Coffee Lake (8th/9th Gen Core, 14nm++, 2017-2019)
+            133 "knm"                                                                                     # Knights Mill (Xeon Phi, 2018)
+            87  "knl"                                                                                     # Knights Landing (Xeon Phi, 2016)
+            85  "skylake-avx512"                                                                          # Skylake Server/Xeon (2017)
+            78  "skylake"       94 "skylake"                                                              # Skylake (6th Gen Core, 14nm, 2015)
+            92  "goldmont"                                                                                # Goldmont (Apollo Lake, 2016)
+            142 "kabylake"                                                                                # Kaby Lake (7th Gen Core, 14nm, 2016)
+            61  "broadwell"     71  "broadwell"     79  "broadwell"     86  "broadwell"                   # Broadwell (5th Gen Core, 14nm, 2014)
+            76  "silvermont"    90  "silvermont"                                                          # Silvermont (Bay Trail, 2013)
+            60  "haswell"       69  "haswell"       70  "haswell"       63  "haswell"                     # Haswell (4th Gen Core, 22nm, 2013)
+            58  "ivy-bridge"    62  "ivy-bridge"                                                          # Ivy Bridge (3rd Gen Core, 22nm, 2012)
+            42  "sandy-bridge"  45  "sandy-bridge"                                                        # Sandy Bridge (2nd Gen Core, 32nm, 2011)
+            31  "westmere"      37  "westmere"      44  "westmere"      47  "westmere"                    # Westmere (1st Gen Core iX, 32nm, 2010)
+            26  "nehalem"       30  "nehalem"       31  "nehalem"       46  "nehalem"                     # Nehalem (Core iX, 45nm, 2008-2010)
+            23  "penryn"        29  "penryn"                                                              # Penryn (Core 2 Duo/Quad, 45nm, 2007-2008)
+            14  "core"                                                                                    # Core 2 (65nm, 2006-2007)
+            15  "merom"                                                                                   # Merom (Core 2 Duo)
+            28  "atom"                                                                                    # Early Atom (45nm, 2008)
             )
         # here lookup hash key and return value as MICRO_ARCHITECTURE
         list(FIND architecture_lookup_hash "${_cpu_model}" _found)
@@ -183,13 +199,13 @@ function(DETECT_X64_MICRO_ARCHITECTURE out_vendor out_arch)
     elseif(_cpu_family EQUAL 21) # 15h
       set(MICRO_ARCHITECTURE "amd-15h")
       if(_cpu_model LESS 2)
-        set(MICRO_ARCHITECTURE ${MICRO_ARCHITECTURE} "bulldozer")
+        set(MICRO_ARCHITECTURE "bulldozer")
       elseif(_cpu_model LESS 32)
-        set(MICRO_ARCHITECTURE ${MICRO_ARCHITECTURE} "piledriver")
+        set(MICRO_ARCHITECTURE "piledriver")
       elseif(_cpu_model LESS 64)
-        set(MICRO_ARCHITECTURE ${MICRO_ARCHITECTURE} "steamroller")
+        set(MICRO_ARCHITECTURE "steamroller")
       elseif(_cpu_model LESS 112)
-        set(MICRO_ARCHITECTURE ${MICRO_ARCHITECTURE} "excavator")
+        set(MICRO_ARCHITECTURE "excavator")
       endif()
     elseif(_cpu_family EQUAL 20) # 14h
       set(MICRO_ARCHITECTURE "amd-14h" "bobcat")
@@ -198,9 +214,9 @@ function(DETECT_X64_MICRO_ARCHITECTURE out_vendor out_arch)
     elseif(_cpu_family EQUAL 16) # 10h
       set(MICRO_ARCHITECTURE "amd-10h" "k10")
     elseif(_cpu_family EQUAL 15)
-      set(MICRO_ARCHITECTURE "amd" "k8")
+      set(MICRO_ARCHITECTURE "amd-k8")
       if(_cpu_model GREATER 64) # I don't know the right number to put here. This is just a guess from the hardware I have access to
-        set(MICRO_ARCHITECTURE "amd" "k8-sse3")
+        set(MICRO_ARCHITECTURE "amd-k8-sse3")
       endif(_cpu_model GREATER 64)
     else()
       set(MICRO_ARCHITECTURE "amd-${_cpu_family}" "unknown-${_cpu_model}")

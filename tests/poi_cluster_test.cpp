@@ -46,7 +46,7 @@ int main(int argc, char** argv)
 
     osg::ref_ptr<osgText::Font> font = osgText::readFontFile(MISC_DIR + "LXGWFasmartGothic.ttf");
     osg::ref_ptr<osgVerse::AnnotationCluster> cluster = new osgVerse::AnnotationCluster;
-    //cluster->setClusterOptions(40.0f, 16);
+    //cluster->setClusterOptions(40.0f, 7);
     cluster->setConvertCellToLatLon(false);  // set false to input (lat, lon, 0) in radians directly
     cluster->setClusterGroupFunc([font](const osg::Vec3d& pos, unsigned int clusterID, unsigned int count) -> osg::Node*
     {

@@ -25,17 +25,18 @@ namespace backward { backward::SignalHandling sh; }
 class InteractiveHandler : public osgGA::GUIEventHandler
 {
 public:
-    typedef osgVerse::HeadUpDisplayCanvas::Direction Direction;
+    typedef osgVerse::HeadUpDisplayCanvas::ChildLayout ChildLayout;
     typedef osgVerse::HeadUpDisplayCanvas::Anchor Anchor;
     InteractiveHandler(osg::Group* root, osgVerse::HeadUpDisplayCanvas* h, osg::Node* ag, osgVerse::RecastManager* rm)
-        : _agentNode(ag), _canvas(h), _root(root), _recast(rm)
+        : _agentNode(ag), _canvas(h), _root(root), _recast(rm), _agentID(0)
     {
         _axesNode = osgDB::readNodeFile("axes.osgt.5,5,5.scale");
-        _canvas->createText("main", L"Alt+click or double-click to create new agent",
-                            32, 800, 40, "root", Direction::ROW, Anchor::BOTTOM);
+        _canvas->createText("main", L"Alt+click to create new agent",
+                            32, 800, 40, "root", ChildLayout::FREE, Anchor::BOTTOM);
+        _canvas->createText("event", L"", 32, 800, 40, "root", ChildLayout::FREE, Anchor::TOP);
         
-        _canvas->createText("ok", L"OK", 24, 100, 40, "root", Direction::ROW, Anchor::BOTTOM | Anchor::RIGHT);
-        _canvas->setAsButton("ok", []() {});
+        _canvas->createText("ok", L"Cancel", 16, 100, 40, "root", ChildLayout::FREE, Anchor::BOTTOM | Anchor::RIGHT);
+        _canvas->setAsButton("ok", [&]() { select(NULL); });
     }
 
     virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
@@ -49,7 +50,7 @@ public:
             if (!result.drawable) return false;
 
             osg::Node* agent = result.findNode([](osg::Node* node)
-            { return (node->getName() == "RecastAgent"); });
+            { return node->getName().find("RecastAgent") != std::string::npos; });
             select(agent ? agent->asGroup() : NULL);
         }
         else if (ea.getEventType() == osgGA::GUIEventAdapter::DOUBLECLICK ||
@@ -57,33 +58,34 @@ public:
         {
             osgVerse::IntersectionResult result = osgVerse::findNearestIntersection(
                 view->getCamera(), ea.getXnormalized(), ea.getYnormalized());
-            if (!result.drawable) return false;
+            std::stringstream ss; if (!result.drawable) return false;
 
             if (_selectedAgent != NULL)
             {
                 osg::Node* agent = result.findNode([](osg::Node* node)
-                { if (node->getName() == "RecastAgent") return true; else return false; });
+                { if (node->getName().find("RecastAgent") != std::string::npos) return true; else return false; });
                 if (agent != NULL) return false;  // nothing to do
 
                 // Select a new target for position current agent
-                osgVerse::RecastManager::Agent* aData = static_cast<osgVerse::RecastManager::Agent*>(
-                    _recast->getAgentFromNode(_selectedAgent.get()));
+                osgVerse::RecastManager::Agent* aData =
+                    static_cast<osgVerse::RecastManager::Agent*>(_recast->getAgentFromNode(_selectedAgent.get()));
                 if (aData != NULL)
                 {
                     aData->target = result.getWorldIntersectPoint(); _recast->updateAgent(aData);
-                    std::cout << "Set new position of " << _selectedAgent.get() << " at "
-                              << result.nodePath.back()->getName() << std::endl;
+                    ss << "Set new position of " << _selectedAgent->getName() << std::endl;
+                    _canvas->texts["event"]->setText(ss.str());
                 }
             }
             else  // click on ground to create new agent
             {
                 osg::ref_ptr<osg::MatrixTransform> player = new osg::MatrixTransform;
                 player->setMatrix(osg::Matrix::translate(result.getWorldIntersectPoint()));
-                player->addChild(_agentNode.get()); player->setName("RecastAgent");
+                player->addChild(_agentNode.get()); player->setName("RecastAgent" + std::to_string(_agentID++));
                 osgVerse::Pipeline::setPipelineMask(*player, DEFERRED_SCENE_MASK & (~SHADOW_CASTER_MASK));
                 select(player.get()); _root->addChild(player.get());
-                std::cout << "Create agent " << _selectedAgent.get() << " at "
-                          << result.nodePath.back()->getName() << std::endl;
+
+                ss << "Created new agent " << player->getName() << std::endl;
+                _canvas->texts["event"]->setText(ss.str());
 
                 osg::ref_ptr<osgVerse::RecastManager::Agent> agent =
                     new osgVerse::RecastManager::Agent(player.get(), result.getWorldIntersectPoint());
@@ -98,6 +100,19 @@ public:
     {
         if (_selectedAgent.valid()) _selectedAgent->removeChild(_axesNode.get());
         _selectedAgent = agent; if (_selectedAgent.valid()) _selectedAgent->addChild(_axesNode.get());
+
+        if (agent)
+        {
+            _canvas->texts["event"]->setText("Selected the agent " + agent->getName());
+            _canvas->texts["main"]->setText("Alt+click to set target position; "
+                                            "or Ctrl+click to select another agent");
+        }
+        else
+        {
+            _canvas->texts["event"]->setText("");
+            _canvas->texts["main"]->setText("Alt+click to create new agent; "
+                                            "or Ctrl+click to select a agent");
+        }
     }
 
 protected:
@@ -105,6 +120,7 @@ protected:
     osg::observer_ptr<osg::Group> _root, _selectedAgent;
     osg::observer_ptr<osgVerse::RecastManager> _recast;
     osgVerse::HeadUpDisplayCanvas* _canvas;
+    unsigned int _agentID;
 };
 
 int main(int argc, char** argv)
