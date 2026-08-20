@@ -194,7 +194,10 @@ void EarthManipulator::init(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAd
 
 bool EarthManipulator::handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& us)
 {
-    if (ea.getHandled() || ea.getModKeyMask() > 0) return false;
+    int possibleMods = osgGA::GUIEventAdapter::MODKEY_ALT | osgGA::GUIEventAdapter::MODKEY_CTRL
+                     | osgGA::GUIEventAdapter::MODKEY_SHIFT;
+    if (ea.getHandled() || (ea.getModKeyMask() & possibleMods) != 0) return false;
+
     switch (ea.getEventType())
     {
     case osgGA::GUIEventAdapter::FRAME:

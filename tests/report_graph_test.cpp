@@ -14,6 +14,9 @@
 
 #include <VerseCommon.h>
 #include <modeling/MeshTopology.h>
+#include <modeling/Utilities.h>
+#include <pipeline/IntersectionManager.h>
+#include <ui/Utilities.h>
 #include <iostream>
 #include <sstream>
 
@@ -316,6 +319,82 @@ protected:
     int _indent;
 };
 
+class InteractiveHandler : public osgGA::GUIEventHandler
+{
+public:
+    typedef osgVerse::HeadUpDisplayCanvas::ChildLayout ChildLayout;
+    typedef osgVerse::HeadUpDisplayCanvas::Anchor Anchor;
+    InteractiveHandler(osg::Group* root, osgVerse::HeadUpDisplayCanvas* h) : _canvas(h)
+    {
+        _intersectShowNode = new osg::Geode; rebuildIntersectionShowNode();
+#if !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE) && !defined(OSG_GL3_AVAILABLE)
+        _intersectShowNode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+#endif
+        root->addChild(_intersectShowNode.get());
+
+        _canvas->createText("main", L"Ctrl+click to add intersection line to the model",
+                            32, 800, 40, "root", ChildLayout::FREE, Anchor::BOTTOM);
+        _canvas->createText("button", L"Clear", 16, 100, 40, "root", ChildLayout::FREE, Anchor::BOTTOM | Anchor::RIGHT);
+        _canvas->setAsButton("button", [&]() { rebuildIntersectionShowNode(); });
+    }
+
+    virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
+    {
+        osgViewer::View* view = static_cast<osgViewer::View*>(&aa);
+        if (ea.getEventType() == osgGA::GUIEventAdapter::RELEASE &&
+            (ea.getModKeyMask() & osgGA::GUIEventAdapter::MODKEY_CTRL))
+        {
+            osgVerse::IntersectionResult result = osgVerse::findNearestIntersection(
+                view->getCamera(), ea.getXnormalized(), ea.getYnormalized());
+            drawIntersectionResult(view->getCamera(), ea, result);
+        }
+        return false;
+    }
+
+protected:
+    void rebuildIntersectionShowNode()
+    {
+        _intersectLines = osgVerse::createGeometry(
+            new osg::Vec3Array, new osg::Vec3Array, osg::Vec4(1.0f, 1.0f, 1.0f, 1.0f), new osg::DrawArrays(GL_LINES));
+        _intersectShowNode->removeDrawables(0, _intersectShowNode->getNumDrawables());
+        _intersectShowNode->addDrawable(_intersectLines.get());
+    }
+
+    void drawIntersectionResult(osg::Camera* cam, const osgGA::GUIEventAdapter& ea,
+                                osgVerse::IntersectionResult& result)
+    {
+        osg::Vec3Array* va = static_cast<osg::Vec3Array*>(_intersectLines->getVertexArray());
+        osg::Vec3Array* na = static_cast<osg::Vec3Array*>(_intersectLines->getNormalArray());
+        osg::Vec4Array* ca = static_cast<osg::Vec4Array*>(_intersectLines->getColorArray());
+        va->dirty(); na->dirty(); ca->dirty(); _intersectLines->dirtyBound();
+
+        osg::Matrix invMVP = osg::Matrix::inverse(cam->getViewMatrix() * cam->getProjectionMatrix());
+        osg::Vec3d start(ea.getXnormalized(), ea.getYnormalized(), -1.0f);
+        if (result.drawable.valid())
+        {
+            va->push_back(start * invMVP); va->push_back(result.getWorldIntersectPoint());
+            na->insert(na->end(), 2, osg::Vec3(0.0f, 0.0f, 1.0f));
+            ca->insert(ca->end(), 2, osg::Vec4(1.0f, 1.0f, 0.0f, 1.0f));
+            _canvas->texts["main"]->setText(osgVerse::getNodePathID(*result.drawable));
+        }
+        else
+        {
+            va->push_back(start * invMVP);
+            va->push_back(osg::Vec3d(ea.getXnormalized(), ea.getYnormalized(), 1.0f) * invMVP);
+            na->insert(na->end(), 2, osg::Vec3(0.0f, 0.0f, 1.0f));
+            ca->insert(ca->end(), 2, osg::Vec4(1.0f, 0.0f, 0.0f, 1.0f));
+            _canvas->texts["main"]->setText("No intersection");
+        }
+
+        osg::DrawArrays* p = static_cast<osg::DrawArrays*>(_intersectLines->getPrimitiveSet(0));
+        p->setCount(va->size()); p->dirty();
+    }
+
+    osg::ref_ptr<osg::Geode> _intersectShowNode;
+    osg::ref_ptr<osg::Geometry> _intersectLines;
+    osgVerse::HeadUpDisplayCanvas* _canvas;
+};
+
 int main(int argc, char** argv)
 {
     osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
@@ -325,11 +404,6 @@ int main(int argc, char** argv)
         (argc < 2) ? osgDB::readNodeFile("cessna.osg") : osgDB::readNodeFiles(arguments);
     if (!scene) { OSG_WARN << "Failed to load " << (argc < 2) ? "" : argv[1]; return 1; }
 
-#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
-    scene->getOrCreateStateSet()->setAttribute(osgVerse::createDefaultProgram("baseTexture"));
-    scene->getOrCreateStateSet()->addUniform(new osg::Uniform("baseTexture", (int)0));
-#endif
-
     Reporter reporter;
     reporter.setVerbose(!arguments.read("--slient"));
     reporter.setGeometryReport("geom_report.csv");
@@ -337,9 +411,19 @@ int main(int argc, char** argv)
     scene->accept(reporter);
 
     // Start the main loop
+    osgVerse::HeadUpDisplayCanvas hudCanvas;
+    osg::ref_ptr<osg::MatrixTransform> root = new osg::MatrixTransform;
+    root->addChild(hudCanvas.create(1920, 1080));
+    root->addChild(scene.get());
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
+    root->getOrCreateStateSet()->setAttribute(osgVerse::createDefaultProgram("baseTexture"));
+    root->getOrCreateStateSet()->addUniform(new osg::Uniform("baseTexture", (int)0));
+#endif
+
     osgViewer::Viewer viewer;
+    viewer.addEventHandler(new InteractiveHandler(root.get(), &hudCanvas));
     viewer.addEventHandler(new osgViewer::WindowSizeHandler);
     viewer.setCameraManipulator(new osgGA::TrackballManipulator);
-    viewer.setSceneData(scene.get());
+    viewer.setSceneData(root.get());
     return viewer.run();
 }

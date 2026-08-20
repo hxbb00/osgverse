@@ -72,14 +72,15 @@ struct SuperCluster : public osg::Referenced
         return osg::Vec3d(lat, lon, 0.0);
     }
 
-    static bool isTileVisible(const AnnotationCluster::TileInfo& tile,
+    static bool isTileVisible(const AnnotationCluster::TileInfo& tile, osg::Vec3d& ecef,
                               osg::Polytope& frustum, const osg::Vec3d& eyePos)
     {
         double minLat = 0.0, maxLat = 0.0, minLon = 0.0, maxLon = 0.0;
         getTileBounds(tile.zoom, tile.x, tile.y, minLat, maxLat, minLon, maxLon);
-        
+
         double centerLat = (minLat + maxLat) / 2.0, centerLon = (minLon + maxLon) / 2.0;
-        osg::Vec3d ecef = Coordinate::convertLLAtoECEF(osg::Vec3d(centerLat, centerLon, 0.0));
+        ecef = Coordinate::convertLLAtoECEF(osg::Vec3d(centerLat, centerLon, 0.0));
+
         osg::Vec3d viewDir = eyePos; viewDir.normalize();
         osg::Vec3d normalDir = ecef; normalDir.normalize();
         double dotProduct = viewDir * normalDir;
@@ -166,17 +167,33 @@ void AnnotationCluster::update(osg::Camera* camera, double refDistance)
     if (_visibilityFunc) { for (size_t i = 0; i < _cells.size(); ++i) _visibilityFunc(_cells[i], false); }
     _clusterContainer->removeChildren(0, _clusterContainer->getNumChildren());
 
-    // Traverse all possible tiles at current zoom
-    int tiles = (int)std::pow(2.0, (double)zoom);
+    // Traverse all possible tiles
     osg::Polytope frustum; frustum.setToUnitFrustum(true, true);
     frustum.transformProvidingInverse(camera->getViewMatrix() * camera->getProjectionMatrix());
-    for (int y = 0; y < tiles; ++y)
-        for (int x = 0; x < tiles; ++x)
-        {
-            TileInfo tile = TileInfo(zoom, x, y);
-            if (SuperCluster::isTileVisible(tile, frustum, eye)) rebuildClusters(tile);
-        }
-    _lastCameraPos = eye; _currentZoom = zoom; _needUpdate = false;
+    updateLevel(frustum, eye, TileInfo(0, 0, 0), zoom); _needUpdate = false;
+    _lastCameraPos = eye; _currentZoom = zoom;
+}
+
+void AnnotationCluster::updateLevel(osg::Polytope& frustum, const osg::Vec3d& eye, const TileInfo& t, int zMax)
+{
+    static const double baseDistance = 1e8, disFactor = 2.0;
+    osg::Vec3d center; bool nextLevel = false;
+    int z = t.zoom, x2 = t.x * 2, y2 = t.y * 2;
+    if (z < zMax)
+    {
+        for (int y = y2; y < y2 + 2; ++y)
+            for (int x = x2; x < x2 + 2; ++x)
+            {
+                TileInfo next(z + 1, x, y);
+                if (SuperCluster::isTileVisible(next, center, frustum, eye))
+                {
+                    double threshold = baseDistance / std::pow(disFactor, z + 1);
+                    if ((eye - center).length() < threshold)
+                    { updateLevel(frustum, eye, next, zMax); nextLevel = true; }
+                }
+            }
+    }
+    if (!nextLevel) { rebuildClusters(t); }
 }
 
 bool AnnotationCluster::getLeaves(std::vector<AnnotationCell>& leaves, unsigned int clusterID,

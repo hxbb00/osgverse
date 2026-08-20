@@ -63,14 +63,20 @@ public:
     const std::vector<AnnotationCell>& getAllCells() const { return _cells; }
     std::vector<AnnotationCell>& getAllCells() { return _cells; }
     
+    /// For independent use without integrating with any earth systems
     void update(osg::Camera* camera, double refDistance = 1.0);
+
+    /// For use with TileCallback to directly reload POIs on current tile
+    void rebuildClusters(const TileInfo& tileInfo);
+
+    /// For use with setClusterGroupFunc() to get details in current cluster
     bool getLeaves(std::vector<AnnotationCell>& leaves, unsigned int clusterID,
                    unsigned int num = 1000, unsigned int offset = 0);
     
 protected:
     virtual ~AnnotationCluster() {}
     double calculateZoomLevel(osg::Camera* camera, double distanceToCenter);
-    void rebuildClusters(const TileInfo& tileInfo);
+    void updateLevel(osg::Polytope& frustum, const osg::Vec3d& eye, const TileInfo& t, int zMax);
     void rebuild(AnnotationCell& cell, int index);
     
     std::vector<AnnotationCell> _cells;

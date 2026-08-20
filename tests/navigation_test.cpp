@@ -34,9 +34,8 @@ public:
         _canvas->createText("main", L"Alt+click to create new agent",
                             32, 800, 40, "root", ChildLayout::FREE, Anchor::BOTTOM);
         _canvas->createText("event", L"", 32, 800, 40, "root", ChildLayout::FREE, Anchor::TOP);
-        
-        _canvas->createText("ok", L"Cancel", 16, 100, 40, "root", ChildLayout::FREE, Anchor::BOTTOM | Anchor::RIGHT);
-        _canvas->setAsButton("ok", [&]() { select(NULL); });
+        _canvas->createText("button", L"Cancel", 16, 100, 40, "root", ChildLayout::FREE, Anchor::BOTTOM | Anchor::RIGHT);
+        _canvas->setAsButton("button", [&]() { select(NULL); });
     }
 
     virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)

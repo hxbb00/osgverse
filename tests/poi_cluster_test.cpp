@@ -95,13 +95,14 @@ int main(int argc, char** argv)
     osg::ref_ptr<osg::Node> earth = osgDB::readNodeFile("0-0-0.verse_tms", options.get());
     
     osgViewer::Viewer viewer;
-    viewer.setCameraManipulator(new osgGA::TrackballManipulator);
     if (earth.valid())
     {
         osg::ref_ptr<osgVerse::EarthManipulator> manipulator = new osgVerse::EarthManipulator;
-        //manipulator->setWorldNode(earth.get()); viewer.setCameraManipulator(manipulator.get());
+        manipulator->setWorldNode(earth.get()); viewer.setCameraManipulator(manipulator.get());
         root->addChild(earth.get());
     }
+    else
+        viewer.setCameraManipulator(new osgGA::TrackballManipulator);
 
     // Start the main loop
     viewer.addEventHandler(new osgViewer::StatsHandler);
