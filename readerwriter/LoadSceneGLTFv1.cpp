@@ -10,8 +10,8 @@
 
 //#define TINYGLTF_LOADER_IMPLEMENTATION
 #define STB_IMAGE_STATIC
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
+//#define STB_IMAGE_IMPLEMENTATION
+//#define STB_IMAGE_WRITE_IMPLEMENTATION
 //#include "tiny_gltf_loader.h"
 
 namespace osgVerse

@@ -5,6 +5,7 @@
 #   include <SDL_syswm.h>
 #else
 #   include <SDL3/SDL.h>
+#   include <SDL3/SDL_properties.h>
 #endif
 #include <iostream>
 
@@ -326,8 +327,7 @@ void GraphicsWindowSDL::initialize()
 
 #if defined(VERSE_GLES_DESKTOP)
         // Config EGL by ourselves so that to set different backends of Google Angle!
-        SDL_SysWMinfo sdlInfo; SDL_VERSION(&sdlInfo.version);
-        SDL_GetWindowWMInfo(_sdlWindow, &sdlInfo);
+        EGLDisplay display = EGL_NO_DISPLAY;
         EGLint configAttribList[] =
         {
 #   if defined(OSG_GLES3_AVAILABLE)
@@ -346,18 +346,35 @@ void GraphicsWindowSDL::initialize()
             EGL_NONE
         };
 
-        EGLDisplay display = EGL_NO_DISPLAY;
+#  ifdef VERSE_WITH_SDL2
+        SDL_SysWMinfo sdlInfo; SDL_VERSION(&sdlInfo.version);
+        SDL_GetWindowWMInfo(_sdlWindow, &sdlInfo);
 #   if defined(SDL_VIDEO_DRIVER_WINDOWS)
-        EGLNativeWindowType hWnd = sdlInfo.info.win.window;
+        EGLNativeWindowType hWnd = (EGLNativeWindowType)sdlInfo.info.win.window;
 #   elif defined(SDL_VIDEO_DRIVER_X11)
-        EGLNativeWindowType hWnd = sdlInfo.info.x11.window;
+        EGLNativeWindowType hWnd = (EGLNativeWindowType)sdlInfo.info.x11.window;
 #   elif defined(SDL_VIDEO_DRIVER_COCOA)
         EGLNativeWindowType hWnd = getViewFromWindow(sdlInfo.info.cocoa.window);
 #   elif defined(SDL_VIDEO_DRIVER_ANDROID)
-        EGLNativeWindowType hWnd = sdlInfo.info.android.window;
+        EGLNativeWindowType hWnd = (EGLNativeWindowType)sdlInfo.info.android.window;
 #   else
 #       error "[GraphicsWindowSDL] Unsupported platform?"
 #   endif
+#  else
+        SDL_PropertiesID props = SDL_GetWindowProperties(_sdlWindow);
+#   if defined(SDL_PLATFORM_WINDOWS)
+        EGLNativeWindowType hWnd = (EGLNativeWindowType)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, 0);
+#   elif defined(SDL_PLATFORM_LINUX)
+        EGLNativeWindowType hWnd = (EGLNativeWindowType)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+#   elif defined(SDL_PLATFORM_MACOS) || defined(SDL_PLATFORM_IOS)
+        EGLNativeWindowType hWnd = (EGLNativeWindowType)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+#   elif defined(SDL_PLATFORM_ANDROID)
+        EGLNativeWindowType hWnd = (EGLNativeWindowType)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, NULL);
+#   else
+#       error "[GraphicsWindowSDL] Unsupported platform?"
+#   endif
+#  endif
+
         PFNEGLDEBUGMESSAGECONTROLKHRPROC eglDebugMessageControlKHR =
             (PFNEGLDEBUGMESSAGECONTROLKHRPROC)(eglGetProcAddress("eglDebugMessageControlKHR"));
         PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT =
@@ -423,6 +440,7 @@ void GraphicsWindowSDL::initialize()
         EGLint surfaceAttribList[] = { EGL_NONE, EGL_NONE };
         EGLSurface surface = eglCreateWindowSurface(
             display, config, (EGLNativeWindowType)hWnd, surfaceAttribList);
+
         
         if (surface != EGL_NO_SURFACE)
             { _glSurface = (void*)surface; _glDisplay = (void*)display; }

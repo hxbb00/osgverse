@@ -31,6 +31,7 @@
 #endif
 #include "3rdparty/clipper2/clipper.h"
 #include "3rdparty/nanoflann.hpp"
+#include "3rdparty/hdbscan/Hdbscan/hdbscan.hpp"
 #include "Math.h"
 const float ZERO_TOLERANCE = float(1e-5);
 
@@ -947,6 +948,64 @@ int PointCloudQuery::findInPolytope(const osg::Polytope& poly, std::vector<Point
             });
     }
     return (int)resultData.size();
+}
+
+/* HDBScanCluster */
+
+HDBScanCluster::HDBScanCluster(const std::vector<std::vector<double>>& dataset)
+{ Hdbscan* db = new Hdbscan; db->dataset = dataset; _hdbscan = db; }
+
+HDBScanCluster::HDBScanCluster(const std::vector<osg::Vec3d>& points)
+{
+    Hdbscan* db = new Hdbscan; _hdbscan = db;
+    db->dataset.resize(points.size());
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        std::vector<double>& v = db->dataset[i]; v.resize(3);
+        memcpy(v.data(), points[i].ptr(), sizeof(double) * 3);
+    }
+}
+
+HDBScanCluster::HDBScanCluster(const std::vector<osg::Vec3f>& points)
+{
+    Hdbscan* db = new Hdbscan; _hdbscan = db;
+    db->dataset.resize(points.size());
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        std::vector<double>& v = db->dataset[i];
+        osg::Vec3d pt(points[i]); v.resize(3);
+        memcpy(v.data(), pt.ptr(), sizeof(double) * 3);
+    }
+}
+
+HDBScanCluster::~HDBScanCluster()
+{ Hdbscan* db = (Hdbscan*)_hdbscan; delete db; }
+
+unsigned int HDBScanCluster::execute(int minPoints, int minClusterSize, DistanceFunction df)
+{
+    Hdbscan* db = (Hdbscan*)_hdbscan; if (!db) return 0;
+    std::string functionName = "Euclidean";
+    if (df == Manhattan) functionName = "Manhattan";
+    db->execute(minPoints, minClusterSize, functionName);
+    return db->numClusters_;
+}
+
+bool HDBScanCluster::getLabels(std::vector<int>& l) const
+{ Hdbscan* db = (Hdbscan*)_hdbscan; l = db->labels_; return !l.empty(); }
+
+bool HDBScanCluster::getMemberProbabilities(std::vector<double>& p) const
+{ Hdbscan* db = (Hdbscan*)_hdbscan; p = db->membershipProbabilities_; return !p.empty(); }
+
+bool HDBScanCluster::getOutlierScores(std::vector<std::pair<int, double>>& scores) const
+{
+    Hdbscan* db = (Hdbscan*)_hdbscan; if (!db) return false;
+    scores.resize(db->outlierScores_.size());
+    for (size_t i = 0; i < scores.size(); ++i)
+    {
+        outlierScore& outlier = db->outlierScores_[i];
+        scores[i] = std::pair<int, double>(outlier.id, outlier.score);
+    }
+    return !scores.empty();
 }
 
 /* GeometryAlgorithm */

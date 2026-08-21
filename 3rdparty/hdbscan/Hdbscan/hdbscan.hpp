@@ -6,28 +6,23 @@
 #include"../Runner/hdbscanResult.hpp"
 #include"../HdbscanStar/outlierScore.hpp"
 
-using namespace std;
-
-
 class Hdbscan
-
 {
-
 private:
 
-	string fileName;
+	std::string fileName;
 
 	hdbscanResult result;
 
 public:
 
-	vector < vector <double > > dataset;
+    std::vector < std::vector <double > > dataset;
 
 	std::vector<int> labels_;
 
 	std::vector<int> normalizedLabels_;
 
-	std::vector<outlierScore>outlierScores_;
+	std::vector<outlierScore> outlierScores_;
 
 	std::vector <double> membershipProbabilities_;
 
@@ -35,19 +30,17 @@ public:
 
 	uint32_t numClusters_;
 
+    Hdbscan() {}
 
-
-	Hdbscan(string readFileName) {
-
+	Hdbscan(std::string readFileName) {
 		fileName = readFileName;
-
 	}
 
-	string getFileName();
+    std::string getFileName();
 			   
 	int loadCsv(int numberOfValues, bool skipHeader=false);
 
-	void execute(int minPoints, int minClusterSize, string distanceMetric);
+	void execute(int minPoints, int minClusterSize, std::string distanceMetric);
 
 	void displayResult();
 

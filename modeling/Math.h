@@ -138,6 +138,26 @@ namespace osgVerse
         Mode _mode;
     };
 
+    /** Hierarchical Density-Based Spatial Clustering (HDBScan) */
+    class HDBScanCluster
+    {
+    public:
+        HDBScanCluster(const std::vector<std::vector<double>>& dataset);
+        HDBScanCluster(const std::vector<osg::Vec3d>& points);
+        HDBScanCluster(const std::vector<osg::Vec3f>& points);
+        virtual ~HDBScanCluster();
+
+        enum DistanceFunction { Euclidean, Manhattan };
+        unsigned int execute(int minPoints, int minClusterSize, DistanceFunction df);
+
+        bool getLabels(std::vector<int>& labels) const;
+        bool getMemberProbabilities(std::vector<double>& probabilities) const;
+        bool getOutlierScores(std::vector<std::pair<int, double>>& scores) const;
+
+    protected:
+        void* _hdbscan;
+    };
+
     /** Float16 implementation extracted from Eigen */
     struct HalfFloat
     {

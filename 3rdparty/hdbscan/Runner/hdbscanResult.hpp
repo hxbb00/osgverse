@@ -1,15 +1,15 @@
 #pragma once
-#include<vector>
-#include"../HdbscanStar/outlierScore.hpp"
-using namespace std;
+#include <vector>
+#include "../HdbscanStar/outlierScore.hpp"
 class hdbscanResult
 {
 public:
-	vector <int> labels;
-	vector <outlierScore> outliersScores;
-	vector <double> membershipProbabilities;
+	std::vector <int> labels;
+    std::vector <outlierScore> outliersScores;
+    std::vector <double> membershipProbabilities;
 	bool hasInfiniteStability;
 	hdbscanResult();
-	hdbscanResult(vector<int> pLables, vector<outlierScore> pOutlierScores, vector <double> pmembershipProbabilities, bool pHsInfiniteStability);
+	hdbscanResult(std::vector<int> pLables, std::vector<outlierScore> pOutlierScores,
+                  std::vector <double> pmembershipProbabilities, bool pHsInfiniteStability);
 };
 
