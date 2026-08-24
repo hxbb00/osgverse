@@ -614,6 +614,12 @@ IF(MIMALLOC_FOUND)
     SET(VERSE_USE_MIMALLOC OFF CACHE BOOL "Enable use of mi-malloc to improve memory allocating")
 ENDIF(MIMALLOC_FOUND)
 
+IF(SDL3_FOUND)
+    ADD_DEFINITIONS(-DVERSE_WITH_SDL=3)
+ELSEIF(SDL2_FOUND OR USE_WASM_OPTIONS)
+    ADD_DEFINITIONS(-DVERSE_WITH_SDL=2)
+ENDIF()
+
 ######################################### Platform Definintions
 ADD_DEFINITIONS(-DPREPENDED_HEADER="pipeline/Allocator.h")
 IF(VERSE_USE_MIMALLOC)

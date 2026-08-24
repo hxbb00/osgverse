@@ -31,9 +31,12 @@ USE_GRAPICSWINDOW_IMPLEMENTATION(GLFW)
 
 static osgVerse::GraphicsWindowHandle* getEglHandle(osg::GraphicsContext* gc)
 {
+#ifdef VERSE_WITH_SDL
     osgVerse::GraphicsWindowSDL* sdl = dynamic_cast<osgVerse::GraphicsWindowSDL*>(gc);
+    if (sdl) return sdl->getHandle();
+#endif
     osgVerse::GraphicsWindowGLFW* glfw = dynamic_cast<osgVerse::GraphicsWindowGLFW*>(gc);
-    if (sdl) return sdl->getHandle(); if (glfw) return glfw->getHandle(); return NULL;
+    if (glfw) return glfw->getHandle(); return NULL;
 }
 
 int main(int argc, char** argv)

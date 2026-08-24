@@ -1,6 +1,6 @@
 #include "GraphicsWindowSDL.h"
 #include <osg/DeleteHandler>
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
 #   include <SDL.h>
 #   include <SDL_syswm.h>
 #else
@@ -29,7 +29,7 @@ typedef void* (EGLAPIENTRYP PFNEGLGETVKOBJECTSVERSEPROC)(EGLDisplay dpy, EGLSurf
 #endif
 
 using namespace osgVerse;
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
 #   include <SDL_syswm.h>
 #   define SDL_EVENT_MOUSE_MOTION SDL_MOUSEMOTION
 #   define SDL_EVENT_MOUSE_BUTTON_DOWN SDL_MOUSEBUTTONDOWN
@@ -64,7 +64,7 @@ namespace
     static int getModKey()
     {
         SDL_Keymod modstates = SDL_GetModState();
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
         if (modstates & KMOD_LCTRL) return osgGA::GUIEventAdapter::KEY_Control_L;
         else if (modstates & KMOD_RCTRL) return osgGA::GUIEventAdapter::KEY_Control_R;
         else if (modstates & KMOD_LALT) return osgGA::GUIEventAdapter::KEY_Alt_L;
@@ -133,7 +133,7 @@ class SDLWindowingSystem : public osg::GraphicsContext::WindowingSystemInterface
 public:
     SDLWindowingSystem()
     {
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
         if (SDL_Init(SDL_INIT_VIDEO) < 0)
 #else
         if (!SDL_Init(SDL_INIT_VIDEO))
@@ -148,7 +148,7 @@ public:
     virtual void getScreenSettings(const osg::GraphicsContext::ScreenIdentifier& identifier,
                                    osg::GraphicsContext::ScreenSettings& resolution)
     {
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
         SDL_DisplayMode mode;
         if (SDL_GetCurrentDisplayMode(identifier.displayNum, &mode) == 0)
 #else
@@ -178,7 +178,7 @@ public:
     virtual void enumerateScreenSettings(const osg::GraphicsContext::ScreenIdentifier& identifier,
                                          osg::GraphicsContext::ScreenSettingsList& resolutionList)
     {
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
         int numModes = SDL_GetNumDisplayModes(identifier.displayNum);
         for (int i = 0; i < numModes; ++i)
         {
@@ -285,7 +285,7 @@ void GraphicsWindowSDL::initialize()
     // Create window
     int winX = 50, winY = 50, winW = 1280, winH = 720;
     unsigned int flags = SDL_WINDOW_OPENGL;
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
     flags |= SDL_WINDOW_SHOWN;
 #endif
     if (_traits.valid())
@@ -346,7 +346,7 @@ void GraphicsWindowSDL::initialize()
             EGL_NONE
         };
 
-#  ifdef VERSE_WITH_SDL2
+#  if VERSE_WITH_SDL == 2
         SDL_SysWMinfo sdlInfo; SDL_VERSION(&sdlInfo.version);
         SDL_GetWindowWMInfo(_sdlWindow, &sdlInfo);
 #   if defined(SDL_VIDEO_DRIVER_WINDOWS)
@@ -546,7 +546,7 @@ void GraphicsWindowSDL::closeImplementation()
     eglDestroySurface(display, surface);
 #else
     SDL_GLContext context = (SDL_GLContext)_glContext;
-#  ifdef VERSE_WITH_SDL2
+#  if VERSE_WITH_SDL == 2
     SDL_GL_DeleteContext(context);
 #  else
     SDL_GL_DestroyContext(context);
@@ -567,7 +567,7 @@ bool GraphicsWindowSDL::makeCurrentImplementation()
     return ok;
 #else
     SDL_GLContext context = (SDL_GLContext)_glContext;
-#  ifdef VERSE_WITH_SDL2
+#  if VERSE_WITH_SDL == 2
     return SDL_GL_MakeCurrent(_sdlWindow, context) == 0;
 #  else
     return SDL_GL_MakeCurrent(_sdlWindow, context);
@@ -646,7 +646,7 @@ void GraphicsWindowSDL::checkEvents()
                     _lastKey = key; _lastModKey = mod;
                 }
             } break;
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
         case SDL_WINDOWEVENT:
             if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
             {
@@ -688,7 +688,7 @@ void GraphicsWindowSDL::checkEvents()
 void GraphicsWindowSDL::grabFocus()
 {
 #if !defined(VERSE_WASM)
-#  ifdef VERSE_WITH_SDL2
+#  if VERSE_WITH_SDL == 2
     if (_valid) SDL_SetWindowInputFocus(_sdlWindow);
 #  else
     if (_valid) SDL_RaiseWindow(_sdlWindow);
@@ -699,7 +699,7 @@ void GraphicsWindowSDL::grabFocus()
 void GraphicsWindowSDL::grabFocusIfPointerInWindow()
 {
 #if !defined(VERSE_WASM)
-#  ifdef VERSE_WITH_SDL2
+#  if VERSE_WITH_SDL == 2
     if (_valid) SDL_SetWindowInputFocus(_sdlWindow);
 #  else
     if (_valid) SDL_RaiseWindow(_sdlWindow);
@@ -717,7 +717,7 @@ bool GraphicsWindowSDL::setWindowDecorationImplementation(bool flag)
 {
     if (!_valid) return false;
 #if !defined(VERSE_WASM)
-#  ifdef VERSE_WITH_SDL2
+#  if VERSE_WITH_SDL == 2
     SDL_SetWindowBordered(_sdlWindow, flag ? SDL_TRUE : SDL_FALSE); return true;
 #  else
     SDL_SetWindowBordered(_sdlWindow, flag); return true;
@@ -743,7 +743,7 @@ void GraphicsWindowSDL::setCursor(osgViewer::GraphicsWindow::MouseCursor cursor)
     SDL_Cursor* sdlCursor = NULL;
     switch (cursor)
     {
-#ifdef VERSE_WITH_SDL2
+#if VERSE_WITH_SDL == 2
     case TextCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_IBEAM); break;
     case CrosshairCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR); break;
     case WaitCursor: sdlCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAIT); break;
