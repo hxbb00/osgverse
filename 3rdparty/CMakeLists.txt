@@ -594,7 +594,7 @@ SET(LIBRARY_FILES
     GL/glew.c GL/glew.h xxYUV/rgb2yuv.cpp xxYUV/yuv2rgb.cpp xxYUV/cpu.cpp timeout.c timeout.h pmtiles.hpp
     BSplineFitting/cubic_b_spline.cpp BSplineFitting/open_cubic_b_spline.cpp BSplineFitting/spline_curve_fitting.cpp
     clipper2/clipper.engine.cpp clipper2/clipper.offset.cpp clipper2/clipper.rectclip.cpp pybind11/pybind11.h
-    parallel_hashmap/phmap.h bc7_rdo/rgbcx.h bc7_rdo/rgbcx.cpp flatgeobuf/packedrtree.cpp
+    parallel_hashmap/phmap.h bc7_rdo/rgbcx.h bc7_rdo/rgbcx.cpp flatgeobuf/packedrtree.cpp VRM.h
     ${APPROXMVBB_SOURCE_FILES} ${BLEND2D_SOURCE_FILES} ${BOX3D_SOURCE_FILES} ${DISCREGRID_SOURCE_FILES} ${FILTER_SOURCE_FILES}
     ${HDBSCAN_SOURCE_FILES} ${IMGUI_SOURCE_FILES} ${KTX_SOURCE_FILES} ${LASZIP_SOURCE_FILES} ${LEVELDB_SOURCE_FILES}
     ${LIBHV_SOURCE_FILES} ${MARL_SOURCE_FILES} ${MBEDTLS_SOURCE_FILES} ${MESHOPTIMIZER_SOURCE_FILES} ${METIS_SOURCE_FILES}

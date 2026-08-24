@@ -112,6 +112,7 @@
 | tweeny           | Embedded |           | Animation          | MIT          | https://github.com/mobius3/tweeny |
 | ufbx             | Embedded | 0.22.0    | verse_fbx          | MIT /Public  | https://github.com/ufbx/ufbx |
 | VHACD            | Embedded | 4.1       | Modeling           | BSD3         | https://github.com/kmammou/v-hacd |
+| VRM              | Embedded | 20260824  | Animation          | MIT          | https://github.com/infosia/VRM.h |
 | vtzero           | Embedded | 1.1.0     | verse_mvt          | BSD2         |_https://github.com/mapbox/vtzero |
 | xatlas           | Embedded |           | -                  | MIT          | https://github.com/jpcy/xatlas |
 | xxYUV            | Embedded |           | ReaderWriter       | MIT          | https://github.com/metarutaiga/xxYUV |

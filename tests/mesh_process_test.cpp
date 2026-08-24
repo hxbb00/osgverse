@@ -144,18 +144,12 @@ int main(int argc, char** argv)
 #if TEST_MODELING_FUNCTIONS
     {
         std::vector<osg::Vec3d> pathL;
-        /*
-        pathL.push_back(osg::Vec3(1.0f, 0.0f, 5.0f));
+        pathL.push_back(osg::Vec3(2.0f, 0.0f, 5.0f));
         pathL.push_back(osg::Vec3(4.0f, 0.0f, 4.0f));
         pathL.push_back(osg::Vec3(6.0f, 0.0f, 2.0f));
         pathL.push_back(osg::Vec3(7.0f, 0.0f, 0.0f));
         osg::ref_ptr<osg::Geometry> geomL =
             osgVerse::createLatheGeometry(pathL, osg::Z_AXIS, 16, true);
-            */
-        pathL.push_back(osg::Vec3(7.0f, 0.0f, 5.0f));
-        pathL.push_back(osg::Vec3(7.0f, 0.0f, 0.0f));
-        osg::ref_ptr<osg::Geometry> geomL =
-            osgVerse::createLatheGeometry(pathL, osg::Z_AXIS, 4, false);
 
         std::vector<osg::Vec3d> pathE;
         std::vector<std::vector<osg::Vec3d>> pathEinner;

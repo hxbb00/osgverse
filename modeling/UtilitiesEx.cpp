@@ -29,7 +29,7 @@ namespace
 #ifdef VERSE_WITH_CINOLIB
     bool check_local_orientation(const cinolib::Trimesh<>& m, unsigned int& problemID)
     {
-        std::vector<unsigned int> visited(m.num_polys(), false);
+        std::vector<bool> visited(m.num_polys(), false);
         for (unsigned int pid = 0; pid < m.num_polys(); ++pid)
         {
             if (visited[pid]) continue; visited[pid] = true;
@@ -37,16 +37,17 @@ namespace
 
             while (!q.empty())
             {
-                unsigned int pid = q.front(); q.pop();
-                for (unsigned int nbr : m.adj_p2p(pid))
+                unsigned int locPid = q.front(); q.pop();
+                for (unsigned int nbr : m.adj_p2p(locPid))
                 {
-                    unsigned int eid = m.edge_shared(pid, nbr); problemID = eid;
-                    if (m.edge_is_CCW(eid, pid) == m.edge_is_CCW(eid, nbr)) return false;
+                    int eid = m.edge_shared(locPid, nbr); problemID = pid;
+                    if (eid < 0) return false;  // no shared edge?
+                    if (m.edge_is_CCW(eid, locPid) == m.edge_is_CCW(eid, nbr)) return false;
                     if (!visited[nbr]) { visited[nbr] = true; q.push(nbr); }
                 }
             }
         }
-        return true;
+        problemID = 0; return true;
     }
 
     bool check_global_orientation(const cinolib::Trimesh<>& m)
@@ -86,6 +87,7 @@ MeshCollector::NonManifoldType MeshCollector::isManifold(unsigned int& problemID
 
         if (!check_local_orientation(mesh, problemID)) return FLIPPED_FACE_ORIENTATION;
         if (!check_global_orientation(mesh)) return NEGATIVE_VOLUME;
+        return IS_MANIFOLD;
 #endif
     }
     return NonManifoldType::UNDEFINED;
@@ -820,8 +822,19 @@ namespace osgVerse
                 deCap0->push_back(i * pSize);
                 deCap1->push_back(i * pSize + pSize - 1);
             }
-            geom->addPrimitiveSet(deCap0.get()); geom->addPrimitiveSet(deCap1.get());
-            tessellateGeometry(*geom, axis);
+
+            osg::ref_ptr<osg::Geometry> geomCap0 = osgVerse::createGeometry(
+                    va.get(), NULL, NULL, deCap0.get(), false, true, false);
+            osg::ref_ptr<osg::Geometry> geomCap1 = osgVerse::createGeometry(
+                    va.get(), NULL, NULL, deCap1.get(), false, true, false);
+            tessellateGeometry(*geomCap0, axis); tessellateGeometry(*geomCap1, -axis);
+
+            // Obtain tessellated vertices and triangles and add them to main geometry
+            osg::ref_ptr<osg::DrawElementsUInt> deCaps = new osg::DrawElementsUInt(GL_TRIANGLES);
+            MeshCollector mc0, mc1; mc0.apply(*geomCap0); mc1.apply(*geomCap1);
+            for (size_t i = 0; i < mc0.getTriangles().size(); ++i) deCaps->push_back(mc0.getTriangles()[i]);
+            for (size_t i = 0; i < mc1.getTriangles().size(); ++i) deCaps->push_back(mc1.getTriangles()[i]);
+            geom->addPrimitiveSet(deCaps.get());
         }
         return geom.release();
     }
