@@ -26,16 +26,16 @@ IF(VERSE_SUPPORT_CPP17)
         ADD_DEFINITIONS(-DVERSE_WITH_DEPTHANYTHING3)
         INCLUDE_DIRECTORIES(${GGML_INCLUDE_DIR})
         SET(LIBRARY_FILES ${LIBRARY_FILES} DepthAnythingEngine.h DepthAnythingEngine.cpp
-                                           TrellisPipeline.h TrellisPipeline.cpp)
-        SET(LIBRARY_INCLUDE_FILES ${LIBRARY_INCLUDE_FILES}
-                                  DepthAnythingEngine.h TrellisPipeline.h)
+                          FreeSplatterEngine.h FreeSplatterEngine.cpp TrellisPipeline.h TrellisPipeline.cpp)
+        SET(LIBRARY_INCLUDE_FILES ${LIBRARY_INCLUDE_FILES} DepthAnythingEngine.h
+                                  FreeSplatterEngine.h TrellisPipeline.h)
     ELSE(GGML_FOUND)
         MESSAGE("[osgVerse] Dependency GGML not found. "
-                "osgVerseAI features will be ignored: 'depth-anything3', 'trellis2'.")
+                "osgVerseAI features will be ignored: 'depth-anything3';'free-splatter';'trellis2'.")
     ENDIF(GGML_FOUND)
 ELSE(VERSE_SUPPORT_CPP17)
     MESSAGE("[osgVerse] C++ 17 standard is disabled at present. "
-            "osgVerseAI features will be ignored: 'bytetrack', 'depth-anything3', 'trellis2'.")
+            "osgVerseAI features will be ignored: 'bytetrack';'depth-anything3';'free-splatter';'trellis2'.")
 ENDIF(VERSE_SUPPORT_CPP17)
 
 NEW_LIBRARY(${LIB_NAME} STATIC)

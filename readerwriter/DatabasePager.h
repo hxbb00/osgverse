@@ -5,6 +5,7 @@
 #include <osg/PagedLOD>
 #include <osgDB/Registry>
 #include <osgDB/DatabasePager>
+#include <functional>
 #include "Export.h"
 
 namespace osgVerse
@@ -13,12 +14,17 @@ namespace osgVerse
     class OSGVERSE_RW_EXPORT DatabasePager : public osgDB::DatabasePager
     {
     public:
+        typedef std::function<float (const std::string&, osg::NodePath&, const osg::FrameStamp*)> PriorityCallback;
         DatabasePager(bool originalUpdate = false, bool customizedReadQueue = false);
+
         void setCompressingImages(bool b) { _compressingImages = true; }
         bool getCompressingImages() const { return _compressingImages; }
 
         void setDrawBoundingBox(bool b) { _drawExtraBBox = true; }
         bool getDrawBoundingBox() const { return _drawExtraBBox; }
+
+        void setPriorityCallback(PriorityCallback cb) { _priorityCallback = cb; }
+        PriorityCallback getPriorityCallback() { return _priorityCallback; }
 
         struct DataMergeCallback : public osg::Referenced
         {
@@ -69,6 +75,7 @@ namespace osgVerse
 
         typedef std::map<osg::ref_ptr<osg::Group>, std::vector<osg::ref_ptr<osg::Node>>> LoadedNodeMap;
         LoadedNodeMap _loadedNodes;
+        PriorityCallback _priorityCallback;
         osg::ref_ptr<DataMergeCallback> _mergeCallback;
         bool _originalUpdate, _compressingImages, _drawExtraBBox;
     };

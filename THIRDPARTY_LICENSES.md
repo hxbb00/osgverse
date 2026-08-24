@@ -38,6 +38,7 @@
 | Fir & Iir        | Embedded |           | Animation          | MIT          | https://github.com/berndporr/iir1 |
 | FlatBuffers      | Embedded | 24.12.13  | verse_fgb          | Apache2      | https://github.com/google/flatbuffers |
 | FlatGeobuf       | Embedded | 20260819  | verse_fgb          | BSD2         | https://github.com/flatgeobuf/flatgeobuf |
+| FreeSplatter.cpp | Embedded | 20260824  | AI                 | Apache2      | https://github.com/localai-org/free-splatter.cpp |
 | GaussForge       | Embedded | 0.6.0     | verse_3dgs         | Apache2      | https://github.com/3dgscloud/GaussForge |
 | ghc_filesystem   | Embedded |           | -                  | MIT          | https://github.com/gulrak/filesystem |
 | glfw             | Embedded | 3.4       | ReaderWriter, WASM | ZLib         | https://github.com/glfw/glfw |

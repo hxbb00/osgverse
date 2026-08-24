@@ -1,0 +1,210 @@
+// free-splatter.cpp — a GGML inference engine for the neural-network front half
+// of TencentARC/FreeSplatter: image patch tokenizer -> multi-view self-attention
+// transformer -> per-pixel 3D-Gaussian parameter head.
+//
+// Scope: pieces 1-3 only. Given N uncalibrated views it returns, per input pixel,
+// the activated Gaussian parameters (xyz, SH, opacity, scale, rotation). The
+// rasterizer and the PnP pose solver are out of scope (a downstream consumer).
+//
+// Flat C API: no exceptions cross this boundary, every pointer-returning function
+// reports failure via free_splatter_last_error, every free is NULL-safe. Shaped
+// for FFI (purego, ctypes, cgo, WASM): opaque handle, caller-owned flat buffers.
+#ifndef FREE_SPLATTER_H
+#define FREE_SPLATTER_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Exported symbol marker. The library is built with -fvisibility=hidden, so only
+// functions marked FREE_SPLATTER_API are exported across the ABI boundary.
+#if defined(_WIN32)
+  #define FREE_SPLATTER_API __declspec(dllexport)
+#else
+  #define FREE_SPLATTER_API __attribute__((visibility("default")))
+#endif
+
+#define FREE_SPLATTER_ABI_VERSION 1
+FREE_SPLATTER_API int free_splatter_abi_version(void);
+
+typedef struct free_splatter_ctx free_splatter_ctx;
+
+// ---- options builder ----
+// ABI-stable configuration: add setters without changing struct layout, so a
+// compiled binding never breaks when new knobs appear.
+typedef struct free_splatter_options free_splatter_options;
+FREE_SPLATTER_API free_splatter_options * free_splatter_options_new(void);
+FREE_SPLATTER_API void free_splatter_options_free(free_splatter_options * opts); // NULL-safe
+// device: NULL or "cpu", "gpu", "cuda", "vulkan" (optionally ":N" to pick the Nth
+// matching GPU). "gpu" = first GPU of whichever backend was compiled in.
+FREE_SPLATTER_API void free_splatter_options_set_device(free_splatter_options * opts, const char * device);
+// n_threads <= 0 picks a default (CPU only).
+FREE_SPLATTER_API void free_splatter_options_set_threads(free_splatter_options * opts, int n_threads);
+// If non-NULL, every named intermediate tensor (tap) is written to this dir on
+// the next free_splatter_run, as <name>.f32/.i32 + meta.json — the format
+// scripts/compare_taps.py reads. NULL disables tap dumping (the fast path).
+FREE_SPLATTER_API void free_splatter_options_set_dump_taps_dir(free_splatter_options * opts, const char * dir);
+
+// ---- lifecycle ----
+// Returns NULL only on allocation failure; a non-NULL handle whose
+// free_splatter_last_error is non-NULL means load failed (inspect, then free).
+FREE_SPLATTER_API free_splatter_ctx * free_splatter_load(const char * gguf_path, const free_splatter_options * opts);
+FREE_SPLATTER_API void                free_splatter_free(free_splatter_ctx * ctx);            // NULL-safe
+FREE_SPLATTER_API const char *        free_splatter_last_error(const free_splatter_ctx * ctx); // NULL if no error
+
+// ---- model geometry ----
+// Lets a binding size buffers without hardcoding model constants.
+typedef struct {
+    int32_t in_channels;        // image channels the model expects (3, RGB)
+    int32_t image_height;       // expected input height  (e.g. 512)
+    int32_t image_width;        // expected input width   (e.g. 512)
+    int32_t gaussian_channels;  // per-pixel output channels (e.g. 23)
+} free_splatter_geometry;
+FREE_SPLATTER_API int free_splatter_geometry_of(const free_splatter_ctx * ctx, free_splatter_geometry * out);
+
+// ---- inference ----
+// images: caller-owned, n_views * in_channels * height * width float32, range
+//   [0,1], laid out NCHW per view (view-major, then channel, then row, then col).
+// On success *out is malloc'd: n_views * height * width * gaussian_channels
+//   float32 (the activated, render-ready Gaussian params); *n_out is its element
+//   count. Free with free_splatter_buf_free. Returns 0 on success, -1 on failure
+//   (see free_splatter_last_error). If a dump-taps dir was set on the options,
+//   taps are written there as a side effect.
+FREE_SPLATTER_API int  free_splatter_run(free_splatter_ctx * ctx, const float * images, int32_t n_views,
+                       int32_t height, int32_t width, float ** out, size_t * n_out);
+FREE_SPLATTER_API void free_splatter_buf_free(void * buf);  // NULL-safe
+
+// ---- downstream pose recovery + accumulation ----
+// The pose consumer of the engine seam: given the engine's [N,H,W,gaussian_channels]
+// output it recovers each view's camera (PnP) and stitches successive runs into one
+// accumulating world (cross-run Sim(3)). Dependency-free (no Python, no OpenCV).
+
+// Recover each view's camera from an engine output buffer. gaussians:
+// n_views*height*width*gaussian_channels float32 (the layout free_splatter_run
+// returns). cam2world_out: caller-owned n_views*16 float32, filled with a
+// row-major 4x4 cam2world per view. If focal_out is non-NULL it receives the
+// estimated shared focal. opacity_threshold gates valid pixels (engine output is
+// already activated). Returns 0 on success, -1 on failure.
+FREE_SPLATTER_API int free_splatter_estimate_poses(
+    const float * gaussians, int32_t n_views, int32_t height, int32_t width,
+    int32_t gaussian_channels, float opacity_threshold,
+    float * cam2world_out, float * focal_out);
+
+// After-inference parallax: how well a 2-view pair constrains depth, measured
+// from the model's OWN recovered geometry. Angles are scale-invariant.
+typedef struct {
+    float tri_angle_deg;       // median triangulation angle over confident points
+    float lateral_angle_deg;   // baseline angle off view-0 optical axis (0=dolly, 90=strafe)
+    float baseline_over_depth; // ||C1-C0|| / median point depth from camera 0
+    float baseline;
+    float median_depth;
+    float focal;               // estimated (or supplied) focal, px
+    int32_t n_points;          // confident points used for the medians
+} free_splatter_parallax;
+
+// Estimate parallax for the first two views of an engine output buffer.
+// gaussians: n_views(>=2)*height*width*gaussian_channels f32. Returns 0 on
+// success, -1 on bad args. A low tri_angle_deg (< ~1-2 deg) or near-zero
+// lateral_angle_deg means depth is ill-conditioned (reconstruction unreliable).
+FREE_SPLATTER_API int free_splatter_pair_parallax(
+    const float * gaussians, int32_t n_views, int32_t height, int32_t width,
+    int32_t gaussian_channels, float opacity_threshold, free_splatter_parallax * out);
+
+// One accumulated 3D gaussian in the global frame: position, color in [0,1], the
+// anisotropic scale and rotation quaternion (w,x,y,z) — transformed through the
+// cross-run Sim(3) so the cloud renders as oriented splats — and the source frame
+// it came from (for consensus fusion).
+typedef struct {
+    float x, y, z;
+    float r, g, b, opacity;
+    float sx, sy, sz;
+    float qw, qx, qy, qz;
+    int32_t frame;
+} free_splatter_point;
+
+// Sliding-window accumulator: feed each consecutive pair's engine output and it
+// chains the runs into one world. Opaque handle, not thread-safe.
+typedef struct free_splatter_accumulator free_splatter_accumulator;
+FREE_SPLATTER_API free_splatter_accumulator * free_splatter_accumulator_new(
+    int32_t height, int32_t width, float opacity_threshold);
+FREE_SPLATTER_API void free_splatter_accumulator_free(free_splatter_accumulator * acc); // NULL-safe
+
+// Add one pair's engine output: 2*height*width*gaussian_channels float32, where
+// view 0 shares a frame with the previous pair's view 1. Returns 0 on success.
+FREE_SPLATTER_API int free_splatter_accumulator_add_pair(
+    free_splatter_accumulator * acc, const float * gaussians, int32_t gaussian_channels);
+
+// Number of frames accumulated so far (== pairs_added + 1, or 0 before any pair).
+FREE_SPLATTER_API int free_splatter_accumulator_frame_count(const free_splatter_accumulator * acc);
+
+// Copy the current accumulated cloud: *out is malloc'd free_splatter_point[*n_out]
+// (free with free_splatter_buf_free). Returns 0 on success, -1 on failure.
+FREE_SPLATTER_API int free_splatter_accumulator_cloud(
+    const free_splatter_accumulator * acc, free_splatter_point ** out, size_t * n_out);
+
+// Consensus-fuse the current cloud: keep only voxels (size voxel_frac * extent)
+// corroborated by >= k distinct source frames (single-frame floaters dropped). mode:
+// 0 = averaged (one denoised point per voxel; sparse), 1 = kept (every raw gaussian
+// in a consensus voxel; dense), 2 = best (only the most-confident frame's gaussians
+// per voxel; dense AND de-ghosted). *out malloc'd as above. Returns 0 on success.
+FREE_SPLATTER_API int free_splatter_accumulator_fuse(
+    const free_splatter_accumulator * acc, float voxel_frac, int32_t k, int32_t mode,
+    free_splatter_point ** out, size_t * n_out);
+
+// Copy the global camera trajectory: *out malloc'd (*n_frames)*16 float32, a
+// row-major 4x4 cam2world (similarity) per frame. Returns 0 on success.
+FREE_SPLATTER_API int free_splatter_accumulator_camera_path(
+    const free_splatter_accumulator * acc, float ** out, int32_t * n_frames);
+
+// Geometric de-ghost a cloud in place (gaussian-level consensus refinement): each
+// iteration non-rigidly pulls every gaussian a fraction `alpha` toward the
+// multi-frame consensus of its (coarse-to-fine voxel_frac) neighbourhood — removing
+// the doubled objects the pairwise pose chain leaves. Returns 0 on success.
+FREE_SPLATTER_API int free_splatter_refine_cloud(
+    free_splatter_point * points, size_t n, float voxel_frac, int32_t iters, float alpha);
+
+// Same, applied to the accumulator's internal cloud (so a subsequent _fuse also
+// operates on the de-ghosted cloud). Returns 0 on success, -1 on bad args.
+FREE_SPLATTER_API int free_splatter_accumulator_refine(
+    free_splatter_accumulator * acc, float voxel_frac, int32_t iters, float alpha);
+
+// Consensus-fuse an arbitrary point cloud (e.g. a tree root) using each point's
+// `frame` tag: keep voxels (size voxel_frac*extent) seen by >= k distinct frames,
+// emitting per `mode` (0 averaged, 1 kept, 2 best-frame — dense AND de-ghosted).
+// *out malloc'd (free with free_splatter_buf_free). Returns 0 on success.
+FREE_SPLATTER_API int free_splatter_fuse_cloud(
+    const free_splatter_point * pts, size_t n, float voxel_frac, int32_t k, int32_t mode,
+    free_splatter_point ** out, size_t * n_out);
+
+// Hierarchical (balanced binary tree) accumulation — batch alternative to the
+// linear accumulator. pairs[k] is one engine output [2*H*W*gc] (pair k = frames
+// k,k+1; pair k's view-1 and pair k+1's view-0 are the same frame). Adjacent
+// submaps of `block` frames overlap by `overlap` frames, and each merge fits its
+// Sim(3) over all shared frames at once (over-determined -> averages per-frame
+// noise) — so drift compounds over ~log2(N) hops, not N, and is spread evenly
+// instead of dumped on the last frame. block=2,overlap=1 is the plain
+// overlap-by-one (single shared boundary) tree.
+//
+// The remaining args are for visualising the merge side by side (pass max_levels=-1,
+// layout_spacing=0, per_node_cap=0, n_nodes=NULL for a plain full merge to the root):
+// max_levels stops after that many rounds (-1 = full), so 0 returns the independent
+// base submaps, 1 the first merge round, …; step 0..D to watch the tree collapse to
+// one scene. The remaining nodes are laid out side by side (layout_spacing: 0 = none,
+// <0 = auto, >0 = explicit units) and each capped to its most important
+// (opacity*radius) points (per_node_cap>0) so every scene renders at its own detail.
+// *n_nodes (optional) gets the remaining node count (1 once fully merged). *out
+// malloc'd as free_splatter_point[*n_out] (free with free_splatter_buf_free). 0 on success.
+FREE_SPLATTER_API int free_splatter_tree_overlap(
+    const float * const * pairs, int32_t n_pairs, int32_t gaussian_channels,
+    int32_t height, int32_t width, float opacity_threshold, int32_t block, int32_t overlap,
+    int32_t max_levels, float layout_spacing, int32_t per_node_cap,
+    free_splatter_point ** out, size_t * n_out, int32_t * n_nodes);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // FREE_SPLATTER_H

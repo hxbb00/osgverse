@@ -240,6 +240,10 @@ void DatabasePager::requestNodeFile(const std::string& fileName, osg::NodePath& 
                    << " so nowhere to attach new subgraph to." << std::endl; return;
     }
 
+    // Add priorty computation callback for customized node-loading strategy
+    if (_priorityCallback)
+        priority = _priorityCallback(fileName, nodePath, framestamp);
+
     osg::Node* terrain = 0;
     for (osg::NodePath::reverse_iterator itr = nodePath.rbegin(); itr != nodePath.rend(); ++itr)
     { if ((*itr)->asTerrain()) terrain = *itr; }

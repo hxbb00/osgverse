@@ -536,6 +536,12 @@ SET(DEPTHANYTHING3_SOURCE_FILES
     depthanything3/quantize.cpp depthanything3/da_capi.cpp depthanything3/da_capi.h
 )
 
+SET(FREESPLATTER_SOURCE_FILES
+    freesplatter/backend.cpp freesplatter/gguf_loader.cpp
+    freesplatter/model.cpp freesplatter/image.cpp freesplatter/pose.cpp
+    freesplatter/free_splatter.cpp freesplatter/free_splatter.h
+)
+
 SET(TRELLIS2_SOURCE_FILES
     trellis2/trellis2.cpp trellis2/trellis2.h trellis2/trellis2_capi.cpp trellis2/trellis2_capi.h
     trellis2/mesh_export.cpp trellis2/mesh_export.h trellis2/print_remesh.cpp trellis2/print_remesh.h
@@ -548,6 +554,7 @@ SOURCE_GROUP("Box3D Files" FILES ${BOX3D_SOURCE_FILES})
 SOURCE_GROUP("Depth-Anything3 Files" FILES ${DEPTHANYTHING3_SOURCE_FILES})
 SOURCE_GROUP("DiscreGrid Files" FILES ${DISCREGRID_SOURCE_FILES})
 SOURCE_GROUP("FIR & IIR Files" FILES ${FILTER_SOURCE_FILES})
+SOURCE_GROUP("FreeSplatter Files" FILES ${FREESPLATTER_SOURCE_FILES})
 SOURCE_GROUP("HDBScan Files" FILES ${HDBSCAN_SOURCE_FILES})
 SOURCE_GROUP("ImGUI Files" FILES ${IMGUI_SOURCE_FILES})
 SOURCE_GROUP("InteractiveMeshBoolean Files" FILES ${INTERACTIVEMESHBOOL_SOURCE_FILES})
@@ -614,7 +621,8 @@ IF(GGML_FOUND AND VERSE_SUPPORT_CPP17)
     IF("avx512" IN_LIST VERSE_SIMD_FEATURES)
         SET(DEPTHANYTHING3_SOURCE_FILES ${DEPTHANYTHING3_SOURCE_FILES} winograd.cpp)
     ENDIF()
-    SET(LIBRARY_FILES ${LIBRARY_FILES} ${DEPTHANYTHING3_SOURCE_FILES} ${TRELLIS2_SOURCE_FILES})
+    SET(LIBRARY_FILES ${LIBRARY_FILES} ${DEPTHANYTHING3_SOURCE_FILES}
+                      ${FREESPLATTER_SOURCE_FILES} ${TRELLIS2_SOURCE_FILES})
     INCLUDE_DIRECTORIES(${GGML_INCLUDE_DIR})
 ENDIF()
 
