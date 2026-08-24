@@ -74,8 +74,8 @@ MeshCollector::NonManifoldType MeshCollector::isManifold(unsigned int& problemID
             int idx = i * 3; const osg::Vec3& v = _vertices[i];
             coords[idx] = v[0]; coords[idx + 1] = v[1]; coords[idx + 2] = v[2];
         }
-        cinolib::Trimesh<> mesh(coords, _indices);
 
+        cinolib::Trimesh<> mesh(coords, _indices);
         for (size_t vid = 0; vid < mesh.num_verts(); ++vid)
         { if (!mesh.vert_is_manifold(vid)) {problemID = vid; return NONMANIFOLD_VERTEX;} }
         for (size_t eid = 0; eid < mesh.num_edges(); ++eid)

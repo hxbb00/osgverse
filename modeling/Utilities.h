@@ -29,15 +29,12 @@ namespace osgVerse
     {
         bool operator()(const osg::Vec3& key1, const osg::Vec3& key2) const
         {
-#if 0
-            int x0 = round(key1[0] * 1000.0f), x1 = round(key2[0] * 1000.0f);
-            int y0 = round(key1[1] * 1000.0f), y1 = round(key2[1] * 1000.0f);
-            int z0 = round(key1[2] * 1000.0f), z1 = round(key2[2] * 1000.0f);
-            if (x0 < x1) return true; else if (x0 > x1) return false;
-            else if (y0 < y1) return true; else if (y0 > y1) return false;
-            else return (z0 < z1);
+#if false
+                if (!osg::equivalent(key1.x(), key2.x())) return key1.x() < key2.x();
+                if (!osg::equivalent(key1.y(), key2.y())) return key1.y() < key2.y();
+                return key1.z() < key2.z();
 #else
-            return key1 < key2;
+                return key1 < key2;
 #endif
         }
     };

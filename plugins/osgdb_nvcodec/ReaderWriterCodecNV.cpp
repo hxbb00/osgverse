@@ -70,8 +70,10 @@ public:
                 CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
                 _decoder = new NvDecoder(H->cuContext, true, (cudaVideoCodec)_demuxer->getVideoCodec());
             }
-            _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
         }
+        
+        if (_width < 1 || _height < 1)
+        { _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight(); }
 
         CUdeviceptr deviceFrame = 0;
         uint8_t *video = NULL, *frame = NULL; long long pts = 0;

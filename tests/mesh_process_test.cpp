@@ -144,12 +144,18 @@ int main(int argc, char** argv)
 #if TEST_MODELING_FUNCTIONS
     {
         std::vector<osg::Vec3d> pathL;
+        /*
         pathL.push_back(osg::Vec3(1.0f, 0.0f, 5.0f));
         pathL.push_back(osg::Vec3(4.0f, 0.0f, 4.0f));
         pathL.push_back(osg::Vec3(6.0f, 0.0f, 2.0f));
         pathL.push_back(osg::Vec3(7.0f, 0.0f, 0.0f));
         osg::ref_ptr<osg::Geometry> geomL =
             osgVerse::createLatheGeometry(pathL, osg::Z_AXIS, 16, true);
+            */
+        pathL.push_back(osg::Vec3(7.0f, 0.0f, 5.0f));
+        pathL.push_back(osg::Vec3(7.0f, 0.0f, 0.0f));
+        osg::ref_ptr<osg::Geometry> geomL =
+            osgVerse::createLatheGeometry(pathL, osg::Z_AXIS, 4, false);
 
         std::vector<osg::Vec3d> pathE;
         std::vector<std::vector<osg::Vec3d>> pathEinner;
@@ -193,9 +199,10 @@ int main(int argc, char** argv)
         geode1->addDrawable(geomLo.get());
         //osgDB::writeNodeFile(*geode1, "test_mesh.osg");
 
-#if false  // FIXME: even a well-generated mesh is not manifold?
+#if true  // FIXME: even a well-generated mesh is not manifold?
         osgVerse::MeshCollector mc; unsigned int problemID = 0;
-        mc.setWeldingVertices(true); geomL->accept(mc); int result = mc.isManifold(problemID);
+        mc.setWeldingVertices(true); mc.setUseGlobalVertices(true);
+        geomL->accept(mc); int result = mc.isManifold(problemID);
         std::cout << "INPUT: " << mc.getVertices().size() << "V; " << (mc.getTriangles().size() / 3) << "P\n";
         std::cout << "Manifold: " << result << "; Problem = " << problemID << "\n";
 #endif

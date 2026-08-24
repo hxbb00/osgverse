@@ -285,7 +285,8 @@ void GpuResourceReaderBase::load(const osg::Texture2D& texture, osg::State& stat
 #else
     osg::GLBufferObject::Extensions* ext = osg::GLBufferObject::getExtensions(state.getContextID(), true);
 #endif
-    if (_width == 0 || _height == 0 || !ext) return;
+    if (_width == 0 || _height == 0 || !ext)
+    { OSG_WARN << "[GpuResourceReaderBase] No valid dimension for input texture" << std::endl; return; }
 
     unsigned int imageSize = _width * _height * 4;
     if (_resourceType == RES_CUDA)
@@ -349,8 +350,8 @@ void GpuResourceReaderBase::subload(const osg::Texture2D& texture, osg::State& s
     if (_resourceType == RES_CUDA)
     {
         CudaResourceHandle* H = static_cast<CudaResourceHandle*>(_handle.get());
-        if (_width == 0 || _height == 0) return;
         if (H->pbo == 0) { load(texture, state); if (H->pbo == 0) return; }
+        if (_width == 0 || _height == 0) return;
         _mutex.lock();
 
 #ifdef VERSE_WITH_CUDA
@@ -436,10 +437,15 @@ namespace
             osg::Timer_t now = osg::Timer::instance()->tick();
             if (_manager.valid())
             {
-                double fps = _manager->getDemuxer() ? _manager->getDemuxer()->getFrameRate() : 25.0;
-                double step = fps > 1.0 ? (1000.0 / fps) : 50.0;  // target msecs between two frames
-                double sec = osg::Timer::instance()->delta_m(_lastTick, now);
-                if (step <= sec) { (*_manager)(sa, nv); _lastTick = now; }
+                double fps = _manager->getDemuxer() ? _manager->getDemuxer()->getFrameRate() : -1.0;
+                if (fps >= 0.0)
+                {
+                    double step = fps > 1.0 ? (1000.0 / fps) : 50.0;  // target msecs between two frames
+                    double sec = osg::Timer::instance()->delta_m(_lastTick, now);
+                    if (step <= sec) { (*_manager)(sa, nv); _lastTick = now; }
+                }
+                else  // stream mode: fps = -1
+                    (*_manager)(sa, nv);
             }
         }
 

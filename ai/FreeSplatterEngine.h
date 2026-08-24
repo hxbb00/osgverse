@@ -12,7 +12,21 @@
 namespace osgVerse
 {
 
-    /// Implement Free-Splatter functionalities
+    /** Implement Free-Splatter functionalities
+        // Gaussians from single/multiple images
+        std::vector<osg::ref_ptr<osg::Image>> imgs
+        auto g = engine->estimateGaussians(imgs);
+        auto poses = engine->estimatePoses(g);  // solve poses
+        g.unpack(5e-3f);                        // fill OSG arrays
+        osgVerse::FreeSplatter::writeSplat(fused, "out.splat");
+
+        // Gaussians from accumulated video data
+        osgVerse::FreeSplatter::Accumulator acc(512, 512, 5e-3f);
+        acc.addPair(pairGaussians);          // assert(n_views == 2)
+        auto cloud = acc.getCloud();         // Original point cloud
+        auto fused = acc.fuse(0.02f, 2, 1);  // Fused point cloud
+        osgVerse::FreeSplatter::writeSplat(fused, "out.splat", 200000, 1.0f);
+    */
     class FreeSplatter : public osg::Referenced
     {
     public:

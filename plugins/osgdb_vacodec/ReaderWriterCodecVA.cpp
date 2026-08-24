@@ -51,11 +51,13 @@ namespace osgVerse
                 if (getResourceType() == RES_EGL)
                 {
                     if (_demuxer->getVideoCodec() == osgVerse::CODEC_INVALID) return;
-                    _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
                     _decoder = new VaapiDecoder((int)_demuxer->getVideoCodec(), _width, _height);
                     if (!_decoder->initialize()) return;
                 }
             }
+
+            if (_width < 1 || _height < 1)
+            { _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight(); }
 
             uint8_t *video = NULL, *frame = NULL; int videoBytes = 0; long long pts = 0;
             if (!_demuxer || !_decoder) { setState(INVALID); return; }

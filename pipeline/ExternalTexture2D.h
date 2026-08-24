@@ -77,7 +77,7 @@ namespace osgVerse
             virtual VideoCodecType getVideoCodec() { return CODEC_INVALID; }
             virtual int getWidth() const { return 0; }
             virtual int getHeight() const { return 0; }
-            virtual double getFrameRate() const { return 25; }
+            virtual double getFrameRate() const { return -1; }
 
             virtual bool demux(unsigned char** videoData, int* videoBytes, long long* pts)
             { return false; }

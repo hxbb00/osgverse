@@ -50,6 +50,20 @@ namespace
 
     struct CollectVertexOperator
     {
+        bool checkWeldableVertex(osg::Vec3& v, float eps = 1e-4)
+        {
+            if (vertexMap->find(v) != vertexMap->end()) return true;
+            const float epsSq = eps * eps;
+
+            auto it = vertexMap->lower_bound(osg::Vec3(v.x() - eps, -FLT_MAX, -FLT_MAX));
+            for (; it != vertexMap->end(); ++it)
+            {
+                const osg::Vec3& k = it->first; if (k.x() > v.x() + eps) break;
+                if ((k - v).length2() < epsSq) { v = k; return true; }
+            }
+            return false;
+        }
+
         void operator()(unsigned int i1, unsigned int i2, unsigned int i3)
         {
             if (vertices && vertices->size() <= baseIndex)
@@ -60,7 +74,7 @@ namespace
                     osg::Vec3 v = (*inputV)[i] * matrix;
                     if (vertexMap)
                     {
-                        if (vertexMap->find(v) == vertexMap->end())
+                        if (!checkWeldableVertex(v))
                         {
                             (*vertexMap)[v] = vertices->size();
                             vertexAddingList.push_back(true);

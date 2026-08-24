@@ -10,6 +10,7 @@
 #include <osgViewer/Viewer>
 #include <osgViewer/ViewerEventHandlers>
 #include <pipeline/Pipeline.h>
+#include <readerwriter/Utilities.h>
 #include <iostream>
 #include <sstream>
 
@@ -103,17 +104,26 @@ protected:
 
 int main(int argc, char** argv)
 {
-    osgDB::Registry::instance()->loadLibrary(
-        osgDB::Registry::instance()->createLibraryNameForExtension("verse_ms"));
-    osg::setNotifyLevel(osg::NOTICE);
+    osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
+    osg::setNotifyHandler(new osgVerse::ConsoleHandler);
+    //osgDB::Registry::instance()->loadLibrary(
+    //    osgDB::Registry::instance()->createLibraryNameForExtension("verse_ms"));
+    //osg::setNotifyLevel(osg::NOTICE);
 
-    osg::ref_ptr<osg::Node> scene =
-        (argc < 2) ? osgDB::readNodeFile("cessna.osg") : osgDB::readNodeFile(argv[1]);
-    if (!scene) { OSG_WARN << "Failed to load " << (argc < 2) ? "" : argv[1]; return 1; }
+    std::string msAddr = "rtmp://ns8.indexforce.com/home/mystream.verse_ms";
+    arguments.read("--stream", msAddr);
+
+    osg::ref_ptr<osg::Node> scene = osgDB::readNodeFiles(arguments);
+    if (!scene) scene = osgDB::readNodeFile("cessna.osg");
+    if (!scene) { OSG_WARN << "Failed to load scene\n"; return 1; }
 
     // The scene graph
     osg::ref_ptr<osg::MatrixTransform> sceneRoot = new osg::MatrixTransform;
     sceneRoot->addChild(scene.get());
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
+    sceneRoot->getOrCreateStateSet()->setAttribute(osgVerse::createDefaultProgram("baseTexture"));
+    sceneRoot->getOrCreateStateSet()->addUniform(new osg::Uniform("baseTexture", (int)0));
+#endif
 
     osgViewer::Viewer viewer;
     viewer.addEventHandler(new osgViewer::StatsHandler);
@@ -125,15 +135,15 @@ int main(int argc, char** argv)
     CaptureCallback* cap = new CaptureCallback(&viewer, true);
     viewer.getCamera()->setFinalDrawCallback(cap);
 #else
-    osg::ImageStream* is = dynamic_cast<osg::ImageStream*>(
-        osgDB::readImageFile("rtmp://ns8.indexforce.com/home/mystream.verse_ms"));
+    osg::ImageStream* is = dynamic_cast<osg::ImageStream*>(osgDB::readImageFile(msAddr));
     if (is) is->play(); else return 1;
 
-    osg::ref_ptr<osg::MatrixTransform> mt = new osg::MatrixTransform;
-    mt->addChild(osg::createGeodeForImage(is));
-    mt->setMatrix(osg::Matrix::scale(4.0f, 4.0f, 4.0f) *
-                  osg::Matrix::translate(0.0f, 0.0f, 5.0f));
-    sceneRoot->addChild(mt.get());
+    osg::Geometry* quad = osg::createTexturedQuadGeometry(
+        osg::Vec3(-4.0f, 0.0f, 0.0f), osg::X_AXIS * 8.0f, osg::Z_AXIS * 6.0f, 0.0f, 1.0f, 1.0f, 0.0f);
+    quad->getOrCreateStateSet()->setTextureAttributeAndModes(0, osgVerse::createTexture2D(is));
+
+    osg::Geode* geode = new osg::Geode;
+    geode->addDrawable(quad); sceneRoot->addChild(geode);
 #endif
 
 #if MEDIA_WEBRTC_COMMANDS

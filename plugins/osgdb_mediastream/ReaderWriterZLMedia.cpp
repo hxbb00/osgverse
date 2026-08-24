@@ -98,8 +98,9 @@ public:
     }
 
     virtual osgVerse::VideoCodecType getVideoCodec() { return _type; }
-    virtual int getWidth() { return _width; }
-    virtual int getHeight() { return _height; }
+    virtual int getWidth() const { return _width; }
+    virtual int getHeight() const { return _height; }
+    virtual double getFrameRate() const { return -1; }
 
     virtual bool demux(unsigned char** videoData, int* videoBytes, long long* pts)
     {
