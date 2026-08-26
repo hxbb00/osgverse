@@ -11,6 +11,7 @@
 #   define M_E 2.71828182845904523536
 #endif
 
+#include <random>
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -283,6 +284,93 @@ namespace osgVerse
         exprtk::expression<double> expression;
         exprtk::parser<double> parser;
     };
+
+    static std::random_device g_randDevice;
+    static std::mt19937 g_randGenerator(g_randDevice());
+    float randomFloat(float min, float max)
+    {
+        std::uniform_real_distribution<float> dis(min, max);
+        return dis(g_randGenerator);
+    }
+
+    osg::Vec3 createRandomVector(const osg::BoundingBox& range, bool onSurface)
+    {
+        if (onSurface)
+        {
+            // Generate on the surface of the bounding box
+            // Choose which face to place the point on (0-5 for 6 faces)
+            std::uniform_int_distribution<int> faceDist(0, 5);
+            int face = faceDist(g_randGenerator); float x = 0.0f, y = 0.0f, z = 0.0f;
+            
+            // Generate coordinates on the chosen face
+            switch(face)
+            {
+                case 0: // x = min, y and z random
+                    x = range.xMin();
+                    y = randomFloat(range.yMin(), range.yMax());
+                    z = randomFloat(range.zMin(), range.zMax()); break;
+                case 1: // x = max, y and z random
+                    x = range.xMax();
+                    y = randomFloat(range.yMin(), range.yMax());
+                    z = randomFloat(range.zMin(), range.zMax()); break;
+                case 2: // y = min, x and z random
+                    x = randomFloat(range.xMin(), range.xMax());
+                    y = range.yMin();
+                    z = randomFloat(range.zMin(), range.zMax()); break;
+                case 3: // y = max, x and z random
+                    x = randomFloat(range.xMin(), range.xMax());
+                    y = range.yMax();
+                    z = randomFloat(range.zMin(), range.zMax()); break;
+                case 4: // z = min, x and y random
+                    x = randomFloat(range.xMin(), range.xMax());
+                    y = randomFloat(range.yMin(), range.yMax());
+                    z = range.zMin(); break;
+                case 5: // z = max, x and y random
+                    x = randomFloat(range.xMin(), range.xMax());
+                    y = randomFloat(range.yMin(), range.yMax());
+                    z = range.zMax(); break;
+            }
+            return osg::Vec3(x, y, z);
+        }
+        else
+        {
+            // Generate within the bounding box (volume)
+            float x = randomFloat(range.xMin(), range.xMax());
+            float y = randomFloat(range.yMin(), range.yMax());
+            float z = randomFloat(range.zMin(), range.zMax());
+            return osg::Vec3(x, y, z);
+        }
+    }
+    
+    osg::Vec3 createRandomVector(const osg::BoundingSphere& range, bool onSurface)
+    {
+        float radius = range.radius();
+        if (onSurface)
+        {
+            // Generate on the surface of the sphere
+            // Method: Generate random direction vector and scale to radius
+            float theta = randomFloat(0.0f, 2.0f * static_cast<float>(M_PI));
+            float phi = randomFloat(0.0f, static_cast<float>(M_PI));
+            float x = radius * sin(phi) * cos(theta);
+            float y = radius * sin(phi) * sin(theta);
+            float z = radius * cos(phi);
+            return osg::Vec3(x, y, z) + range.center();
+        }
+        else
+        {
+            // Generate within the sphere (volume)
+            // Method: Generate random point in cube and reject if outside sphere
+            // This ensures uniform distribution within the sphere
+            float x = 0.0f, y = 0.0f, z = 0.0f;
+            do
+            {
+                x = randomFloat(-radius, radius);
+                y = randomFloat(-radius, radius);
+                z = randomFloat(-radius, radius);
+            } while (x * x + y * y + z * z > radius * radius);
+            return osg::Vec3(x, y, z) + range.center();
+        }
+    }
 
 }
 

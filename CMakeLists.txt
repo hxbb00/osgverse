@@ -33,9 +33,9 @@ IF(NOT WIN32)
         # This is a genuine two-entry CMake LIST (semicolon-separated), not one string
         # with an embedded colon — Mach-O rpath entries are one path per LC_RPATH load
         # command, unlike ELF's single colon-separated RUNPATH field.
-        SET(CMAKE_INSTALL_RPATH "@loader_path" "@loader_path/../lib")
+        SET(CMAKE_INSTALL_RPATH "@loader_path" "@loader_path/.." "@loader_path/../lib")
     ELSE()
-        SET(CMAKE_INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib")
+        SET(CMAKE_INSTALL_RPATH "$ORIGIN:$ORIGIN/..:$ORIGIN/../lib")
     ENDIF()
 ENDIF(NOT WIN32)
 
@@ -592,7 +592,7 @@ FIND_DEPENDENCE(CINOLIB "cinolib/tree.h" "" "")
 FIND_DEPENDENCE(DRACO "draco/draco_features.h" "libdraco.so;libdraco.a;draco.lib" "")
 FIND_DEPENDENCE(FFMPEG "libavcodec/avcodec.h" "libavcodec.so;avcodec.lib" "")
 FIND_DEPENDENCE(GGML "ggml.h" "libggml.so;ggml.lib" "")
-#FIND_DEPENDENCE(LIBCEF "cef_browser.h" "libcef.so;libcef.a;libcef.lib" "libcef")
+FIND_DEPENDENCE(LIBCEF "cef_browser.h" "libcef.so;libcef.a;libcef.lib" "libcef")
 FIND_DEPENDENCE(LIBIGL "igl/igl_inline.h" "" "")
 FIND_DEPENDENCE(MIMALLOC "mimalloc.h" "libmimalloc.so;mimalloc.lib" "mimalloc")
 FIND_DEPENDENCE_EX(TIFF "tiff.h" "libtiff.so;libtiff.a;libtiff.lib" "" TRUE)

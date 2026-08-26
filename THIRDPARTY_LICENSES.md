@@ -127,7 +127,7 @@
 | FFmpeg           | (Linux) apt-get install libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev libswscale-dev |
 | GGML             | Manually Compile from source and enable CUDA/MUSA |
 | libDraco         | (Win) vcpkg install draco (Linux) apt-get install libdraco-dev |
-| libCEF           | Download from https://cef-builds.spotifycdn.com/index.html |
+| libCEF           | Download from https://cef-builds.spotifycdn.com/index.html (for C++14, select version 90.x; for C++17, select 110.x) |
 | libIGL           | Headers only. Download from https://github.com/libigl/libigl/releases |
 | libosmium        | (Linux) apt-get install libosmium2-dev |
 | libwebp          | (Win) vcpkg install libwebp (Linux) apt-get install libwebp-dev |

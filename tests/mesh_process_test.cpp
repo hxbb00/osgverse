@@ -13,6 +13,7 @@
 #include <modeling/MeshTopology.h>
 #include <modeling/GeometryMapper.h>
 #include <modeling/Utilities.h>
+#include <modeling/Math.h>
 #include <pipeline/Utilities.h>
 #include <iostream>
 #include <sstream>
@@ -193,10 +194,10 @@ int main(int argc, char** argv)
         geode1->addDrawable(geomLo.get());
         //osgDB::writeNodeFile(*geode1, "test_mesh.osg");
 
-#if true  // FIXME: even a well-generated mesh is not manifold?
+#if true  // check manifold
         osgVerse::MeshCollector mc; unsigned int problemID = 0;
         mc.setWeldingVertices(true); mc.setUseGlobalVertices(true);
-        geomL->accept(mc); int result = mc.isManifold(problemID);
+        geomLo->accept(mc); int result = mc.isManifold(problemID);
         std::cout << "INPUT: " << mc.getVertices().size() << "V; " << (mc.getTriangles().size() / 3) << "P\n";
         std::cout << "Manifold: " << result << "; Problem = " << problemID << "\n";
 #endif
@@ -213,6 +214,21 @@ int main(int argc, char** argv)
     osg::Camera* camera = osgVerse::createRTTCamera(osg::Camera::COLOR_BUFFER0, image, scene);
     osgVerse::alignCameraToBox(camera, bvv.getBoundingBox(), 1024, 512);
     root->addChild(camera);*/
+
+#if false  // Test HDBScan
+    osg::BoundingBox bb0(osg::Vec3(), osg::Vec3(10.0f, 10.0f, 10.0f));
+    osg::BoundingSphere bs1(osg::Vec3(20.0f, 20.0f, 10.0f), 8.0);
+    std::vector<osg::Vec3d> srcPts;
+    for (int i = 0; i < 20; ++i) srcPts.push_back(osgVerse::createRandomVector(bb0, false));
+    for (int i = 0; i < 20; ++i) srcPts.push_back(osgVerse::createRandomVector(bs1, false));
+
+    osgVerse::HDBScanCluster cluster(srcPts);
+    unsigned int num = cluster.execute(5, 1, osgVerse::HDBScanCluster::Euclidean);
+    
+    std::vector<int> labels; cluster.getLabels(labels);  // num = 2, labelA (0-20), labelB (21-40)
+    std::cout << "HDBSCAN " << num << ": LABELS = " << labels.size() << "\n";
+    for (unsigned int i = 0; i < labels.size(); ++i) std::cout << labels[i] << "; "; std::cout << "\n";
+#endif
 
     osgViewer::Viewer viewer;
     viewer.addEventHandler(new osgViewer::StatsHandler);

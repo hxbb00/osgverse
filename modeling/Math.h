@@ -72,8 +72,7 @@ namespace osgVerse
     extern osg::Matrix computePerspectiveMatrix(double hfov, double vfov, double zn, double zf);
 
     /** Compute perspective matrix from OpenCV intrinsic camera matrix
-        See: http://www.info.hiroshima-cu.ac.jp/~miyazaki/knowledge/teche0092.html
-    */
+        See: http://www.info.hiroshima-cu.ac.jp/~miyazaki/knowledge/teche0092.html */
     extern osg::Matrix computePerspectiveMatrix(double focalX, double focalY,
                                                 double centerX, double centerY, double zn, double zf);
 
@@ -85,6 +84,12 @@ namespace osgVerse
 
     /** Check if two matrix are equal nor not */
     extern bool isEqual(const osg::Matrix& m0, const osg::Matrix& m1);
+
+    /** Create a random vector inside a box or on a box */
+    extern osg::Vec3 createRandomVector(const osg::BoundingBox& range, bool onSurface);
+
+    /** Create a random vector inside a sphere or on a sphere */
+    extern osg::Vec3 createRandomVector(const osg::BoundingSphere& range, bool onSurface);
 
     /** Compute result of a numeric expression */
     class MathExpression
