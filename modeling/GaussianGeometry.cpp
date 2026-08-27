@@ -311,7 +311,6 @@ bool GaussianGeometry::finalize(int vOffset, int vCount)
     osg::StateSet* ss = getOrCreateStateSet();
     if (_method != GEOMETRY_SHADER)
     {
-        int off = vOffset, cnt = vCount;
         if (vOffset > 0)
         {
             if (vCount < 0) vCount = 0; else if (_numSplats < vCount) vCount = _numSplats;
@@ -457,6 +456,75 @@ bool GaussianGeometry::finalize(int vOffset, int vCount)
         for (size_t i = 0; i < _numSplats; ++i) de->push_back(i);
         return addPrimitiveSet(de.get());
     }
+}
+
+std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> GaussianGeometry::divideByCluster(int vOffset, int vCount)
+{
+    /*if (vOffset > 0)
+    {
+        if (vCount < 0) vCount = 0; else if (_numSplats < vCount) vCount = _numSplats;
+        if (_numSplats <= vOffset + vCount) vOffset = _numSplats - vCount;
+    }
+    int off = vOffset, cnt = (vCount > 0 && vCount < _numSplats) ? vCount : _numSplats;
+
+    // Collect positions and HDBScan to cluster
+    const std::vector<osg::Vec4>& layer0 = _preDataMap["Layer0"];
+    std::vector<osg::Vec3> pos(cnt);
+    for (int i = 0; i < cnt; ++i)
+    {
+        const osg::Vec4& v = layer0[off + i];
+        pos[i] = osg::Vec3(v[0], v[1], v[2]);
+    }
+    HDBScanCluster hdbscan(pos);
+    unsigned int num = hdbscan.execute(50, 1, HDBScanCluster::Euclidean);
+    if (num < 2) return {};  // no need to divide
+
+    // Get result parts
+    struct PartInfo { std::vector<unsigned int> indices; osg::BoundingBox bbox; };
+    std::map<int, PartInfo> partMap; std::vector<PartInfo> parts;
+
+    std::vector<int> labels; hdbscan.getLabels(labels);
+    for (size_t i = 0; i < labels.size(); ++i)
+    {
+        PartInfo& part = partMap[labels[i]];
+        part.indices.push_back(i); part.bbox.expandBy(pos[i]);
+    }
+
+    // Check to see if result part is really isolated
+    for (std::map<int, PartInfo>::iterator it = partMap.begin();
+         it != partMap.end(); ++it) parts.push_back(it->second);
+    std::cout << getName() << ": CLUSTER? = " << parts.size() << "\n";
+
+    std::map<size_t, int> groupMap; int currentGroup = 0;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        std::set<int> mergeGroups;
+        for (size_t j = 0; j < i; ++j)
+        {
+            if (parts[i].bbox.intersects(parts[j].bbox))
+                mergeGroups.insert(groupMap[j]);
+        }
+
+        if (!mergeGroups.empty())
+        {
+            int targetGroup = *mergeGroups.begin(); groupMap[i] = targetGroup;
+            if (mergeGroups.size() > 1)
+            {
+                for (auto& pair : groupMap)
+                { if (mergeGroups.find(pair.second) != mergeGroups.end()) pair.second = targetGroup; }
+            }
+        }
+        else
+            groupMap[i] = currentGroup++;
+    }
+
+    // Get final results and divide the geometry
+    std::map<int, std::vector<size_t>> resultMap;
+    for (auto& pair : groupMap) resultMap[pair.second].push_back(pair.first);
+    std::cout << getName() << ": CLUSTER = " << resultMap.size() << "\n";*/
+
+    std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList;
+    return geomList;
 }
 
 void GaussianGeometry::setPosition(osg::Vec3Array* v)

@@ -71,7 +71,7 @@ public:
     void setColorParameters(const std::vector<osg::Vec4>& param);
     osg::Vec4* getColorParameters(bool dirty);
 
-    bool finalize(int vOffset = 0, int vCount =  0);  // only run this after setting all attributes
+    bool finalize(int vOffset = 0, int vCount = 0);  // only run this after setting all attributes
     RenderMethod getRenderMethod() const { return _method; }
     int getNumSplats() const { return _numSplats; }
 
@@ -96,6 +96,12 @@ public:
     osg::FloatArray* getCoreDataBuffer() { return _coreBuffer.get(); }
     osg::UShortArray* getCoreAttributeBuffer() { return _coreAttrBuffer.get(); }
     osg::UShortArray* getShcoefBuffer() { return _shcoefBuffer.get(); }
+
+    /** Divide current geometry into parts using HDBScan clustering algorithm (returns empty if not dividable)
+        DONOT call finalize() before this method if you want to divide current Gaussian geometry;
+        After divided, finalize() will be called automatically.
+    */
+    std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> divideByCluster(int vOffset = 0, int vCount = 0);
 
 protected:
     virtual ~GaussianGeometry() {}

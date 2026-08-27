@@ -219,8 +219,8 @@ int main(int argc, char** argv)
     osg::BoundingBox bb0(osg::Vec3(), osg::Vec3(10.0f, 10.0f, 10.0f));
     osg::BoundingSphere bs1(osg::Vec3(20.0f, 20.0f, 10.0f), 8.0);
     std::vector<osg::Vec3d> srcPts;
-    for (int i = 0; i < 20; ++i) srcPts.push_back(osgVerse::createRandomVector(bb0, false));
-    for (int i = 0; i < 20; ++i) srcPts.push_back(osgVerse::createRandomVector(bs1, false));
+    for (int i = 0; i < 200; ++i) srcPts.push_back(osgVerse::createRandomVector(bb0, false));
+    for (int i = 0; i < 200; ++i) srcPts.push_back(osgVerse::createRandomVector(bs1, false));
 
     osgVerse::HDBScanCluster cluster(srcPts);
     unsigned int num = cluster.execute(5, 1, osgVerse::HDBScanCluster::Euclidean);

@@ -386,7 +386,6 @@ osg::ref_ptr<osg::Node> loadSplatFromSOG(std::istream& in, const std::string& pa
     createSogRotations(*rot, sogData.images["quats_0"].get());
     createSogColors0(*rD0, *gD0, *bD0, *alpha, sogData.images["sh0_0"].get(), sogData.sh0Code, sogData.sh0Min, sogData.sh0Max);
 
-#if true
     osg::ref_ptr<osgVerse::GaussianGeometry> geom = new osgVerse::GaussianGeometry(rm);
     geom->setShDegrees(sogData.numDegrees); geom->setPosition(pos.get());
     geom->setScaleAndRotation(scale.get(), rot.get(), alpha.get());
@@ -404,13 +403,11 @@ osg::ref_ptr<osg::Node> loadSplatFromSOG(std::istream& in, const std::string& pa
         geom->setShRed(2, rD2.get()); geom->setShGreen(2, gD2.get()); geom->setShBlue(2, bD2.get());
         geom->setShRed(3, rD3.get()); geom->setShGreen(3, gD3.get()); geom->setShBlue(3, bD3.get());
     }
-    geom->finalize(vOffset, vCount);
-#else
-    osg::ref_ptr<osg::Geometry> geom = new osg::Geometry;
-    geom->setVertexArray(pos.get());
-    geom->addPrimitiveSet(new osg::DrawArrays(GL_POINTS, 0, pos->size()));
-#endif
+
+    std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList = geom->divideByCluster(vOffset, vCount);
+    if (geomList.empty()) { geom->finalize(vOffset, vCount); geomList.push_back(geom); }
 
     osg::ref_ptr<osg::Geode> root = new osg::Geode;
-    root->addDrawable(geom.get()); return root;
+    for (size_t i = 0; i < geomList.size(); ++i) root->addDrawable(geomList[i].get());
+    return root;
 }

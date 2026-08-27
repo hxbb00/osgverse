@@ -146,7 +146,12 @@ public:
             gf::ReadOptions read_opt;
             gf::Expected<gf::GaussianCloudIR> ir = reader->Read(
                 (const uint8_t*)buffer.data(), buffer.size(), read_opt);
-            if (ir.ok()) geode->addDrawable(fromGF(ir.value(), vOffset, vCount, method));
+            if (ir.ok())
+            {
+                std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList =
+                    fromGF(ir.value(), vOffset, vCount, method);
+                for (size_t i = 0; i < geomList.size(); ++i) geode->addDrawable(geomList[i].get());
+            }
 #else
             spz::GaussianCloud cloud;
             if (ext == "ply")
@@ -237,8 +242,8 @@ protected:
     }
 
 #if true
-    osgVerse::GaussianGeometry* fromGF(gf::GaussianCloudIR& c, int vOffset, int vCount,
-                                       osgVerse::GaussianGeometry::RenderMethod m) const
+    std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> fromGF(gf::GaussianCloudIR& c, int vOffset, int vCount,
+                                                                 osgVerse::GaussianGeometry::RenderMethod m) const
     {
         osg::ref_ptr<osg::Vec3Array> pos = new osg::Vec3Array, scale = new osg::Vec3Array;
         for (size_t i = 0; i < c.positions.size(); i += 3)
@@ -308,7 +313,9 @@ protected:
             if (numShCoff >= 45)
                 { geom->setShRed(3, rD3.get()); geom->setShGreen(3, gD3.get()); geom->setShBlue(3, bD3.get()); }
         }
-        geom->finalize(vOffset, vCount); return geom.release();
+
+        std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList = geom->divideByCluster(vOffset, vCount);
+        if (geomList.empty()) { geom->finalize(vOffset, vCount); geomList.push_back(geom); } return geomList;
     }
 
     gf::GaussianCloudIR sceneToGF(const osg::Node& node) const
