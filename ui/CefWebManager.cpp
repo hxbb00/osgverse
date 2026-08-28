@@ -1,6 +1,3 @@
-// Prevent GLES2/gl2.h to redefine gl* functions
-#define GL_GLES_PROTOTYPES 0
-
 #include "CefWebManager.h"
 #include <include/cef_app.h>
 #include <include/cef_browser.h>
@@ -241,7 +238,11 @@ CefWebManager* CefWebManager::instance()
 
 int CefWebManager::executeProcess(osg::ArgumentParser& arguments)
 {
+#ifdef _WIN32
+    CefMainArgs main_args(GetModuleHandle(NULL));
+#else
     CefMainArgs main_args(arguments.argc(), arguments.argv());
+#endif
     CefRefPtr<WebApp> app(new WebApp);
     return CefExecuteProcess(main_args, app.get(), nullptr);
 }
@@ -258,10 +259,13 @@ bool CefWebManager::initialize(osg::ArgumentParser& arguments, const std::string
     if (!cachePath.empty())
         CefString(&settings.cache_path) = cachePath;
 
+#ifdef _WIN32
+    CefMainArgs main_args(GetModuleHandle(NULL));
+#else
     CefMainArgs main_args(arguments.argc(), arguments.argv());
+#endif
     bool result = CefInitialize(main_args, settings, _impl->app.get(), nullptr);
-    _impl->initialized = result;
-    return result;
+    _impl->initialized = result; return result;
 }
 
 void CefWebManager::shutdown()
