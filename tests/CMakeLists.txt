@@ -26,9 +26,8 @@ MACRO(NEW_SIMPLE_EXECUTABLE EXECUTABLE_NAME IS_CUDA SOURCE_FILE)
 
     TARGET_COMPILE_OPTIONS(${EXE_NAME} PUBLIC -D_SCL_SECURE_NO_WARNINGS)
     TARGET_INCLUDE_DIRECTORIES(${EXE_NAME} PUBLIC ${EXTERNAL_INCLUDES})
-    TARGET_LINK_LIBRARIES(${EXE_NAME} osgVerseDependency osgVerseReaderWriter osgVerseAnimation osgVersePipeline
-                          osgVerseWrappers osgVerseModeling osgVerseScript osgVerseUI osgVerseAI
-                          ${EXTERNAL_LIBRARIES})
+    TARGET_LINK_LIBRARIES(${EXE_NAME} osgVerseAI osgVerseDependency osgVerseReaderWriter osgVerseAnimation osgVersePipeline
+                          osgVerseWrappers osgVerseModeling osgVerseScript osgVerseUI ${EXTERNAL_LIBRARIES})
     LINK_OSG_LIBRARY(${EXE_NAME} OpenThreads osg osgDB osgUtil osgGA osgText osgSim osgTerrain osgViewer)
     IF(NOT VERSE_STATIC_BUILD)
         IF(MSVC AND VERSE_INSTALL_PDB_FILES)
@@ -69,24 +68,25 @@ IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_TEST(osgVerse_Test_Python_Server python_server_test.cpp)
 
     IF(OSG_MAJOR_VERSION GREATER 2 AND OSG_MINOR_VERSION GREATER 3)
-        NEW_TEST(osgVerse_Test_Instance_Param instance_param_test.cpp)
         NEW_TEST(osgVerse_Test_Reserializing reserializing_test.cpp)
     ENDIF()
 ENDIF(NOT VERSE_USE_EXTERNAL_GLES)
 
+NEW_EXAMPLE(osgVerse_Test_3DGS gaussian_splatting_test.cpp)  # 3D gaussian splatting load and render example
+NEW_EXAMPLE(osgVerse_Test_Earth earth_test.cpp)  # Lightweight earth, atmosphere and ocean creation example
 NEW_EXAMPLE(osgVerse_Test_Forward_Pbr forward_pbr_test.cpp)  # Forward PBR rendering pass example
-NEW_EXAMPLE(osgVerse_Test_Plugins plugins_test.cpp)  # Auto-check dependencies and printing out example // FIXME: implement
 NEW_EXAMPLE(osgVerse_Test_Pipeline pipeline_test.cpp)  # Basic pipeline usage and platform-testing example
+NEW_EXAMPLE(osgVerse_Test_Plugins plugins_test.cpp)  # Auto-check dependencies and printing out example // FIXME: implement
 NEW_EXAMPLE(osgVerse_Test_Report_Graph report_graph_test.cpp)  # Scene graph structure printer example
 NEW_EXAMPLE(osgVerse_Test_Shader_Library shader_library_test.cpp)  # Shader library loading and platform-testing example
 NEW_EXAMPLE(osgVerse_Test_Shadow shadow_test.cpp)  # Shadow algorithm and efficiency testing example
-NEW_EXAMPLE(osgVerse_Test_Earth earth_test.cpp)  # Lightweight earth, atmosphere and ocean creation example
-NEW_EXAMPLE(osgVerse_Test_3DGS gaussian_splatting_test.cpp)  # 3D gaussian splatting load and render example
-NEW_EXAMPLE(osgVerse_Test_HUD_Text hud_text_test.cpp)  # HUD texts rendering and dynamic changing example
 NEW_EXAMPLE(osgVerse_Test_Video video_test.cpp)  # Hardware video decoding/encoding example (NV Codec or libVA)
 IF(ONNXRUNTIME_FOUND)
     NEW_EXAMPLE(osgVerse_Test_Onnx onnx_engine_test.cpp)  # ONNX-based AI model load and inference example
 ENDIF(ONNXRUNTIME_FOUND)
+IF(VERSE_SUPPORT_CPP17 AND GGML_FOUND)
+    NEW_EXAMPLE(osgVerse_Test_GGML ggml_related_test.cpp)  # GGML-based AI model load and inference example
+ENDIF()
 
 IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_EXAMPLE(osgVerse_Test_Atmospheric atmospheric_scattering.cpp)  # Precomputed atmosphere textures example // FIXME: implement
@@ -130,6 +130,7 @@ IF(VERSE_BUILD_DEPRECATED_TESTS)
         NEW_TEST(osgVerse_Test_Mesh_Boolean deprecated/mesh_boolean_test.cpp)
         NEW_TEST(osgVerse_Test_Auto_Imposter deprecated/auto_imposter_test.cpp)
         NEW_TEST(osgVerse_Test_Texture_Mapping deprecated/texture_mapping_test.cpp)
+        NEW_TEST(osgVerse_Test_HUD_Text deprecated/hud_text_test.cpp)
 	    IF(MSVC_VERSION GREATER 1900)
             NEW_TEST(osgVerse_Test_Restful_Server deprecated/restful_server_test.cpp)
 	    ENDIF(MSVC_VERSION GREATER 1900)
@@ -138,6 +139,7 @@ IF(VERSE_BUILD_DEPRECATED_TESTS)
             NEW_TEST(osgVerse_Test_Indirect_Draw deprecated/indirect_drawing_test.cpp)
             NEW_TEST(osgVerse_Test_Tessellation deprecated/tessellation_test.cpp)
             NEW_TEST(osgVerse_Test_MultiView_Shader deprecated/multiview_shader_test.cpp)
+            NEW_TEST(osgVerse_Test_Instance_Param deprecated/instance_param_test.cpp)
         ENDIF()
     ENDIF(NOT VERSE_USE_EXTERNAL_GLES)
 ENDIF(VERSE_BUILD_DEPRECATED_TESTS)

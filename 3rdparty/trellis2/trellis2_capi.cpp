@@ -9,7 +9,8 @@
 #include "mesh_export.h"
 #include "pbr_utils.h"
 
-//#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include "marching_cubes.h"
 #include "flexible_dual_grid.h"
