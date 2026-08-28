@@ -32,6 +32,7 @@
 #endif
 #include "3rdparty/clipper2/clipper.h"
 #include "3rdparty/nanoflann.hpp"
+#include "3rdparty/dkm_parallel.hpp"
 #include "3rdparty/hdbscan/Hdbscan/hdbscan.hpp"
 #include "Math.h"
 const float ZERO_TOLERANCE = float(1e-5);
@@ -370,6 +371,21 @@ namespace osgVerse
             } while (x * x + y * y + z * z > radius * radius);
             return osg::Vec3(x, y, z) + range.center();
         }
+    }
+
+    std::vector<unsigned int> createKMeansCluster(const std::vector<osg::Vec3f>& src, int K,
+                                                  std::vector<osg::Vec3f>& resultCenters)
+    {
+        std::vector<std::array<float, 3>> ptList(src.size());
+        memcpy(ptList.data(), src.data(), src.size() * sizeof(float) * 3);
+        
+        auto result = dkm::kmeans_lloyd_parallel(ptList, K);
+        std::vector<std::array<float, 3>> rCenters = std::get<0>(result);
+        std::vector<unsigned int> rIndices = std::get<1>(result);
+        resultCenters.resize(rCenters.size());
+        memcpy(resultCenters.data(), rCenters.data(),
+               rCenters.size() * sizeof(float) * 3);
+        return rIndices;
     }
 
 }

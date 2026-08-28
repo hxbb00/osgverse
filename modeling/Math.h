@@ -91,6 +91,10 @@ namespace osgVerse
     /** Create a random vector inside a sphere or on a sphere */
     extern osg::Vec3 createRandomVector(const osg::BoundingSphere& range, bool onSurface);
 
+    /** K-Means clustering */
+    extern std::vector<unsigned int> createKMeansCluster(const std::vector<osg::Vec3f>& pts, int K,
+                                                         std::vector<osg::Vec3f>& resultCenters);
+
     /** Compute result of a numeric expression */
     class MathExpression
     {

@@ -64,7 +64,9 @@ public:
 #else
     virtual osg::BoundingBox computeBound() const;
 #endif
+    virtual void compileGLObjects(osg::RenderInfo& renderInfo) const;
 
+    std::pair<osg::VectorGLuint*, osg::BufferData*> getIndexArrayAndBuffer();
     static osg::Program* createProgram(osg::Shader* vs, osg::Shader* gs, osg::Shader* fs, RenderMethod m = INSTANCING);
     static osg::NodeCallback* createUniformCallback();  // for non-pipeline rendering uses
 

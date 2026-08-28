@@ -734,7 +734,7 @@ osg::ref_ptr<osg::Node> loadSubSplatFromXGrids2(const std::string& file, const o
 }
 
 osg::ref_ptr<osg::Node> loadSplatFromXGrids2(std::istream& in, const std::string& path,
-                                             osgVerse::GaussianGeometry::RenderMethod method)
+                                             osgVerse::GaussianGeometry::RenderMethod method, bool toCluster)
 {
     // 1. Read and parse meta.lcc2 JSON (with trailing-comma tolerance)
     std::string metaText((std::istreambuf_iterator<char>(in)),
@@ -760,6 +760,7 @@ osg::ref_ptr<osg::Node> loadSplatFromXGrids2(std::istream& in, const std::string
     }
     picojson::object metaObj = document.get<picojson::object>();
     std::string optString = "RenderMethod=" + std::to_string((int)method);
+    if (toCluster) optString += " PostCluster=1";
 
     // 2. Old protocol compatibility branch
     bool isOldProtocol = (metaObj.find("total_splats") != metaObj.end() &&

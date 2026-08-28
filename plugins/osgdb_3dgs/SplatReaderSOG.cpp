@@ -356,7 +356,7 @@ namespace
 }
 
 osg::ref_ptr<osg::Node> loadSplatFromSOG(std::istream& in, const std::string& path, const std::string& ext,
-                                         int vOffset, int vCount, osgVerse::GaussianGeometry::RenderMethod rm)
+                                         int vOffset, int vCount, osgVerse::GaussianGeometry::RenderMethod rm, bool toCluster)
 {
     SogData sogData; picojson::value document;
     if (ext == "json")
@@ -404,7 +404,8 @@ osg::ref_ptr<osg::Node> loadSplatFromSOG(std::istream& in, const std::string& pa
         geom->setShRed(3, rD3.get()); geom->setShGreen(3, gD3.get()); geom->setShBlue(3, bD3.get());
     }
 
-    std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList = geom->divideByCluster(vOffset, vCount);
+    std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList;
+    if (toCluster) geomList = geom->divideByCluster(vOffset, vCount);
     if (geomList.empty()) { geom->finalize(vOffset, vCount); geomList.push_back(geom); }
 
     osg::ref_ptr<osg::Geode> root = new osg::Geode;

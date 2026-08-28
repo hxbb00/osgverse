@@ -369,6 +369,7 @@ int main(int argc, char** argv)
 
     osgVerse::HeadUpDisplayCanvas hudCanvas;
     osg::ArgumentParser arguments(&argc, argv);
+    std::string optString; arguments.read("-O", optString);
     std::string savedFile; arguments.read("--save", savedFile);
     if (!arguments.read("--custom"))
     {
@@ -376,8 +377,8 @@ int main(int argc, char** argv)
         osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
         osgVerse::updateOsgBinaryWrappers();
 
-        osg::ref_ptr<osg::Node> gs = osgDB::readNodeFiles(arguments);
-        if (!gs) gs = osgDB::readNodeFile(BASE_DIR + "/models/3dgs_parrot.splat");
+        osg::ref_ptr<osg::Node> gs = osgDB::readNodeFiles(arguments, new osgDB::Options(optString));
+        if (!gs) gs = osgDB::readNodeFile(BASE_DIR + "/models/3dgs_parrot.splat", new osgDB::Options(optString));
         if (!gs) { std::cout << "No 3DGS file loaded" << std::endl; return 1; }
 
         gs->setCullCallback(osgVerse::GaussianGeometry::createUniformCallback());
@@ -398,9 +399,8 @@ int main(int argc, char** argv)
         std::string vOffset; arguments.read("--vertex-offset", vOffset);
         std::string vCount; arguments.read("--vertex-count", vCount);
         bool testColor = arguments.read("--test-color");
-
         osg::ref_ptr<osgDB::Options> options = new osgDB::Options(
-            "RenderMethod=" + hint + " LoadVertexOffset=" + vOffset + " LoadVertexCount=" + vCount);
+            "RenderMethod=" + hint + " LoadVertexOffset=" + vOffset + " LoadVertexCount=" + vCount + " " + optString);
 
         osg::ref_ptr<osg::Node> gs = osgDB::readNodeFiles(arguments, options.get());
         if (!gs) gs = osgDB::readNodeFile(BASE_DIR + "/models/3dgs_parrot.splat", options.get());

@@ -176,7 +176,7 @@ osg::Node* loadCollisionFromXGrids(std::istream& in)
 }
 
 osg::ref_ptr<osg::Node> loadSplatFromXGrids(std::istream& in, const std::string& path,
-                                            osgVerse::GaussianGeometry::RenderMethod rm)
+                                            osgVerse::GaussianGeometry::RenderMethod rm, bool toCluster)
 {
     std::string reserved0, reserved1, err;
     picojson::value document; err = picojson::parse(document, in);
@@ -329,9 +329,8 @@ osg::ref_ptr<osg::Node> loadSplatFromXGrids(std::istream& in, const std::string&
                 data, chunk.numSplats[i], deg, scaleRange[0], scaleRange[1], rm);
             if (geom.valid())
             {
-                osg::ref_ptr<osg::Geode> child = new osg::Geode; child->addDrawable(geom.get());
+                osg::ref_ptr<osg::Geode> child = new osg::Geode;
                 geom->setName(lod->getName() + "_LOD" + std::to_string(i));
-
                 if (deg > 0)
                 {
                     std::vector<unsigned char> data2;
@@ -340,7 +339,9 @@ osg::ref_ptr<osg::Node> loadSplatFromXGrids(std::istream& in, const std::string&
                     else data2.assign(ro_mmap2.begin() + start, ro_mmap2.begin() + end);
                     applyShcoefFromXGrids(geom.get(), data2, chunk.numSplats[i], shRange[0], shRange[1]);
                 }
-                static_cast<osgVerse::GaussianGeometry*>(geom.get())->finalize();
+
+                osgVerse::GaussianGeometry* gsGeom = static_cast<osgVerse::GaussianGeometry*>(geom.get());
+                if (gsGeom) gsGeom->finalize(); child->addDrawable(geom.get());
                 lod->addChild(child.get(), d * pow(1.2f, i), d * pow(1.2f, i + 1));
             }
         }

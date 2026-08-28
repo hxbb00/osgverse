@@ -6,6 +6,7 @@
 #include <osgUtil/CullVisitor>
 #include <parallel_radix_sort.h>
 #include <thread>
+#include <limits.h>
 #include "Math.h"
 #include "GaussianGeometry.h"
 using namespace osgVerse;
@@ -460,49 +461,63 @@ bool GaussianGeometry::finalize(int vOffset, int vCount)
 
 std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> GaussianGeometry::divideByCluster(int vOffset, int vCount)
 {
-    /*if (vOffset > 0)
+    if (vOffset > 0)
     {
         if (vCount < 0) vCount = 0; else if (_numSplats < vCount) vCount = _numSplats;
         if (_numSplats <= vOffset + vCount) vOffset = _numSplats - vCount;
     }
     int off = vOffset, cnt = (vCount > 0 && vCount < _numSplats) ? vCount : _numSplats;
 
-    // Collect positions and HDBScan to cluster
+    // Collect positions and use comination of K-Means and HDBScan to cluster
     const std::vector<osg::Vec4>& layer0 = _preDataMap["Layer0"];
-    std::vector<osg::Vec3> pos(cnt);
+    std::vector<osg::Vec3> pos(cnt), kmCenters;
     for (int i = 0; i < cnt; ++i)
     {
         const osg::Vec4& v = layer0[off + i];
         pos[i] = osg::Vec3(v[0], v[1], v[2]);
     }
-    HDBScanCluster hdbscan(pos);
-    unsigned int num = hdbscan.execute(50, 1, HDBScanCluster::Euclidean);
-    if (num < 2) return {};  // no need to divide
 
-    // Get result parts
-    struct PartInfo { std::vector<unsigned int> indices; osg::BoundingBox bbox; };
-    std::map<int, PartInfo> partMap; std::vector<PartInfo> parts;
-
-    std::vector<int> labels; hdbscan.getLabels(labels);
-    for (size_t i = 0; i < labels.size(); ++i)
+    struct PartInfo { std::vector<unsigned int> indices; osg::BoundingBox bbox; osg::Vec3 anchor; };
+    struct GroupInfo { std::vector<unsigned int> indices; osg::BoundingBox bbox; };
+    std::vector<unsigned int> kmIndices = createKMeansCluster(pos, osg::minimum(cnt / 10, 100), kmCenters);
+    
+    // Get KMeans parts of input points
+    std::map<int, PartInfo> partMap; float minRadius = FLT_MAX;
+    for (size_t i = 0; i < kmIndices.size(); ++i)
     {
-        PartInfo& part = partMap[labels[i]];
+        PartInfo& part = partMap[kmIndices[i]];
         part.indices.push_back(i); part.bbox.expandBy(pos[i]);
+        part.anchor = kmCenters[kmIndices[i]];
+    }
+    for (std::map<int, PartInfo>::iterator it = partMap.begin(); it != partMap.end(); ++it)
+    { float r = it->second.bbox.radius(); if (r < minRadius) minRadius = r; }
+
+    std::vector<int> labels;
+    {
+        HDBScanCluster hdbscan(kmCenters);
+        unsigned int num = hdbscan.execute(2, minRadius * 2, HDBScanCluster::Euclidean);
+        if (num < 2) return {}; else hdbscan.getLabels(labels);
     }
 
-    // Check to see if result part is really isolated
-    for (std::map<int, PartInfo>::iterator it = partMap.begin();
-         it != partMap.end(); ++it) parts.push_back(it->second);
-    std::cout << getName() << ": CLUSTER? = " << parts.size() << "\n";
-
-    std::map<size_t, int> groupMap; int currentGroup = 0;
-    for (size_t i = 0; i < parts.size(); ++i)
+    // Get HDBScan groups of KMeans parts
+    std::map<int, GroupInfo> subGroupMap; std::vector<GroupInfo> subGroups;
+    for (size_t i = 0; i < labels.size(); ++i)
     {
-        std::set<int> mergeGroups;
+        GroupInfo& gr = subGroupMap[labels[i]];
+        gr.indices.push_back(i); gr.bbox.expandBy(partMap[i].bbox);
+    }
+    for (std::map<int, GroupInfo>::iterator it = subGroupMap.begin();
+         it != subGroupMap.end(); ++it) subGroups.push_back(it->second);
+
+    // Check to see if result part is really isolated
+    std::map<size_t, int> groupMap; int currentGroup = 0;
+    for (size_t i = 0; i < subGroups.size(); ++i)
+    {
+        std::set<int> mergeGroups; GroupInfo& gA = subGroups[i];
         for (size_t j = 0; j < i; ++j)
         {
-            if (parts[i].bbox.intersects(parts[j].bbox))
-                mergeGroups.insert(groupMap[j]);
+            GroupInfo& gB = subGroups[j];
+            if (gA.bbox.intersects(gB.bbox)) mergeGroups.insert(groupMap[j]);
         }
 
         if (!mergeGroups.empty())
@@ -511,7 +526,10 @@ std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> GaussianGeometry::divideBy
             if (mergeGroups.size() > 1)
             {
                 for (auto& pair : groupMap)
-                { if (mergeGroups.find(pair.second) != mergeGroups.end()) pair.second = targetGroup; }
+                {
+                    if (mergeGroups.find(pair.second) != mergeGroups.end())
+                        pair.second = targetGroup;
+                }
             }
         }
         else
@@ -521,9 +539,40 @@ std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> GaussianGeometry::divideBy
     // Get final results and divide the geometry
     std::map<int, std::vector<size_t>> resultMap;
     for (auto& pair : groupMap) resultMap[pair.second].push_back(pair.first);
-    std::cout << getName() << ": CLUSTER = " << resultMap.size() << "\n";*/
+    if (resultMap.size() < 2) return {};
+    OSG_NOTICE << "[GaussianGeometry] Find " << subGroups.size() << " chunks and finally divided into "
+               << resultMap.size() << " sub-gaussians\n";
 
     std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList;
+    for (std::map<int, std::vector<size_t>>::iterator r = resultMap.begin();
+         r != resultMap.end(); ++r)
+    {
+        osg::ref_ptr<osgVerse::GaussianGeometry> geom = new osgVerse::GaussianGeometry(_method);
+        for (size_t i = 0; i < r->second.size(); ++i)
+        {
+            GroupInfo& gr = subGroups[r->second[i]];
+            for (size_t j = 0; j < gr.indices.size(); ++j)
+            {
+                PartInfo& part = partMap[gr.indices[j]];
+                for (size_t k = 0; k < part.indices.size(); ++k)
+                {
+                    unsigned int idx = off + part.indices[k];
+                    for (auto itr = _preDataMap.begin(); itr != _preDataMap.end(); ++itr)
+                    {
+                        std::vector<osg::Vec4>& dst = geom->_preDataMap[itr->first];
+                        const std::vector<osg::Vec4>& s = itr->second; dst.push_back(s[idx]);
+                    }
+                    for (auto itr = _preDataMap2.begin(); itr != _preDataMap2.end(); ++itr)
+                    {
+                        std::vector<osg::Vec3>& dst = geom->_preDataMap2[itr->first];
+                        const std::vector<osg::Vec3>& s = itr->second; dst.push_back(s[idx]);
+                    }
+                }
+            }
+        }
+        geom->_numSplats = geom->_preDataMap["Layer0"].size(); geom->setShDegrees(_degrees);
+        geom->finalize(); geomList.push_back(geom);
+    }
     return geomList;
 }
 
@@ -897,102 +946,171 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getShBlue(int index)
 }
 
 ///////////////////////// GaussianSorter /////////////////////////
-class GaussianSortThread : public OpenThreads::Thread
+namespace
 {
-public:
-    virtual int cancel()
-    { _running = false; return OpenThreads::Thread::cancel(); }
-
-    virtual void run()
+    class GaussianSortThread : public OpenThreads::Thread
     {
-        _running = true;
-        while (_running)
-        {
-            std::map<osg::VectorGLuint*, Task> tempTasks;
-            _taskLock.lock();
-            tempTasks.swap(_sortTasks);
-            _taskLock.unlock();
+    public:
+        virtual int cancel()
+        { _running = false; return OpenThreads::Thread::cancel(); }
 
-            for (std::map<osg::VectorGLuint*, Task>::iterator it = tempTasks.begin();
-                 it != tempTasks.end(); ++it)
+        virtual void run()
+        {
+            _running = true;
+            while (_running)
             {
-                Task& task = it->second; size_t numCulled = 0;
-                if (task.indices.empty()) continue;
-
-                std::vector<GLuint> keys(task.indices.size());
-                if (task.positions3)
-                {
-                    for (size_t i = 0; i < task.indices.size(); ++i)
-                    {   // comparing floating-point numbers as integers
-                        float d = (task.positions3[task.indices[i]] * task.localToEye).z();
-                        union { float f; uint32_t u; } un = { (d > 0.0f ? 0.0f : (-d)) };
-                        keys[i] = (GLuint)un.u; if (d > 0.0f) numCulled++;
-                    }
-                }
-                else if (task.positions4)
-                {
-                    for (size_t i = 0; i < task.indices.size(); ++i)
-                    {   // comparing floating-point numbers as integers
-                        const osg::Vec4& v = task.positions4[task.indices[i]];
-                        float d = (osg::Vec3(v[0], v[1], v[2]) * task.localToEye).z();
-                        union { float f; uint32_t u; } un = { (d > 0.0f ? 0.0f : (-d)) };
-                        keys[i] = (GLuint)un.u; if (d > 0.0f) numCulled++;
-                    }
-                }
-
-                OpenThreads::Thread::YieldCurrentThread();
-                parallel_radix_sort::SortPairs(&keys[0], &(task.indices)[0], keys.size());
-
-                _resultLock.lock();
-                ResultIndices& ri = _sortResults[it->first]; ri.second = numCulled;
-                ri.first.assign(task.indices.rbegin(), task.indices.rend());
-                _resultLock.unlock();
-
+                std::map<osg::VectorGLuint*, Task> tempTasks;
                 _taskLock.lock();
-                _sortTaskFlags.erase(it->first);
+                tempTasks.swap(_sortTasks);
                 _taskLock.unlock();
+
+                for (std::map<osg::VectorGLuint*, Task>::iterator it = tempTasks.begin();
+                    it != tempTasks.end(); ++it)
+                {
+                    Task& task = it->second; size_t numCulled = 0;
+                    if (task.indices.empty()) continue;
+
+                    std::vector<GLuint> keys(task.indices.size());
+                    if (task.positions3)
+                    {
+                        for (size_t i = 0; i < task.indices.size(); ++i)
+                        {   // comparing floating-point numbers as integers
+                            float d = (task.positions3[task.indices[i]] * task.localToEye).z();
+                            union { float f; uint32_t u; } un = { (d > 0.0f ? 0.0f : (-d)) };
+                            keys[i] = (GLuint)un.u; if (d > 0.0f) numCulled++;
+                        }
+                    }
+                    else if (task.positions4)
+                    {
+                        for (size_t i = 0; i < task.indices.size(); ++i)
+                        {   // comparing floating-point numbers as integers
+                            const osg::Vec4& v = task.positions4[task.indices[i]];
+                            float d = (osg::Vec3(v[0], v[1], v[2]) * task.localToEye).z();
+                            union { float f; uint32_t u; } un = { (d > 0.0f ? 0.0f : (-d)) };
+                            keys[i] = (GLuint)un.u; if (d > 0.0f) numCulled++;
+                        }
+                    }
+
+                    OpenThreads::Thread::YieldCurrentThread();
+                    parallel_radix_sort::SortPairs(&keys[0], &(task.indices)[0], keys.size());
+
+                    _resultLock.lock();
+                    ResultIndices& ri = _sortResults[it->first]; ri.second = numCulled;
+                    ri.first.assign(task.indices.rbegin(), task.indices.rend());
+                    _resultLock.unlock();
+
+                    _taskLock.lock();
+                    _sortTaskFlags.erase(it->first);
+                    _taskLock.unlock();
+                }
+                OpenThreads::Thread::YieldCurrentThread();
             }
-            OpenThreads::Thread::YieldCurrentThread();
         }
-    }
 
-    size_t addTask(osg::Vec3* va, osg::Vec4* va2, osg::VectorGLuint* de, const osg::Matrix& matrix)
-    {
-        size_t num = 0; _taskLock.lock();
-        if (_sortTaskFlags.find(de) == _sortTaskFlags.end())
+        static size_t sortSync(osg::Vec3* va3, osg::Vec4* va4, osg::VectorGLuint* de, const osg::Matrix& localToEye)
         {
-            _sortTasks[de] = Task{ va, va2, std::vector<GLuint>(de->begin(), de->end()), matrix };
-            _sortTaskFlags.insert(de);
+            std::vector<GLuint> indices(de->begin(), de->end()), values;
+            std::vector<GLuint> keys(indices.size()); size_t numCulled = 0;
+            if (va3)
+            {
+                for (size_t i = 0; i < indices.size(); ++i)
+                {   // comparing floating-point numbers as integers
+                    float d = (va3[indices[i]] * localToEye).z();
+                    union { float f; uint32_t u; } un = { (d > 0.0f ? 0.0f : (-d)) };
+                    keys[i] = (GLuint)un.u; if (d > 0.0f) numCulled++;
+                }
+            }
+            else if (va4)
+            {
+                for (size_t i = 0; i < indices.size(); ++i)
+                {   // comparing floating-point numbers as integers
+                    const osg::Vec4& v = va4[indices[i]];
+                    float d = (osg::Vec3(v[0], v[1], v[2]) * localToEye).z();
+                    union { float f; uint32_t u; } un = { (d > 0.0f ? 0.0f : (-d)) };
+                    keys[i] = (GLuint)un.u; if (d > 0.0f) numCulled++;
+                }
+            }
+
+            parallel_radix_sort::SortPairs(&keys[0], &(indices)[0], keys.size());
+            de->assign(indices.rbegin(), indices.rend()); return numCulled;
         }
-        num = _sortTasks.size();
-        _taskLock.unlock(); return num;
-    }
 
-    bool applyResult(osg::VectorGLuint* de, size_t& numCulled)
-    {
-        bool taskDone = false; _resultLock.lock();
-        std::map<osg::VectorGLuint*, ResultIndices>::iterator it = _sortResults.find(de);
-        if (it != _sortResults.end()) { numCulled = it->second.second; de->swap(it->second.first);
-                                        _sortResults.erase(it); taskDone = true; }
-        _resultLock.unlock(); return taskDone;
-    }
+        size_t addTask(osg::Vec3* va, osg::Vec4* va2, osg::VectorGLuint* de, const osg::Matrix& matrix)
+        {
+            size_t num = 0; _taskLock.lock();
+            if (_sortTaskFlags.find(de) == _sortTaskFlags.end())
+            {
+                _sortTasks[de] = Task{ va, va2, std::vector<GLuint>(de->begin(), de->end()), matrix };
+                _sortTaskFlags.insert(de);
+            }
+            num = _sortTasks.size();
+            _taskLock.unlock(); return num;
+        }
 
-protected:
-    struct Task
-    {
-        osg::Vec3* positions3;
-        osg::Vec4* positions4;
-        std::vector<GLuint> indices;
-        osg::Matrix localToEye;
+        bool applyResult(osg::VectorGLuint* de, size_t& numCulled)
+        {
+            bool taskDone = false; _resultLock.lock();
+            std::map<osg::VectorGLuint*, ResultIndices>::iterator it = _sortResults.find(de);
+            if (it != _sortResults.end()) { numCulled = it->second.second; de->swap(it->second.first);
+                                            _sortResults.erase(it); taskDone = true; }
+            _resultLock.unlock(); return taskDone;
+        }
+
+    protected:
+        struct Task
+        {
+            osg::Vec3* positions3;
+            osg::Vec4* positions4;
+            std::vector<GLuint> indices;
+            osg::Matrix localToEye;
+        };
+
+        typedef std::pair<std::vector<GLuint>, size_t> ResultIndices;
+        std::map<osg::VectorGLuint*, ResultIndices> _sortResults;
+        std::set<osg::VectorGLuint*> _sortTaskFlags;
+        std::map<osg::VectorGLuint*, Task> _sortTasks;
+        OpenThreads::Mutex _taskLock, _resultLock;
+        bool _running;
     };
+}
 
-    typedef std::pair<std::vector<GLuint>, size_t> ResultIndices;
-    std::map<osg::VectorGLuint*, ResultIndices> _sortResults;
-    std::set<osg::VectorGLuint*> _sortTaskFlags;
-    std::map<osg::VectorGLuint*, Task> _sortTasks;
-    OpenThreads::Mutex _taskLock, _resultLock;
-    bool _running;
-};
+std::pair<osg::VectorGLuint*, osg::BufferData*> GaussianGeometry::getIndexArrayAndBuffer()
+{
+    osg::VectorGLuint* indices = NULL;
+    if (_method == GaussianGeometry::GEOMETRY_SHADER)
+    {
+        osg::DrawElementsUInt* de = (getNumPrimitiveSets() > 0)
+            ? static_cast<osg::DrawElementsUInt*>(getPrimitiveSet(0)) : NULL;
+        if (!de) { OSG_NOTICE << "[GaussianSoGaussianGeometryrter] No primitive-sets for sorting " << getName() << "\n"; }
+        else return std::pair<osg::VectorGLuint*, osg::BufferData*>(de, de);
+    }
+    else
+    {
+        osg::UIntArray* vaa = static_cast<osg::UIntArray*>(getVertexAttribArray(GLOBAL_3DGS_INDEX));
+        if (!vaa) { OSG_NOTICE << "[GaussianGeometry] No index array for sorting " << getName() << "\n"; }
+        else return std::pair<osg::VectorGLuint*, osg::BufferData*>(vaa, vaa);
+    }
+    return {NULL, NULL};
+}
+
+void GaussianGeometry::compileGLObjects(osg::RenderInfo& renderInfo) const
+{
+    if (renderInfo.getCurrentCamera())
+    {
+        const osg::Matrix& view = renderInfo.getCurrentCamera()->getViewMatrix();
+        osg::MatrixList matrices = getWorldMatrices();
+        if (!matrices.empty())
+        {
+            osg::Matrix localToEye = matrices[0] * view;
+            GaussianGeometry* nonconst = const_cast<GaussianGeometry*>(this);
+            std::pair<osg::VectorGLuint*, osg::BufferData*> pair = nonconst->getIndexArrayAndBuffer();
+            osg::Vec3* pos = nonconst->getPosition3(); osg::Vec4* pos2 = nonconst->getPosition4();
+            if (pair.first && pair.second && (pos || pos2))
+                { GaussianSortThread::sortSync(pos, pos2, pair.first, localToEye); pair.second->dirty(); }
+        }
+    }
+    osg::Geometry::compileGLObjects(renderInfo);
+}
 
 void GaussianSorter::configureThreads(int numThreads)
 {
@@ -1049,23 +1167,10 @@ void GaussianSorter::cull(osg::RenderInfo& renderInfo)
 
 void GaussianSorter::cull(osg::State* state, GaussianGeometry* geom, const osg::Matrix& model, const osg::Matrix& view)
 {
-    osg::VectorGLuint* indices = NULL; osg::BufferData* indexBuffer = NULL;
-    osg::Vec3* pos = geom->getPosition3(); osg::Vec4* pos2 = geom->getPosition4();
-    int numSplats = geom->getNumSplats(); if ((!pos && !pos2) || !numSplats) return;
-
-    if (geom->getRenderMethod() == GaussianGeometry::GEOMETRY_SHADER)
-    {
-        osg::DrawElementsUInt* de = (geom->getNumPrimitiveSets() > 0)
-            ? static_cast<osg::DrawElementsUInt*>(geom->getPrimitiveSet(0)) : NULL;
-        if (!de) { OSG_NOTICE << "[GaussianSorter] No primitive-sets for sorting " << geom->getName() << "\n"; return; }
-        indices = de; indexBuffer = de;
-    }
-    else
-    {
-        osg::UIntArray* vaa = static_cast<osg::UIntArray*>(geom->getVertexAttribArray(GLOBAL_3DGS_INDEX));
-        if (!vaa) { OSG_NOTICE << "[GaussianSorter] No index array for sorting " << geom->getName() << "\n"; return; }
-        indices = vaa; indexBuffer = vaa;
-    }
+    osg::Vec3* pos = geom->getPosition3(); osg::Vec4* pos2 = geom->getPosition4(); int numSplats = geom->getNumSplats();
+    std::pair<osg::VectorGLuint*, osg::BufferData*> pair = geom->getIndexArrayAndBuffer();
+    osg::VectorGLuint* indices = pair.first; osg::BufferData* indexBuffer = pair.second;
+    if ((!pos && !pos2) || !numSplats || !indices || !indexBuffer) return;
 
     osg::Matrix localToEye = model * view; size_t numCulled = 0;
     bool toSort = true, sortDone = false, shouldDirty = false;

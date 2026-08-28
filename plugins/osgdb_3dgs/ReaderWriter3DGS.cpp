@@ -18,12 +18,12 @@
 
 // Ref: https://github.com/playcanvas/splat-transform/blob/main/src/readers/
 osg::ref_ptr<osg::Node> loadSplatFromXGrids(std::istream& in, const std::string& path,
-                                            osgVerse::GaussianGeometry::RenderMethod method);
+                                            osgVerse::GaussianGeometry::RenderMethod method, bool);
 osg::ref_ptr<osg::Node> loadSplatFromXGrids2(std::istream& in, const std::string& path,
-                                             osgVerse::GaussianGeometry::RenderMethod method);
+                                             osgVerse::GaussianGeometry::RenderMethod method, bool);
 osg::ref_ptr<osg::Node> loadSubSplatFromXGrids2(const std::string& in, const osgDB::Options* opt);
 osg::ref_ptr<osg::Node> loadSplatFromSOG(std::istream& in, const std::string& path, const std::string& ext,
-                                         int vOffset, int vCount, osgVerse::GaussianGeometry::RenderMethod method);
+                                         int vOffset, int vCount, osgVerse::GaussianGeometry::RenderMethod method, bool);
 
 namespace
 {
@@ -70,6 +70,7 @@ public:
                        "<TBO> render with draw-instanced and TBO;\n"
                        "<TEX2D> render with draw-instanced and 2D textures (very low FPS);\n"
                        "<GS> render with geometry shader.");
+        supportsOption("PostCluster", "Do post-cluster to divide gaussians into parts to avoid blending problems. Default: 0");
         supportsOption("LoadVertexOffset", "Vertex offset while loading ply/splat/sog/spz formats. Default: 0");
         supportsOption("LoadVertexCount", "Vertex count while loading ply/splat/sog/spz formats. Default: 0 for all");
     }
@@ -103,9 +104,11 @@ public:
         if (options)
         {
             std::string renderHint = options->getPluginStringData("RenderMethod");
+            std::string clusterHint = options->getPluginStringData("PostCluster");
             std::string vOffsetHint = options->getPluginStringData("LoadVertexOffset");
             std::string vCountHint = options->getPluginStringData("LoadVertexCount");
             int vOffset = atoi(vOffsetHint.c_str()), vCount = atoi(vCountHint.c_str());
+            bool toCluster = atoi(clusterHint.c_str()) > 0;
 
             osgVerse::GaussianGeometry::RenderMethod method = osgVerse::GaussianGeometry::INSTANCING;
 #if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
@@ -121,17 +124,18 @@ public:
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
             if (ext == "lcc2")
             {
-                osg::ref_ptr<osg::Node> node = loadSplatFromXGrids2(fin, prefix, method);
+                osg::ref_ptr<osg::Node> node = loadSplatFromXGrids2(fin, prefix, method, toCluster);
                 if (node.valid()) return node.get();
             }
             else if (ext == "lcc")
             {
-                osg::ref_ptr<osg::Node> node = loadSplatFromXGrids(fin, prefix, method);
+                osg::ref_ptr<osg::Node> node = loadSplatFromXGrids(fin, prefix, method, toCluster);
                 if (node.valid()) return node.get();
             }
             else if (ext == "json" || ext == "sog")
             {
-                osg::ref_ptr<osg::Node> node = loadSplatFromSOG(fin, prefix, ext, vOffset, vCount, method);
+                osg::ref_ptr<osg::Node> node =
+                    loadSplatFromSOG(fin, prefix, ext, vOffset, vCount, method, toCluster);
                 if (node.valid()) return node.get();
             }
 
@@ -149,7 +153,7 @@ public:
             if (ir.ok())
             {
                 std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList =
-                    fromGF(ir.value(), vOffset, vCount, method);
+                    fromGF(ir.value(), vOffset, vCount, method, toCluster);
                 for (size_t i = 0; i < geomList.size(); ++i) geode->addDrawable(geomList[i].get());
             }
 #else
@@ -243,7 +247,7 @@ protected:
 
 #if true
     std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> fromGF(gf::GaussianCloudIR& c, int vOffset, int vCount,
-                                                                 osgVerse::GaussianGeometry::RenderMethod m) const
+                                                                 osgVerse::GaussianGeometry::RenderMethod m, bool toCluster) const
     {
         osg::ref_ptr<osg::Vec3Array> pos = new osg::Vec3Array, scale = new osg::Vec3Array;
         for (size_t i = 0; i < c.positions.size(); i += 3)
@@ -314,7 +318,8 @@ protected:
                 { geom->setShRed(3, rD3.get()); geom->setShGreen(3, gD3.get()); geom->setShBlue(3, bD3.get()); }
         }
 
-        std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList = geom->divideByCluster(vOffset, vCount);
+        std::vector<osg::ref_ptr<osgVerse::GaussianGeometry>> geomList;
+        if (toCluster) geomList = geom->divideByCluster(vOffset, vCount);
         if (geomList.empty()) { geom->finalize(vOffset, vCount); geomList.push_back(geom); } return geomList;
     }
 
