@@ -284,6 +284,7 @@ namespace osgVerse
         // Pre-load libraries to register web/streaming/database protocols
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_web"));
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_ms"));
+        regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_odbc"));
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_leveldb"));
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_mbtiles"));
 #endif

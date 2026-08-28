@@ -54,4 +54,5 @@ ADD_SUBDIRECTORY(osgdb_odbc)
 
 # misc
 ADD_SUBDIRECTORY(osgdb_web)
+ADD_SUBDIRECTORY(osgdb_verse)
 ADD_SUBDIRECTORY(osgdb_pbrlayout)
