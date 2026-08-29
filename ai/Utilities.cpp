@@ -12,6 +12,7 @@
 #   include "OnnxRuntimeEngine.h"
 #endif
 
+#include "minisplats/Trainer.h"
 #include "Utilities.h"
 #include <algorithm>
 #include <iostream>

@@ -20,7 +20,7 @@
 #      define TEST_VULKAN_IMPLEMENTATION 0
 #   endif
 
-#  ifdef VERSE_WITH_SDL2
+#  if VERSE_WITH_SDL == 2
 #   include <SDL.h>
 #   include <SDL_syswm.h>
 #  else
