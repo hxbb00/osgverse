@@ -10,6 +10,11 @@
 
 #include <osg/Version>
 #include <osg/Math>
+#include <osg/Geode>
+#include <osg/Geometry>
+#include <osg/KdTree>
+#include <osgUtil/IntersectionVisitor>
+#include <osgUtil/LineSegmentIntersector>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 #include <Eigen/Core>
@@ -290,58 +295,61 @@ namespace osgVerse
 
     namespace
     {
-        bool rayTriangleIntersect(const osg::Vec3f& orig, const osg::Vec3f& dir,
-                                  const osg::Vec3f& v0, const osg::Vec3f& v1,
-                                  const osg::Vec3f& v2, float& t)
-        {
-            const float EPSILON = 1e-6f;
-            osg::Vec3f edge1 = v1 - v0;
-            osg::Vec3f edge2 = v2 - v0;
-            osg::Vec3f h = dir ^ edge2;
-            float a = edge1 * h;
-            if (std::abs(a) < EPSILON) return false;
-
-            float f = 1.0f / a;
-            osg::Vec3f s = orig - v0;
-            float u = f * (s * h);
-            if (u < 0.0f || u > 1.0f) return false;
-
-            osg::Vec3f q = s ^ edge1;
-            float v = f * (dir * q);
-            if (v < 0.0f || u + v > 1.0f) return false;
-            t = f * (edge2 * q);
-            return t > EPSILON;
-        }
-
+        // KD-tree accelerated occlusion tester: the previous brute-force
+        // version tested every ray against every triangle, which is O(V*F)
+        // per view and takes hours on 100k+ face meshes. This builds an
+        // osg::KdTree over the mesh once and answers each ray in ~log(F).
         struct OcclusionTester
         {
-            const TextureMapping::Mesh* mesh = nullptr;
-            void build(const TextureMapping::Mesh& m) { mesh = &m; }
+            osg::ref_ptr<osg::Geode> geode;
+
+            void build(const TextureMapping::Mesh& m)
+            {
+                osg::ref_ptr<osg::Vec3Array> va = new osg::Vec3Array(m.vertices.size());
+                for (size_t i = 0; i < m.vertices.size(); ++i)
+                    (*va)[i] = m.vertices[i].toVec3();
+                osg::ref_ptr<osg::DrawElementsUInt> de = new osg::DrawElementsUInt(GL_TRIANGLES);
+                de->reserve(m.faces.size() * 3);
+                for (size_t i = 0; i < m.faces.size(); ++i)
+                {
+                    de->push_back((unsigned int)m.faces[i].v0);
+                    de->push_back((unsigned int)m.faces[i].v1);
+                    de->push_back((unsigned int)m.faces[i].v2);
+                }
+
+                osg::ref_ptr<osg::Geometry> geom = new osg::Geometry;
+                geom->setVertexArray(va.get());
+                geom->addPrimitiveSet(de.get());
+                geode = new osg::Geode;
+                geode->addDrawable(geom.get());
+
+                osg::ref_ptr<osg::KdTreeBuilder> builder = new osg::KdTreeBuilder;
+                geode->accept(*builder);
+            }
 
             bool isOccluded(const osg::Vec3f& camera_center,
                             const osg::Vec3f& vertex, size_t face_idx) const
             {
-                if (!mesh) return false;
+                if (!geode) return false;
                 constexpr float kEps = 1e-4f;
                 osg::Vec3f dir = vertex - camera_center;
                 float dist = dir.length();
                 if (dist < kEps) return false;
 
+                // The margin must scale with distance: with world coordinates in
+                // the hundreds of meters, float rounding makes a ray hit faces
+                // sharing the target vertex at t slightly below dist, falsely
+                // occluding most vertices when a small absolute eps is used.
+                // Pulling the endpoint back achieves the same without needing
+                // per-hit distance checks.
+                const float margin = osg::maximum(kEps, dist * 1e-5f);
                 dir /= dist;
-                for (size_t i = 0; i < mesh->faces.size(); ++i)
-                {
-                    if (i == face_idx) continue;
-                    const TextureMapping::Face& face = mesh->faces[i];
-                    osg::Vec3f v0 = getVertex(*mesh, face.v0);
-                    osg::Vec3f v1 = getVertex(*mesh, face.v1);
-                    osg::Vec3f v2 = getVertex(*mesh, face.v2);
 
-                    osg::Vec3f cross = (v1 - v0) ^ (v2 - v0);
-                    float t = 0.0f; if (cross.length2() < 1e-20f) continue;
-                    if (rayTriangleIntersect(camera_center, dir, v0, v1, v2, t))
-                    { if (t < dist - kEps) return true; }
-                }
-                return false;
+                osg::ref_ptr<osgUtil::LineSegmentIntersector> lsi =
+                    new osgUtil::LineSegmentIntersector(camera_center, vertex - dir * margin);
+                osgUtil::IntersectionVisitor iv(lsi.get());
+                geode->accept(iv);
+                return lsi->containsIntersections();
             }
         };
 
@@ -377,7 +385,7 @@ namespace osgVerse
         };
     }  // namespace
 
-    std::vector<int> selectViews(const TextureMapping::Mesh& mesh,
+    std::vector<int> TextureMapping::selectViews(const TextureMapping::Mesh& mesh,
                                  const std::vector<osg::Vec3f>& face_normals,
                                  const std::vector<TextureMapping::Image>& images,
                                  const TextureMapping::FaceAdjacencyMap& adjacency,
@@ -393,6 +401,10 @@ namespace osgVerse
             occlusion_tester.build(mesh);
 
         std::vector<double> scores(num_faces * num_images, -1.0);
+        // Scores with the occlusion test skipped, used as a fallback for faces
+        // that no view can see (see the fallback pass below)
+        std::vector<double> geomScores(num_faces * num_images, -1.0);
+        size_t numDegenerateFaces = 0;
 #ifdef _OPENMP
         const int num_threads = options.num_threads > 0
             ? options.num_threads : std::max(1, static_cast<int>(omp_get_max_threads()));
@@ -402,7 +414,7 @@ namespace osgVerse
         for (int64_t fi = 0; fi < static_cast<int64_t>(num_faces); ++fi)
         {
             const osg::Vec3f& normal = face_normals[fi];
-            if (normal.length2() < 1e-10f) continue;
+            if (normal.length2() < 1e-10f) { ++numDegenerateFaces; continue; }
 
             const std::array<size_t, 3> idx = getFaceIndices(mesh.faces[fi]);
             const osg::Vec3f v0 = getVertex(mesh, idx[0]);
@@ -418,7 +430,10 @@ namespace osgVerse
                 osg::Vec3f view_dir = cam_center - centroid; view_dir.normalize();
 
                 float cos_angle = normal * view_dir;
-                if (cos_angle < static_cast<float>(options.min_cos_normal_angle)) continue;
+                // Use |cos|: photogrammetry meshes have inconsistent winding and
+                // are rendered double-sided, so a flipped normal must not exclude
+                // the face from every view; only edge-on views should be skipped.
+                if (std::abs(cos_angle) < static_cast<float>(options.min_cos_normal_angle)) continue;
 
                 int visible_count = 0; bool behind_camera = false;
                 std::array<osg::Vec2f, 3> proj;
@@ -434,6 +449,13 @@ namespace osgVerse
 
                 if (behind_camera) continue;
                 if (visible_count < options.min_visible_vertices) continue;
+
+                const osg::Vec2f e1 = proj[1] - proj[0];
+                const osg::Vec2f e2 = proj[2] - proj[0];
+                const double area = std::abs(static_cast<double>(e1.x()) * static_cast<double>(e2.y()) -
+                                             static_cast<double>(e1.y()) * static_cast<double>(e2.x()));
+                geomScores[fi * num_images + ii] = area;
+
                 if (options.enable_occlusion_testing)
                 {
                     bool occluded = false;
@@ -444,11 +466,6 @@ namespace osgVerse
                     }
                     if (occluded) continue;
                 }
-
-                const osg::Vec2f e1 = proj[1] - proj[0];
-                const osg::Vec2f e2 = proj[2] - proj[0];
-                const double area = std::abs(static_cast<double>(e1.x()) * static_cast<double>(e2.y()) -
-                                             static_cast<double>(e1.y()) * static_cast<double>(e2.x()));
                 scores[fi * num_images + ii] = area;
             }
         }
@@ -464,6 +481,27 @@ namespace osgVerse
                 if (s > best_score) { best_score = s; view_per_face[fi] = static_cast<int>(ii); }
             }
         }
+
+        // Fallback for faces no view passed only because of occlusion: they
+        // sit under a nearly coplanar duplicate surface (overlapping source
+        // tiles), so the occluder's color at the same projected position is
+        // the correct appearance. Give them the best occlusion-ignoring view.
+        size_t numFallback = 0, numNoView = 0;
+        for (size_t fi = 0; fi < num_faces; ++fi)
+        {
+            if (view_per_face[fi] >= 0) continue;
+            double best_score = -1.0; int best_view = -1;
+            for (size_t ii = 0; ii < num_images; ++ii)
+            {
+                const double s = geomScores[fi * num_images + ii];
+                if (s > best_score) { best_score = s; best_view = static_cast<int>(ii); }
+            }
+            if (best_view >= 0) { view_per_face[fi] = best_view; ++numFallback; }
+            else ++numNoView;
+        }
+        OSG_NOTICE << "[TextureMapping] View selection: " << numDegenerateFaces
+                   << " degenerate faces, " << numFallback << " assigned by occlusion fallback, "
+                   << numNoView << " faces have no geometrically valid view" << std::endl;
 
         // Smoothing iterations
         for (int iter = 0; iter < options.view_selection_smoothing_iterations; ++iter)
@@ -751,13 +789,33 @@ namespace osgVerse
             {
                 const std::array<osg::Vec2f, 3> atlas_verts = computeAtlasVerts(rp, placement, i);
                 int min_px = std::max(0,
-                    static_cast<int>(std::floor(std::min({ atlas_verts[0].x(), atlas_verts[1].x(), atlas_verts[2].x() }))) - 1);
+                    static_cast<int>(std::floor(std::min({ atlas_verts[0].x(), atlas_verts[1].x(), atlas_verts[2].x() }))) - 2);
                 int min_py = std::max(0,
-                    static_cast<int>(std::floor(std::min({ atlas_verts[0].y(), atlas_verts[1].y(), atlas_verts[2].y() }))) - 1);
+                    static_cast<int>(std::floor(std::min({ atlas_verts[0].y(), atlas_verts[1].y(), atlas_verts[2].y() }))) - 2);
                 int max_px = std::min(aw - 1,
-                    static_cast<int>(std::ceil(std::max({ atlas_verts[0].x(), atlas_verts[1].x(), atlas_verts[2].x() }))) + 1);
+                    static_cast<int>(std::ceil(std::max({ atlas_verts[0].x(), atlas_verts[1].x(), atlas_verts[2].x() }))) + 2);
                 int max_py = std::min(ah - 1,
-                    static_cast<int>(std::ceil(std::max({ atlas_verts[0].y(), atlas_verts[1].y(), atlas_verts[2].y() }))) + 1);
+                    static_cast<int>(std::ceil(std::max({ atlas_verts[0].y(), atlas_verts[1].y(), atlas_verts[2].y() }))) + 2);
+
+                // Gutter baking: write pixels up to ~1.2px OUTSIDE the face as
+                // well. UVs map to the exact mathematical boundary, so bilinear
+                // sampling at an edge would otherwise mix in neighbouring
+                // gutter/patch pixels, producing dark seam lines along every
+                // triangle edge (a grid pattern at distance).
+                const float kGutterPx = 1.2f;
+                const osg::Vec2f& av0 = atlas_verts[0];
+                const osg::Vec2f& av1 = atlas_verts[1];
+                const osg::Vec2f& av2 = atlas_verts[2];
+                float area2 = std::abs((av1.x() - av0.x()) * (av2.y() - av0.y()) -
+                                       (av2.x() - av0.x()) * (av1.y() - av0.y()));
+                if (area2 < 1e-8f) continue;
+                // bary_i = signed_dist_to_opposite_edge / height_i, height_i =
+                // area2 / edge_length_i, so tolerance_i = kGutterPx / height_i
+                float len0 = (av2 - av1).length(), len1 = (av2 - av0).length(),
+                      len2 = (av1 - av0).length();
+                float tol0 = len0 > 0.0f ? kGutterPx * len0 / area2 : 0.0f;
+                float tol1 = len1 > 0.0f ? kGutterPx * len1 / area2 : 0.0f;
+                float tol2 = len2 > 0.0f ? kGutterPx * len2 / area2 : 0.0f;
 
                 float texture_inv_scale_factor = static_cast<float>(1.0 / options.texture_scale_factor);
                 for (int py = min_py; py <= max_py; ++py)
@@ -765,8 +823,7 @@ namespace osgVerse
                     {
                         osg::Vec2f pixel_center(px + 0.5f, py + 0.5f);
                         osg::Vec3f bary = barycentric(pixel_center, atlas_verts[0], atlas_verts[1], atlas_verts[2]);
-                        float min_bary = std::min({ bary.x(), bary.y(), bary.z() });
-                        if (min_bary < -1e-4f) continue;
+                        if (bary.x() < -tol0 || bary.y() < -tol1 || bary.z() < -tol2) continue;
 
                         osg::Vec2f img_pos = (rp.face_projections[i][0] * bary.x() +
                                               rp.face_projections[i][1] * bary.y() +
@@ -775,6 +832,11 @@ namespace osgVerse
                         TextureMapping::Colorf color;
                         if (!src_bmp.interpolateBilinear(static_cast<double>(img_pos.x()),
                                                          static_cast<double>(img_pos.y()), &color)) { continue; }
+                        // Skip transparent pixels: the source view's background
+                        // is cleared to alpha 0, so sampling it would bake black
+                        // into faces bulging past the original mesh silhouette.
+                        // Unbaked pixels are filled by the inpainting pass.
+                        if (color.a < 0.5f) continue;
                         atlas->setPixel(px, py, color.cast<unsigned char>());
                         (*baked_mask)[static_cast<size_t>(py) * aw + px] = true;
                     }
@@ -880,6 +942,9 @@ namespace osgVerse
                     if (!img_l.getBitmap().interpolateBilinear(proj_l.x(), proj_l.y(), &color_l) ||
                         !img_r.getBitmap().interpolateBilinear(proj_r.x(), proj_r.y(), &color_r))
                     { continue; }
+                    // Transparent samples come from the view background (alpha 0)
+                    // and would poison the seam correction with black
+                    if (color_l.a < 0.5f || color_r.a < 0.5f) continue;
 
                     double f_l = (ch == 0) ? color_l.r : (ch == 1) ? color_l.g : color_l.b;
                     double f_r = (ch == 0) ? color_r.r : (ch == 1) ? color_r.g : color_r.b;
@@ -1026,7 +1091,7 @@ namespace osgVerse
             }
     }
 
-    TextureMapping::MeshTextureMappingResult process(
+    TextureMapping::MeshTextureMappingResult TextureMapping::process(
         const TextureMapping::Mesh& mesh,
         const std::vector<TextureMapping::Image>& images,
         const TextureMapping::MeshTextureMappingOptions& options)
