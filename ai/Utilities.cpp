@@ -3,6 +3,11 @@
 #include <osgDB/ConvertUTF>
 #include "3rdparty/avir/avir.h"
 
+#ifdef VERSE_WITH_GGML
+#   include <ggml-backend.h>
+#   include <ggml-cpu.h>
+#endif
+
 #if defined(VERSE_WITH_BYTETRACK)
 #   include "3rdparty/ByteTrack/BYTETracker.h"
 #endif
@@ -178,4 +183,22 @@ void DepthEstimator::findClosestImageSize(int& W, int& H, int divisor)
     int change_down = std::abs(new_h_down - original_h) + std::abs(new_w_down - original_w);
     if (change_up < change_down) { W = new_w; H = new_h; }
     else { W = new_w_down; H = new_h_down; }
+}
+
+namespace osgVerse
+{
+    std::vector<std::pair<std::string, bool>> getAvailableBackendsGGML()
+    {
+        std::vector<std::pair<std::string, bool>> backends;
+#ifdef VERSE_WITH_GGML
+        for (size_t i = 0; i < ggml_backend_dev_count(); ++i)
+        {
+            ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+            std::string name = ggml_backend_dev_name(dev);
+            bool isGPU = (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU);
+            backends.push_back({ name, isGPU });
+        }
+#endif
+        return backends;
+    }
 }

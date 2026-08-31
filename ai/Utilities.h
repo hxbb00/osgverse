@@ -3,9 +3,13 @@
 
 #include <osg/Geometry>
 #include <osg/Texture2D>
+#include <vector>
 
 namespace osgVerse
 {
+    /** Get GGML backend devices (name, isGPU) */
+    extern std::vector<std::pair<std::string, bool>> getAvailableBackendsGGML();
+
     class OnnxInferencer;
 
     /** Multiple object tracker using ByteTrack */

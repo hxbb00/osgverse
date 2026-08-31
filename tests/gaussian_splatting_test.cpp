@@ -371,6 +371,10 @@ int main(int argc, char** argv)
     osg::ArgumentParser arguments(&argc, argv);
     std::string optString; arguments.read("-O", optString);
     std::string savedFile; arguments.read("--save", savedFile);
+
+    double firstX = 0.0, firstY = 0.0, firstZ = 0.0;
+    bool fpsView = arguments.read("--first", firstX, firstY, firstZ);
+
     if (!arguments.read("--custom"))
     {
         // Simplest forward rendering implementation
@@ -463,12 +467,9 @@ int main(int argc, char** argv)
         root->accept(qov);  // find collision node and display it, only work for LCC scene
     }
 
-    double firstX = 0.0, firstY = 0.0, firstZ = 0.0;
-    if (arguments.read("--first", firstX, firstY, firstZ))
-        viewer.setCameraManipulator(new QwertyManipulator(osg::Vec3d(firstX, firstY, firstZ)));
-    else
-        viewer.setCameraManipulator(new osgGA::TrackballManipulator);
-
+    if (fpsView) viewer.setCameraManipulator(new QwertyManipulator(osg::Vec3d(firstX, firstY, firstZ)));
+    else viewer.setCameraManipulator(new osgGA::TrackballManipulator);
+    
     if (!savedFile.empty()) osgDB::writeNodeFile(*root, savedFile);
     return viewer.run();
 }

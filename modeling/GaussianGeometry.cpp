@@ -767,7 +767,7 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getRotation()
         for (int i = 0; i < _numSplats; ++i)
         {
             const osg::Vec4 &v0 = *(ptr0 + i), &v1 = *(ptr1 + i);
-            (*v)[i] = osg::Vec4(v0.x(), v0.y(), v0.z(), v1.x());
+            (*v)[i] = osg::Vec4(v1.x(), v0.x(), v0.y(), v0.z());  // to fit GaussForge
         }
     }
     else

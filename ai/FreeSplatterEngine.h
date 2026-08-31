@@ -50,9 +50,9 @@ namespace osgVerse
             // Unpacked OSG arrays (populated on demand by unpack())
             osg::ref_ptr<osg::Vec3Array> positions;
             osg::ref_ptr<osg::Vec3Array> scales;
-            osg::ref_ptr<osg::Vec4Array> rotations;   // (w, x, y, z)
-            osg::ref_ptr<osg::Vec3Array> colors;      // activated RGB [0,1]
-            osg::ref_ptr<osg::FloatArray> opacities;
+            osg::ref_ptr<osg::Vec4Array> rotations;
+            osg::ref_ptr<osg::Vec4Array> reds, greens, blues;
+            osg::ref_ptr<osg::FloatArray> alphas;
             void unpack(float opacityThreshold = 5e-3f);
         };
 

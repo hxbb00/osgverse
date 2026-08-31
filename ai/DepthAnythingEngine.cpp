@@ -67,7 +67,10 @@ namespace
                                          osg::maximum(1e-6f, in.scales[idx0 + 2]));
             (*out.rotations)[i] = osg::Vec4(in.rotations[idx1 + 1], in.rotations[idx1 + 2],
                                             in.rotations[idx1 + 3], in.rotations[idx1 + 0]);
-            (*out.alphas)[i] = osg::minimum(1.0f - 1e-6f, osg::maximum(1e-6f, in.opacities[i]));
+            
+            float op = osg::minimum(1.0f - 1e-6f, osg::maximum(1e-6f, in.opacities[i]));
+            (*out.alphas)[i] = (op / (1.0f - op));  // no log() comparing to da::write_guassian_ply
+#if false
             if ((idx0 + 2) < in.colors.size())
             {
                 (*out.reds)[i] = osg::Vec4(in.colors[idx0 + 0], 0.0f, 0.0f, 0.0f);
@@ -75,6 +78,7 @@ namespace
                 (*out.blues)[i] = osg::Vec4(in.colors[idx0 + 2], 0.0f, 0.0f, 0.0f);
             }
             else
+#endif
             {
                 (*out.reds)[i] = osg::Vec4(in.harmonics[(idx0 + 0) * 9], in.harmonics[(idx0 + 0) * 9 + 1],
                                            in.harmonics[(idx0 + 0) * 9 + 2], in.harmonics[(idx0 + 0) * 9 + 3]);

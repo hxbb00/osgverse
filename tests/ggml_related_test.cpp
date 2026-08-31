@@ -4,7 +4,7 @@
 #include <osg/MatrixTransform>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
-#include <osgDB/ConvertUTF>
+#include <osgDB/FileUtils>
 #include <osgGA/TrackballManipulator>
 #include <osgUtil/CullVisitor>
 #include <osgViewer/Viewer>
@@ -28,6 +28,31 @@
 namespace backward { backward::SignalHandling sh; }
 #endif
 
+std::vector<osg::ref_ptr<osg::Image>> obtainImages(const std::string& location, bool flipped)
+{
+    std::vector<std::string> files = osgDB::getDirectoryContents(location);
+    std::vector<osg::ref_ptr<osg::Image>> images;
+
+    if (files.empty())
+    {
+        osg::ref_ptr<osg::Image> image = osgDB::readImageFile(location);
+        if (image.valid()) { if (flipped) image->flipVertical(); images.push_back(image); }
+    }
+    else
+    {
+        for (size_t i = 0; i < files.size(); ++i)
+        {
+            const std::string& f = files[i];
+            if (f.empty() || f[0] == '.') continue;
+
+            osg::ref_ptr<osg::Image> image = osgDB::readImageFile(location + "/" + f);
+            if (image.valid()) { if (flipped) image->flipVertical(); images.push_back(image); }
+        }
+    }
+    std::cout << "Loaded " << images.size() << " images as input\n";
+    return images;
+}
+
 int main(int argc, char** argv)
 {
     osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
@@ -35,9 +60,10 @@ int main(int argc, char** argv)
     osgVerse::updateOsgBinaryWrappers();
 
     osg::ApplicationUsage* usage = arguments.getApplicationUsage();
-    usage->addCommandLineOption("--image", "Provide an image as input.");
+    usage->addCommandLineOption("--image", "Provide an image as input, or a folder with multuple images as inputs.");
     usage->addCommandLineOption("--da3", "Provide a DA3 model, and generate a depth image for given input.");
     usage->addCommandLineOption("--da3-gs", "Provide a DA3 model, and generate an 3DGS splat file for given input.");
+    usage->addCommandLineOption("--free-splatter", "Provide a FreeSplatter model, and generate an 3DGS splat file for given inputs.");
 
     osg::ref_ptr<osg::Geometry> quad0 = osg::createTexturedQuadGeometry(
         osg::Vec3(0.6f, 0.0f, 0.0f), osg::X_AXIS, osg::Z_AXIS, 0.0f, 0.0f, 1.0f, 1.0f);
@@ -49,29 +75,36 @@ int main(int argc, char** argv)
     geode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
 #endif
 
+    std::vector<std::pair<std::string, bool>> backends = osgVerse::getAvailableBackendsGGML();
+    std::cout << "==== Available GGML backend devices ====\n";
+    for (size_t i = 0; i < backends.size(); ++i)
+        std::cout << "  " << backends[i].first << " " << (backends[i].second ? "(gpu)" : "(cpu)") << "\n";
+
     std::string dataLocation, modelFile; arguments.read("--image", dataLocation);
     osg::Timer_t startT = osg::Timer::instance()->tick(), loadedT = 0, endT = 0;
     if (arguments.read("--da3", modelFile))
     {   // DA3 based depth estimation
-        osg::ref_ptr<osg::Image> image = osgDB::readImageFile(dataLocation);
-        if (!image) { std::cerr << "No input image\n"; return 1; }
+        std::vector<osg::ref_ptr<osg::Image>> images = obtainImages(dataLocation, false);
+        if (images.empty()) { std::cerr << "No input image\n"; return 1; }
 
         osg::ref_ptr<osgVerse::DepthAnything> da3 = new osgVerse::DepthAnything(modelFile);
         loadedT = osg::Timer::instance()->tick();
-        osgVerse::DepthAnything::DepthContent content = da3->estimateDepth(*image, false);
+        osgVerse::DepthAnything::DepthContent content = da3->estimateDepth(*(images[0]), false);
         endT = osg::Timer::instance()->tick();
 
         if (!content.depth) { std::cerr << "Failed to estimate depth image\n"; return 1; }
-        quad0->getOrCreateStateSet()->setTextureAttributeAndModes(0, osgVerse::createTexture2D(image.get()));
+        quad0->getOrCreateStateSet()->setTextureAttributeAndModes(0, osgVerse::createTexture2D(images[0].get()));
         quad1->getOrCreateStateSet()->setTextureAttributeAndModes(0, osgVerse::createTexture2D(content.depth.get()));
         root->addChild(geode.get());
     }
     else if (arguments.read("--da3-gs", modelFile))
     {   // DA3-Giant based 3DGS generation
+        std::vector<osg::ref_ptr<osg::Image>> images = obtainImages(dataLocation, false);
+        if (images.empty()) { std::cerr << "No input image\n"; return 1; }
+
+        osg::Image* image = images[0].get();
         int gsW = 224, gsH = 224; arguments.read("--da3-width", gsW); arguments.read("--da3-height", gsH);
-        osg::ref_ptr<osg::Image> image = osgDB::readImageFile(dataLocation);
-        if (!image) { std::cerr << "No input image\n"; return 1; }
-        else if (gsW != image->s() || gsH != image->t()) image->scaleImage(gsW, gsH, 1);
+        if (gsW != image->s() || gsH != image->t()) image->scaleImage(gsW, gsH, 1);
 
         osg::ref_ptr<osgVerse::DepthAnything> da3 = new osgVerse::DepthAnything(modelFile);
         loadedT = osg::Timer::instance()->tick();
@@ -85,10 +118,31 @@ int main(int argc, char** argv)
         geom->setShRed(0, content.reds.get()); geom->setShGreen(0, content.greens.get());
         geom->setShBlue(0, content.blues.get()); geom->setShDegrees(0);
 
-        // FIXME: color is almost grey?
         osg::ref_ptr<osg::Geode> g = new osg::Geode; g->addDrawable(geom.get());
         if (!osgDB::writeNodeFile(*g, "da3_gs_result.splat.verse_3dgs")) std::cerr << "Failed to save 3DGS\n";
-        else std::cout << "Successfully saved da3_gs_result.splat. Use osgVerse_Test_3DGS to render it.\n";
+        else std::cout << "Successfully saved. Use 'osgVerse_Test_3DGS da3_gs_result.splat.90,0,0.rot' to render it.\n";
+    }
+    else if (arguments.read("--free-splatter", modelFile))
+    {
+        std::vector<osg::ref_ptr<osg::Image>> images = obtainImages(dataLocation, true);
+        if (images.empty()) { std::cerr << "No input image\n"; return 1; }
+
+        osg::ref_ptr<osgVerse::FreeSplatter> fr = new osgVerse::FreeSplatter(modelFile, "gpu");
+        loadedT = osg::Timer::instance()->tick();
+        osgVerse::FreeSplatter::GaussianContent content = fr->estimateGaussians(images);
+        endT = osg::Timer::instance()->tick();
+
+        if (!content.positions) { std::cerr << "Failed to reconstruct 3DGS\n"; return 1; }
+        //osgVerse::FreeSplatter::writeSplat(content, "free_out.splat");
+        osg::ref_ptr<osgVerse::GaussianGeometry> geom = new osgVerse::GaussianGeometry;
+        geom->setPosition(content.positions.get());
+        geom->setScaleAndRotation(content.scales.get(), content.rotations.get(), content.alphas.get());
+        geom->setShRed(0, content.reds.get()); geom->setShGreen(0, content.greens.get());
+        geom->setShBlue(0, content.blues.get()); geom->setShDegrees(0);
+
+        osg::ref_ptr<osg::Geode> g = new osg::Geode; g->addDrawable(geom.get());
+        if (!osgDB::writeNodeFile(*g, "free_gs_result.splat.verse_3dgs")) std::cerr << "Failed to save 3DGS\n";
+        else std::cout << "Successfully saved. Use 'osgVerse_Test_3DGS free_gs_result.splat.-90,0,0.rot' to render it.\n";
     }
     else
         { arguments.getApplicationUsage()->write(std::cout); return 1; }

@@ -138,7 +138,7 @@ FreeSplatter::GaussianContent FreeSplatter::estimateGaussians(const std::vector<
     g.width   = p->info.image_width;
     g.gaussian_channels = p->info.gaussian_channels;
     free_splatter_buf_free(out);
-    return g;
+    g.unpack(); return g;
 }
 
 FreeSplatter::GaussianContent FreeSplatter::estimateGaussians(osg::Image* input)
@@ -184,14 +184,11 @@ void FreeSplatter::GaussianContent::unpack(float opacityThreshold)
 {
     if (raw.empty()) return;
     size_t n = (size_t)n_views * height * width;
-    positions  = new osg::Vec3Array;
-    scales     = new osg::Vec3Array;
-    rotations  = new osg::Vec4Array;
-    colors     = new osg::Vec3Array;
-    opacities  = new osg::FloatArray;
-    positions->reserve(n); scales->reserve(n);
-    rotations->reserve(n); colors->reserve(n);
-    opacities->reserve(n);
+    positions = new osg::Vec3Array; scales = new osg::Vec3Array;
+    rotations = new osg::Vec4Array; alphas = new osg::FloatArray;
+    reds = new osg::Vec4Array; greens = new osg::Vec4Array; blues = new osg::Vec4Array;
+    positions->reserve(n); scales->reserve(n); rotations->reserve(n);
+    reds->reserve(n); greens->reserve(n); blues->reserve(n); alphas->reserve(n);
 
     const double C0 = 0.28209479177387814;
     for (size_t i = 0; i < n; ++i)
@@ -200,11 +197,11 @@ void FreeSplatter::GaussianContent::unpack(float opacityThreshold)
         float op = x[15]; if (op <= opacityThreshold) continue;
         positions->push_back(osg::Vec3(x[0], x[1], x[2]));
         scales->push_back(osg::Vec3(x[16], x[17], x[18]));
-        rotations->push_back(osg::Vec4(x[19], x[20], x[21], x[22])); // w,x,y,z
-        colors->push_back(osg::Vec3(0.5f + (float)C0 * x[3],
-                                    0.5f + (float)C0 * x[4],
-                                    0.5f + (float)C0 * x[5]));
-        opacities->push_back(op);
+        rotations->push_back(osg::Vec4(x[20], x[21], x[22], x[19]));  // x,y,z,w
+        reds->push_back(osg::Vec4(x[3], 0.0f, 0.0f, 0.0f));
+        greens->push_back(osg::Vec4(x[4], 0.0f, 0.0f, 0.0f));
+        blues->push_back(osg::Vec4(x[5], 0.0f, 0.0f, 0.0f));
+        alphas->push_back(op);
     }
 }
 
