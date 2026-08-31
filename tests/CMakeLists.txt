@@ -81,11 +81,15 @@ NEW_EXAMPLE(osgVerse_Test_Report_Graph report_graph_test.cpp)  # Scene graph str
 NEW_EXAMPLE(osgVerse_Test_Shader_Library shader_library_test.cpp)  # Shader library loading and platform-testing example
 NEW_EXAMPLE(osgVerse_Test_Shadow shadow_test.cpp)  # Shadow algorithm and efficiency testing example
 NEW_EXAMPLE(osgVerse_Test_Video video_test.cpp)  # Hardware video decoding/encoding example (NV Codec or libVA)
-IF(ONNXRUNTIME_FOUND)
-    NEW_EXAMPLE(osgVerse_Test_Onnx onnx_engine_test.cpp)  # ONNX-based AI model load and inference example
-ENDIF(ONNXRUNTIME_FOUND)
-IF(VERSE_SUPPORT_CPP17 AND GGML_FOUND)
-    NEW_EXAMPLE(osgVerse_Test_GGML ggml_related_test.cpp)  # GGML-based AI model load and inference example
+
+IF(VERSE_SUPPORT_CPP17)
+    IF(GGML_FOUND)
+        NEW_EXAMPLE(osgVerse_Test_GGML ggml_related_test.cpp)  # GGML-based AI model load and inference example
+    ENDIF(GGML_FOUND)
+
+    IF(ONNXRUNTIME_FOUND)
+        NEW_EXAMPLE(osgVerse_Test_Onnx onnx_engine_test.cpp)  # ONNX-based AI model load and inference example
+    ENDIF(ONNXRUNTIME_FOUND)
 ENDIF()
 
 IF(NOT VERSE_USE_EXTERNAL_GLES)

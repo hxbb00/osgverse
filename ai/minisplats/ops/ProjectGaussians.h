@@ -15,7 +15,7 @@
 #include "../Geometry.h"
 #include <cmath>
 
-namespace mini::ops {
+namespace mini { namespace ops {
 
 // Context holding forward intermediates needed for backward.
 struct ProjCtx {
@@ -544,6 +544,6 @@ inline ProjBackwardResult projectGaussiansBackward(
     return result;
 }
 
-} // namespace mini::ops
+} } // namespace mini::ops
 
 #endif // MINI_OPS_PROJECT_GAUSSIANS_H

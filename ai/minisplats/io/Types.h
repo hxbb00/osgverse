@@ -16,7 +16,7 @@
 #include <osg/ref_ptr>
 #include <vector>
 
-namespace mini::io {
+namespace mini { namespace io {
 
 // ---- Input camera ----
 struct Camera {
@@ -63,6 +63,6 @@ struct GaussianOutput {
     size_t size() const { return means.size(); }
 };
 
-} // namespace mini::io
+} } // namespace mini::io
 
 #endif // MINI_IO_TYPES_H

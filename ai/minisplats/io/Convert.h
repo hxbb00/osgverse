@@ -11,7 +11,7 @@
 
 #include <stdexcept>
 
-namespace mini::io {
+namespace mini { namespace io {
 
 // ---- Eigen → Tensor ----
 
@@ -131,6 +131,6 @@ inline Eigen::Vector3f cameraPosition(const Eigen::Matrix4f& viewmat) {
     return -R.transpose() * t;
 }
 
-} // namespace mini::io
+} }// namespace mini::io
 
 #endif // MINI_IO_CONVERT_H

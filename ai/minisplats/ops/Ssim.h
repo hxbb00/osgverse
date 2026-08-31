@@ -10,7 +10,7 @@
 #include <cmath>
 #include <vector>
 
-namespace mini::ops {
+namespace mini { namespace ops {
 
 // ---- Depthwise 2D convolution (custom autograd op) ----
 //   input:  [H, W, C]
@@ -146,6 +146,6 @@ inline Tensor ssimLoss(const Tensor& rendered, const Tensor& gt, const Tensor& w
     return Tensor::scalar(1.0f) - ssim(rendered, gt, window);
 }
 
-} // namespace mini::ops
+} } // namespace mini::ops
 
 #endif // MINI_OPS_SSIM_H

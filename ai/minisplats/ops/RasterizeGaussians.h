@@ -12,7 +12,7 @@
 #include <cmath>
 #include <vector>
 
-namespace mini::ops {
+namespace mini { namespace ops {
 
 // Context stored for backward pass.
 struct RasterCtx {
@@ -222,6 +222,6 @@ inline Tensor rasterizeGaussians(
     return rgb;
 }
 
-} // namespace mini::ops
+} } // namespace mini::ops
 
 #endif // MINI_OPS_RASTERIZE_GAUSSIANS_H

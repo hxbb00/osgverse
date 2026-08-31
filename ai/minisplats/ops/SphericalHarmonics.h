@@ -9,7 +9,7 @@
 #include "../Tensor.h"
 #include <cmath>
 
-namespace mini::ops {
+namespace mini { namespace ops {
 
 // SH constants (same as gsplat_cpu.cpp)
 static const float SH_C0 = 0.28209479177387814f;
@@ -205,6 +205,6 @@ inline Tensor sphericalHarmonics(int degree, int degreesToUse,
     return rgb;
 }
 
-} // namespace mini::ops
+} } // namespace mini::ops
 
 #endif // MINI_OPS_SPHERICAL_HARMONICS_H

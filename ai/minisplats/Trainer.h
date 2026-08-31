@@ -316,13 +316,13 @@ inline io::GaussianOutput train(const io::Dataset& dataset, const TrainConfig& c
         out.scales[i]    = Eigen::Vector3f(sp[i*3], sp[i*3+1], sp[i*3+2]);
         out.rotations[i] = Eigen::Vector4f(qp[i*4], qp[i*4+1], qp[i*4+2], qp[i*4+3]);
         // SH DC term → RGB
-        float r = std::clamp(fp[i*K*3]   * SH_C0 + 0.5f, 0.0f, 1.0f);
-        float g = std::clamp(fp[i*K*3+1] * SH_C0 + 0.5f, 0.0f, 1.0f);
-        float b = std::clamp(fp[i*K*3+2] * SH_C0 + 0.5f, 0.0f, 1.0f);
+        float r = osg::clampBetween(fp[i*K*3]   * SH_C0 + 0.5f, 0.0f, 1.0f);
+        float g = osg::clampBetween(fp[i*K*3+1] * SH_C0 + 0.5f, 0.0f, 1.0f);
+        float b = osg::clampBetween(fp[i*K*3+2] * SH_C0 + 0.5f, 0.0f, 1.0f);
         out.colors[i]    = Eigen::Vector3f(r, g, b);
         out.opacities[i] = op[i];
         // Full SH coefficients
-        std::memcpy(&out.shCoeffs[i * K * 3], &fp[i * K * 3], sizeof(float) * K * 3);
+        memcpy(&out.shCoeffs[i * K * 3], &fp[i * K * 3], sizeof(float) * K * 3);
     }
 
     return out;
