@@ -4,6 +4,8 @@
 #   include <rasterizer/SurfaceAreaHeuristic.h>
 #   include <rasterizer/Occluder.h>
 #   include <rasterizer/Rasterizer.h>
+#   include <osg/TriangleIndexFunctor>
+#   include <osg/PrimitiveSet>
 #endif
 #include <osgDB/WriteFile>
 #include <algorithm>
@@ -27,6 +29,101 @@ namespace osgVerse
 
     struct BatchOccluderData { std::unique_ptr<Occluder> data; };
     struct UserRasterizerData { std::unique_ptr<Rasterizer> data; };
+
+    /** Collects triangles together with their source references. Vertices are welded and
+        transformed into world space exactly like MeshCollector does, but each emitted triangle
+        also records which Geometry / PrimitiveSet / triangle index it comes from */
+    class TriangleRefCollector : public MeshCollector
+    {
+    public:
+        std::vector<TriangleReference>& getReferences() { return _refs; }
+
+        virtual void apply(osg::Geometry& geom)
+        {
+            osg::Vec3Array* varr = dynamic_cast<osg::Vec3Array*>(geom.getVertexArray());
+            if (varr)
+            {
+                osg::Matrix matrix;
+                if (!_matrixStack.empty()) matrix = _matrixStack.back();
+                if (!_globalVertices) _vertexMap.clear();
+
+                for (unsigned int i = 0; i < geom.getNumPrimitiveSets(); ++i)
+                {
+                    osg::PrimitiveSet* pset = geom.getPrimitiveSet(i);
+                    if (pset == NULL) continue;
+
+                    osg::TriangleIndexFunctor<WeldRefOperator> functor;
+                    WeldRefOperator& op = functor;
+                    op.inputV = varr; op.matrix = matrix;
+                    op.vertices = &_vertices; op.indices = &_indices;
+                    op.vertexMap = _weldVertices ? &_vertexMap : NULL;
+                    op.refs = &_refs; op.geometry = &geom; op.primitiveSet = i;
+                    pset->accept(functor);
+                }
+            }
+#if OSG_VERSION_GREATER_THAN(3, 4, 1)
+            traverse(geom);
+#endif
+        }
+
+    protected:
+        struct WeldRefOperator
+        {
+            WeldRefOperator()
+            :   inputV(NULL), vertices(NULL), indices(NULL), vertexMap(NULL),
+                refs(NULL), geometry(NULL), primitiveSet(0), triangleIndex(0) {}
+
+            inline unsigned int getVertexIndex(const osg::Vec3& v)
+            {
+                if (vertexMap)
+                {
+                    std::map<osg::Vec3, unsigned int, Vec3MapComparer>::iterator it = vertexMap->find(v);
+                    if (it != vertexMap->end()) return it->second;
+
+                    const float eps = 1e-4f, epsSq = eps * eps;
+                    osg::Vec3 key = v;
+                    it = vertexMap->lower_bound(osg::Vec3(v.x() - eps, -FLT_MAX, -FLT_MAX));
+                    for (; it != vertexMap->end(); ++it)
+                    {
+                        const osg::Vec3& k = it->first;
+                        if (k.x() > v.x() + eps) break;
+                        if ((k - v).length2() < epsSq) { key = k; break; }
+                    }
+
+                    unsigned int index = (unsigned int)vertices->size();
+                    (*vertexMap)[key] = index; vertices->push_back(key);
+                    return index;
+                }
+
+                unsigned int index = (unsigned int)vertices->size();
+                vertices->push_back(v);
+                return index;
+            }
+
+            inline void operator()(unsigned int i1, unsigned int i2, unsigned int i3)
+            {
+                unsigned int triangle = triangleIndex++;
+                unsigned int n1 = getVertexIndex((*inputV)[i1] * matrix);
+                unsigned int n2 = getVertexIndex((*inputV)[i2] * matrix);
+                unsigned int n3 = getVertexIndex((*inputV)[i3] * matrix);
+                if (n1 == n2 || n2 == n3 || n1 == n3) return;  // same as MeshCollector
+
+                indices->push_back(n1); indices->push_back(n2); indices->push_back(n3);
+                refs->push_back(TriangleReference(geometry, primitiveSet, triangle));
+            }
+
+            osg::Vec3Array* inputV;
+            osg::Matrix matrix;
+            std::vector<osg::Vec3>* vertices;
+            std::vector<unsigned int>* indices;
+            std::map<osg::Vec3, unsigned int, Vec3MapComparer>* vertexMap;
+            std::vector<TriangleReference>* refs;
+            osg::Geometry* geometry;
+            unsigned int primitiveSet, triangleIndex;
+        };
+
+        std::vector<TriangleReference> _refs;
+    };
 
     BatchOccluder::BatchOccluder(UserOccluder* u, const std::vector<osg::Vec3> vertices,
                                  const osg::BoundingBoxf& refBound) : _owner(u)
@@ -72,20 +169,20 @@ namespace osgVerse
 
     UserOccluder::UserOccluder(osg::Geometry& geom)
     {
-        MeshCollector collector;
+        TriangleRefCollector collector;
         collector.setWeldingVertices(true);
         collector.setUseGlobalVertices(true);
         _name = geom.getName(); collector.apply(geom);
-        set(collector.getVertices(), collector.getTriangles());
+        set(collector.getVertices(), collector.getTriangles(), &collector.getReferences());
     }
 
     UserOccluder::UserOccluder(osg::Node& node)
     {
-        MeshCollector collector;
+        TriangleRefCollector collector;
         collector.setWeldingVertices(true);
         collector.setUseGlobalVertices(true);
         _name = node.getName(); node.accept(collector);
-        set(collector.getVertices(), collector.getTriangles());
+        set(collector.getVertices(), collector.getTriangles(), &collector.getReferences());
     }
 
     UserOccluder::UserOccluder(const std::string& name, const std::vector<osg::Vec3> vertices,
@@ -131,16 +228,42 @@ namespace osgVerse
     }
 #endif
 
-    void UserOccluder::set(const std::vector<osg::Vec3> vertices0, const std::vector<unsigned int>& indices0)
+    void UserOccluder::set(const std::vector<osg::Vec3> vertices0, const std::vector<unsigned int>& indices0,
+                           const std::vector<TriangleReference>* triRefs)
     {
         std::vector<unsigned int> indices(indices0); std::vector<__m128> vertices;
+        _triangles.clear(); _quads.clear();
         if (vertices0.empty() || indices0.empty())
         { OSG_WARN << "[UserOccluder] Empty vertex or index data" << std::endl; return; }
 
         for (size_t i = 0; i < vertices0.size(); ++i)
             vertices.push_back(convertFromVec3(vertices0[i]));
-        indices = QuadDecomposition::decompose(indices, vertices);
+
+        std::vector<uint32_t> quadSources;
+        indices = QuadDecomposition::decompose(indices, vertices, &quadSources);
         while (indices.size() % 32 != 0) indices.push_back(indices.back());  // Pad to a multiple of 8 quads
+
+        // Keep source triangle references, but only when they match the collected triangles
+        if (triRefs)
+        {
+            if (triRefs->size() == indices0.size() / 3) _triangles = *triRefs;
+            else
+                OSG_WARN << "[UserOccluder] Triangle references (" << triRefs->size()
+                         << ") do not match collected triangles (" << indices0.size() / 3
+                         << "), occluded triangles can not be reported" << std::endl;
+        }
+
+        // Record quad bounds and their source triangles for occlusion queries
+        size_t quadCount = quadSources.size() / 2;
+        _quads.resize(quadCount);
+        for (size_t q = 0; q < quadCount; ++q)
+        {
+            QuadInfo& info = _quads[q];
+            for (int k = 0; k < 4; ++k)
+                info.bounds.expandBy(convertToVec3(vertices[indices[4 * q + k]]));
+            info.triangles[0] = quadSources[2 * q + 0];
+            info.triangles[1] = quadSources[2 * q + 1];
+        }
 
         std::vector<Aabb> quadAabbs;
         for (size_t j = 0; j < indices.size() / 4; ++j)
@@ -302,12 +425,80 @@ namespace osgVerse
         if (numVisible) *numVisible = occCount;
         return (float)count / (float)maxCount;
     }
+
+    float UserRasterizer::queryOccludedTriangles(UserOccluder* occluder, std::vector<TriangleReference>* occludedTriangles,
+                                                const UserRasterizer::OccludedTriangleCallback& callback)
+    {
+        if (occludedTriangles) occludedTriangles->clear();
+        if (!occluder || occluder->getQuads().empty()) return 0.0f;
+
+        const unsigned int invalidTriangle = 0xFFFFFFFF;
+        const std::vector<UserOccluder::QuadInfo>& quads = occluder->getQuads();
+        const std::vector<TriangleReference>& allTriangles = occluder->getTriangleReferences();
+        UserRasterizerData* rd = (UserRasterizerData*)_privateData;
+        size_t totalCount = 0, occludedCount = 0;
+
+        for (size_t i = 0; i < quads.size(); ++i)
+        {
+            const UserOccluder::QuadInfo& quad = quads[i];
+            totalCount += (quad.triangles[1] != invalidTriangle) ? 2 : 1;
+
+            bool needsClipping = false;
+            if (!rd->data->queryOccluded(convertFromVec3(quad.bounds._min),
+                                         convertFromVec3(quad.bounds._max), needsClipping))
+                continue;
+
+            for (int k = 0; k < 2; ++k)
+            {
+                unsigned int triangleId = quad.triangles[k];
+                if (triangleId == invalidTriangle) continue;
+                occludedCount++;
+                if (triangleId >= allTriangles.size()) continue;
+
+                const TriangleReference& ref = allTriangles[triangleId];
+                if (occludedTriangles) occludedTriangles->push_back(ref);
+                if (callback) callback(ref);
+            }
+        }
+        return (totalCount > 0) ? (float)occludedCount / (float)totalCount : 0.0f;
+    }
+
+    float OcclusionAnalyzer::findInvisibleTriangles(osg::Node& node, const osg::Matrix& view, const osg::Matrix& proj,
+                                                    std::vector<TriangleReference>& invisibleTriangles,
+                                                    const UserRasterizer::OccludedTriangleCallback& callback,
+                                                    unsigned int width, unsigned int height)
+    {
+        invisibleTriangles.clear();
+        width = std::max(width & (~7u), 8u); height = std::max(height & (~7u), 8u);
+
+        osg::ref_ptr<UserOccluder> occluder = new UserOccluder(node);
+        if (!occluder->hasTriangleReferences()) return 0.0f;
+
+        // The model itself is used as the occluder, so it can hide its own triangles
+        osg::ref_ptr<UserRasterizer> rasterizer = new UserRasterizer(width, height);
+        return findInvisibleTriangles(*occluder, *rasterizer, view, proj, invisibleTriangles, callback);
+    }
+
+    float OcclusionAnalyzer::findInvisibleTriangles(UserOccluder& occluder, UserRasterizer& rasterizer,
+                                                    const osg::Matrix& view, const osg::Matrix& proj,
+                                                    std::vector<TriangleReference>& invisibleTriangles,
+                                                    const UserRasterizer::OccludedTriangleCallback& callback)
+    {
+        invisibleTriangles.clear();
+        rasterizer.addOccluder(&occluder);
+        rasterizer.setModelViewProjection(view, proj);
+
+        osg::Vec3 cameraPos = osg::Vec3() * osg::Matrix::inverse(view);
+        rasterizer.render(cameraPos, NULL, NULL);
+        return rasterizer.queryOccludedTriangles(&occluder, &invisibleTriangles, callback);
+    }
 #else
     UserOccluder::UserOccluder(const std::string& name, const std::vector<osg::Vec3> vertices,
                                const std::vector<unsigned int>& indices) : _name(name) {}
     UserOccluder::UserOccluder(osg::Geometry& geom) {}
     UserOccluder::UserOccluder(osg::Node& geom) {}
-    void UserOccluder::set(const std::vector<osg::Vec3>, const std::vector<unsigned int>&) {}
+    void UserOccluder::set(const std::vector<osg::Vec3>, const std::vector<unsigned int>&,
+                           const std::vector<TriangleReference>*) {}
 
     BatchOccluder::BatchOccluder(UserOccluder* u, const std::vector<osg::Vec3> vertices,
                                  const osg::BoundingBoxf& refBound) : _privateData(NULL), _owner(u) {}
@@ -320,9 +511,24 @@ namespace osgVerse
     UserRasterizer::UserRasterizer(unsigned int, unsigned int) {}
     UserRasterizer::~UserRasterizer() {}
     float UserRasterizer::queryVisibility(UserOccluder*, int*) { return 0.0f; }
+    float UserRasterizer::queryOccludedTriangles(UserOccluder*, std::vector<TriangleReference>*,
+                                                 const OccludedTriangleCallback&) { return 0.0f; }
     void UserRasterizer::setModelViewProjection(const osg::Matrix&, const osg::Matrix&) {}
     void UserRasterizer::render(const osg::Vec3&, std::vector<float>*, std::vector<unsigned short>*)
     { OSG_WARN << "[UserRasterizer] No AVX support, Rasterizer is not implemented" << std::endl; }
+    float OcclusionAnalyzer::findInvisibleTriangles(osg::Node&, const osg::Matrix&, const osg::Matrix&,
+                                                    std::vector<TriangleReference>&,
+                                                    const UserRasterizer::OccludedTriangleCallback&,
+                                                    unsigned int, unsigned int)
+    {
+        OSG_WARN << "[OcclusionAnalyzer] No AVX support, occlusion analysis is not implemented" << std::endl;
+        return 0.0f;
+    }
+
+    float OcclusionAnalyzer::findInvisibleTriangles(UserOccluder&, UserRasterizer&, const osg::Matrix&,
+                                                    const osg::Matrix&, std::vector<TriangleReference>&,
+                                                    const UserRasterizer::OccludedTriangleCallback&)
+    { return 0.0f; }
 #endif
 
     void UserRasterizer::removeOccluder(UserOccluder* o)

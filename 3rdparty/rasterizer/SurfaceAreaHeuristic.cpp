@@ -65,6 +65,12 @@ namespace
     }
 
     // Sort again according to best axis
+    if (bestAxis < 0)
+    {
+      // No valid split found, e.g. too few AABBs or non-finite surface areas
+      return 0;
+    }
+
     std::stable_sort(indicesStart, indicesEnd, [&](auto i0, auto i1) {
       return _mm_movemask_ps(_mm_cmplt_ps(aabbsIn[i0].getCenter(), aabbsIn[i1].getCenter())) & (1 << bestAxis);
     });
@@ -74,7 +80,20 @@ namespace
 
   void generateBatchesRecursive(const std::vector<Aabb>& aabbsIn, uint32_t targetSize, uint32_t splitGranularity, uint32_t* indicesStart, uint32_t* indicesEnd, std::vector<std::vector<uint32_t>>& result)
   {
+    uint32_t numIndices = uint32_t(indicesEnd - indicesStart);
+    if (numIndices < targetSize || numIndices <= splitGranularity * 2)
+    {
+      if (numIndices > 0) result.push_back({ indicesStart, indicesEnd });
+      return;
+    }
+
     auto splitIndex = sahSplit(aabbsIn, splitGranularity, indicesStart, indicesEnd);
+    if (splitIndex == 0 || splitIndex >= numIndices)
+    {
+      // Can not be split any further
+      result.push_back({ indicesStart, indicesEnd });
+      return;
+    }
 
     uint32_t* range[] = { indicesStart, indicesStart + splitIndex, indicesEnd };
 
@@ -95,10 +114,12 @@ namespace
 
 std::vector<std::vector<uint32_t>> SurfaceAreaHeuristic::generateBatches(const std::vector<Aabb>& aabbs, uint32_t targetSize, uint32_t splitGranularity)
 {
+  std::vector<std::vector<uint32_t>> result;
+  if (aabbs.empty() || splitGranularity == 0) return result;
+
   std::vector<uint32_t> indices(aabbs.size());
   std::iota(begin(indices), end(indices), 0);
 
-  std::vector<std::vector<uint32_t>> result;
   generateBatchesRecursive(aabbs, targetSize, splitGranularity, &indices[0], &indices[0] + indices.size(), result);
   return result;
 }

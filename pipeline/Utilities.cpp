@@ -1018,6 +1018,64 @@ namespace osgVerse
         camera->setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
     }
 
+    std::vector<OrbitView> createOrbitViews(const osg::BoundingSphere& bs, float stepDegrees,
+                                            float horizontalStart, float horizontalRange,
+                                            float verticalStart, float verticalRange,
+                                            float fov, float aspect, float distanceScale)
+    {
+        std::vector<OrbitView> views;
+        if (stepDegrees < 0.01f) stepDegrees = 30.0f;
+        if (horizontalRange <= 0.0f) horizontalRange = 360.0f;
+        if (verticalRange <= 0.0f) verticalRange = 0.01f;
+        if (aspect <= 0.0f) aspect = 1.0f;
+        if (fov < 1.0f) fov = 60.0f; else if (fov > 170.0f) fov = 170.0f;
+        if (distanceScale < 1.0f) distanceScale = 1.0f;
+
+        // Compute the orbit distance so that the whole bounding sphere is inside the frustum
+        float radius = bs.radius(); if (radius < 1e-4f) radius = 1e-4f;
+        float vFov = osg::DegreesToRadians(fov);
+        float hFov = 2.0f * atanf(tanf(vFov * 0.5f) * aspect);
+        float distance = radius / sinf(std::min(vFov, hFov) * 0.5f) * distanceScale;
+        double nearPlane = std::max((double)distance * 0.001, 0.01);
+        double farPlane = (double)distance + (double)radius * 2.0;
+        const osg::Vec3& center = bs.center();
+
+        // A closed 360-degrees range should not generate the start angle twice
+        unsigned int hCount = (unsigned int)(horizontalRange / stepDegrees + 0.5f);
+        if (hCount == 0) hCount = 1;
+        unsigned int hTotal = (horizontalRange >= 359.99f) ? hCount : hCount + 1;
+
+        unsigned int vCount = (unsigned int)(verticalRange / stepDegrees + 0.5f);
+        unsigned int vTotal = vCount + 1;
+
+        for (unsigned int vi = 0; vi < vTotal; ++vi)
+        {
+            float elevation = verticalStart + (float)vi * stepDegrees;
+            if (elevation < -90.0f) elevation = -90.0f; else if (elevation > 90.0f) elevation = 90.0f;
+            bool atPole = (fabsf(elevation) > 89.99f);
+
+            unsigned int numViews = atPole ? 1 : hTotal;
+            for (unsigned int hi = 0; hi < numViews; ++hi)
+            {
+                float azimuth = (atPole || numViews == 1) ? horizontalStart
+                                                          : horizontalStart + (float)hi * stepDegrees;
+                float a = osg::DegreesToRadians(azimuth);
+                float e = osg::DegreesToRadians(elevation);
+                osg::Vec3 dir(cosf(e) * cosf(a), cosf(e) * sinf(a), sinf(e));
+
+                OrbitView view;
+                view.azimuth = azimuth; view.elevation = elevation;
+                view.center = center;
+                view.eye = center + dir * distance;
+                view.up = (fabsf(dir.z()) > 0.999f) ? osg::Vec3(0.0f, 1.0f, 0.0f) : osg::Vec3(0.0f, 0.0f, 1.0f);
+                view.view = osg::Matrix::lookAt(view.eye, view.center, view.up);
+                view.proj = osg::Matrix::perspective(fov, aspect, nearPlane, farPlane);
+                views.push_back(view);
+            }
+        }
+        return views;
+    }
+
     osg::HeightField* createHeightField(osg::Node* node, int resX, int resY, osg::View* userViewer)
     {
         osg::ComputeBoundsVisitor cbv; node->accept(cbv);

@@ -343,9 +343,13 @@ namespace
   }
 }
 
-std::vector<uint32_t> QuadDecomposition::decompose(const std::vector<uint32_t>& indices, const std::vector<__m128>& vertices)
+std::vector<uint32_t> QuadDecomposition::decompose(const std::vector<uint32_t>& indices, const std::vector<__m128>& vertices,
+                                                  std::vector<uint32_t>* quadSources)
 {
   std::vector<uint32_t> result;
+
+  const uint32_t invalidTriangle = 0xFFFFFFFF;
+  if (quadSources) quadSources->clear();
 
   size_t triangleCount = indices.size() / 3;
   result.reserve(triangleCount * 4); // worst case
@@ -408,6 +412,12 @@ std::vector<uint32_t> QuadDecomposition::decompose(const std::vector<uint32_t>& 
       result.push_back(i2);
       result.push_back(i1);
       result.push_back(i0);
+
+      if (quadSources)
+      {
+        quadSources->push_back(triangleIdx);
+        quadSources->push_back(invalidTriangle);
+      }
     }
     else if (triangleIdx < uint32_t(neighbor))
     {
@@ -429,6 +439,12 @@ std::vector<uint32_t> QuadDecomposition::decompose(const std::vector<uint32_t>& 
             result.push_back(i[(edgeIdx + 2) % 3]);
             result.push_back(i[(edgeIdx + 1) % 3]);
             result.push_back(pair.second);
+
+            if (quadSources)
+            {
+              quadSources->push_back(triangleIdx);
+              quadSources->push_back(neighbor);
+            }
 
             quadCount++;
 

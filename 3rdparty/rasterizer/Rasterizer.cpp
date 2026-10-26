@@ -120,7 +120,8 @@ void Rasterizer::clear()
   }
 }
 
-bool Rasterizer::queryVisibility(__m128 boundsMin, __m128 boundsMax, bool& needsClipping)
+bool Rasterizer::computeScreenBounds(__m128 boundsMin, __m128 boundsMax, bool& needsClipping,
+                                     int bounds[4], uint16_t& maxZ) const
 {
   // Frustum cull
   __m128 extents = _mm_sub_ps(boundsMax, boundsMin);
@@ -250,34 +251,69 @@ bool Rasterizer::queryVisibility(__m128 boundsMin, __m128 boundsMax, bool& needs
   __m128i boundsI = _mm_cvttps_epi32(_mm_round_ps(boundsF, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC));
 
   // Store as scalars
-  int bounds[4];
-  _mm_storeu_si128(reinterpret_cast<__m128i*>(&bounds), boundsI);
+  int boundsLocal[4];
+  _mm_storeu_si128(reinterpret_cast<__m128i*>(&boundsLocal), boundsI);
 
   // Revert the sign change we did for the maxes
-  bounds[1] = -bounds[1];
-  bounds[3] = -bounds[3];
+  boundsLocal[1] = -boundsLocal[1];
+  boundsLocal[3] = -boundsLocal[3];
 
   // No intersection between quad and screen area
-  if (bounds[0] >= bounds[1] || bounds[2] >= bounds[3])
+  if (boundsLocal[0] >= boundsLocal[1] || boundsLocal[2] >= boundsLocal[3])
   {
     return false;
   }
 
-  uint32_t minX = bounds[0];
-  uint32_t maxX = bounds[1];
-  uint32_t minY = bounds[2];
-  uint32_t maxY = bounds[3];
+  bounds[0] = boundsLocal[0];
+  bounds[1] = boundsLocal[1];
+  bounds[2] = boundsLocal[2];
+  bounds[3] = boundsLocal[3];
 
   __m128i depth = packDepthPremultiplied(corners[2], corners[6]);
 
-  uint16_t maxZ = uint16_t(0xFFFF ^ _mm_extract_epi16(_mm_minpos_epu16(_mm_xor_si128(depth, _mm_set1_epi16(-1))), 0));
+  maxZ = uint16_t(0xFFFF ^ _mm_extract_epi16(_mm_minpos_epu16(_mm_xor_si128(depth, _mm_set1_epi16(-1))), 0));
+  return true;
+}
 
-  if (!query2D(minX, maxX, minY, maxY, maxZ))
+bool Rasterizer::queryVisibility(__m128 boundsMin, __m128 boundsMax, bool& needsClipping)
+{
+  int bounds[4];
+  uint16_t maxZ = 0;
+
+  if (!computeScreenBounds(boundsMin, boundsMax, needsClipping, bounds, maxZ))
   {
     return false;
   }
 
-  return true;
+  if (needsClipping)
+  {
+    return true;
+  }
+
+  return query2D(uint32_t(bounds[0]), uint32_t(bounds[1]), uint32_t(bounds[2]), uint32_t(bounds[3]), uint32_t(maxZ));
+}
+
+bool Rasterizer::queryOccluded(__m128 boundsMin, __m128 boundsMax, bool& needsClipping) const
+{
+  int bounds[4];
+  uint16_t maxZ = 0;
+
+  // Outside of the frustum or screen area: not a proved occlusion
+  if (!computeScreenBounds(boundsMin, boundsMax, needsClipping, bounds, maxZ))
+  {
+    return false;
+  }
+
+  // Near clipped bounds can't be tested against Hi-Z, and a fully near bound can never be hidden
+  if (needsClipping || maxZ == 0xFFFF)
+  {
+    return false;
+  }
+
+  // Use maxZ + 1 to make the test strict: a surface at exactly the same depth (including the
+  // querying triangle itself) must not count as an occluder
+  return !query2D(uint32_t(bounds[0]), uint32_t(bounds[1]), uint32_t(bounds[2]), uint32_t(bounds[3]),
+                  uint32_t(maxZ) + 1);
 }
 
 bool Rasterizer::query2D(uint32_t minX, uint32_t maxX, uint32_t minY, uint32_t maxY, uint32_t maxZ) const
@@ -425,10 +461,10 @@ __forceinline void Rasterizer::transpose256(__m256 A, __m256 B, __m256 C, __m256
   C = _mm256_shuffle_ps(_Tmp2, _Tmp3, 0x88);
   D = _mm256_shuffle_ps(_Tmp2, _Tmp3, 0xDD);
 
-  _mm256_store_ps(reinterpret_cast<float*>(out + 0), A);
-  _mm256_store_ps(reinterpret_cast<float*>(out + 2), B);
-  _mm256_store_ps(reinterpret_cast<float*>(out + 4), C);
-  _mm256_store_ps(reinterpret_cast<float*>(out + 6), D);
+  _mm256_storeu_ps(reinterpret_cast<float*>(out + 0), A);
+  _mm256_storeu_ps(reinterpret_cast<float*>(out + 2), B);
+  _mm256_storeu_ps(reinterpret_cast<float*>(out + 4), C);
+  _mm256_storeu_ps(reinterpret_cast<float*>(out + 6), D);
 }
 
 __forceinline void Rasterizer::transpose256i(__m256i A, __m256i B, __m256i C, __m256i D, __m128i out[8])
@@ -443,10 +479,10 @@ __forceinline void Rasterizer::transpose256i(__m256i A, __m256i B, __m256i C, __
   C = _mm256_unpacklo_epi64(_Tmp2, _Tmp3);
   D = _mm256_unpackhi_epi64(_Tmp2, _Tmp3);
 
-  _mm256_store_si256(reinterpret_cast<__m256i*>(out + 0), A);
-  _mm256_store_si256(reinterpret_cast<__m256i*>(out + 2), B);
-  _mm256_store_si256(reinterpret_cast<__m256i*>(out + 4), C);
-  _mm256_store_si256(reinterpret_cast<__m256i*>(out + 6), D);
+  _mm256_storeu_si256(reinterpret_cast<__m256i*>(out + 0), A);
+  _mm256_storeu_si256(reinterpret_cast<__m256i*>(out + 2), B);
+  _mm256_storeu_si256(reinterpret_cast<__m256i*>(out + 4), C);
+  _mm256_storeu_si256(reinterpret_cast<__m256i*>(out + 6), D);
 }
 
 template<bool possiblyNearClipped>
@@ -1271,17 +1307,17 @@ void Rasterizer::rasterize(const Occluder& occluder)
           if (hiZ != 1)
           {
             // Merge depth values
-            d0 = _mm256_max_epu16(_mm256_load_si256(out + 0), d0);
-            d1 = _mm256_max_epu16(_mm256_load_si256(out + 1), d1);
-            d2 = _mm256_max_epu16(_mm256_load_si256(out + 2), d2);
-            d3 = _mm256_max_epu16(_mm256_load_si256(out + 3), d3);
+            d0 = _mm256_max_epu16(_mm256_loadu_si256(out + 0), d0);
+            d1 = _mm256_max_epu16(_mm256_loadu_si256(out + 1), d1);
+            d2 = _mm256_max_epu16(_mm256_loadu_si256(out + 2), d2);
+            d3 = _mm256_max_epu16(_mm256_loadu_si256(out + 3), d3);
           }
 
           // Store back new depth
-          _mm256_store_si256(out + 0, d0);
-          _mm256_store_si256(out + 1, d1);
-          _mm256_store_si256(out + 2, d2);
-          _mm256_store_si256(out + 3, d3);
+          _mm256_storeu_si256(out + 0, d0);
+          _mm256_storeu_si256(out + 1, d1);
+          _mm256_storeu_si256(out + 2, d2);
+          _mm256_storeu_si256(out + 3, d3);
 
           // Update HiZ
           __m256i newMinZ = _mm256_min_epu16(_mm256_min_epu16(d0, d1), _mm256_min_epu16(d2, d3));

@@ -21,6 +21,10 @@ public:
 
 	bool queryVisibility(__m128 boundsMin, __m128 boundsMax, bool& needsClipping);
 
+	// Strict occlusion query: returns true only when the bounds are inside the frustum and
+	// provably fully hidden by already rasterized geometry (coplanar geometry won't hide itself)
+	bool queryOccluded(__m128 boundsMin, __m128 boundsMax, bool& needsClipping) const;
+
 	bool query2D(uint32_t minX, uint32_t maxX, uint32_t minY, uint32_t maxY, uint32_t maxZ) const;
 
 	void readBackDepth(void* target) const;
@@ -35,6 +39,11 @@ private:
 
 	template<bool possiblyNearClipped>
 	static void normalizeEdge(__m256& nx, __m256& ny, __m256 edgeFlipMask);
+
+	// Shared part of the visibility queries: frustum culling + screen bounds + nearest depth.
+	// Returns false when the bounds are completely outside of the frustum or screen area.
+	bool computeScreenBounds(__m128 boundsMin, __m128 boundsMax, bool& needsClipping,
+	                         int bounds[4], uint16_t& maxZ) const;
 
 	static __m128i quantizeSlopeLookup(__m128 nx, __m128 ny);
 	static __m256i quantizeSlopeLookup(__m256 nx, __m256 ny);

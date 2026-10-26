@@ -10,7 +10,8 @@ SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     LoadTextureKTX.cpp LoadTextureKTX.h SafeGltfInput.cpp SafeGltfInput.h
     DracoProcessor.cpp FileCache.cpp DatabasePager.cpp OsgbTileOptimizer.cpp FeatureDefinition.cpp
     TextureSizeAdvisor.cpp TileCallback.cpp EarthManipulator.cpp VisionDevice.cpp MaterialGraph.cpp
-    OrbitObjectManipulator.cpp Utilities.cpp UtilitiesEx.cpp MimeTypes.cpp GLEnums.cpp
+    OrbitObjectManipulator.cpp Utilities.cpp UtilitiesEx.cpp MeshInternalOptimizer.cpp
+    MimeTypes.cpp GLEnums.cpp
 )
 
 IF(VERSE_USE_OHOS)

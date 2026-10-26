@@ -172,6 +172,30 @@ namespace osgVerse
     extern void alignCameraToBox(osg::Camera* camera, const osg::BoundingBoxd& bb, int resW, int resH,
                                  osg::TextureCubeMap::Face face = osg::TextureCubeMap::POSITIVE_Z);
 
+    /** A camera view orbiting around a model, used by orbit-based analysis and rendering */
+    struct OrbitView
+    {
+        osg::Vec3 eye, center, up;
+        osg::Matrix view, proj;
+        float azimuth, elevation;  // in degrees
+    };
+
+    /** Create camera views orbiting around a bounding sphere, the Z axis is taken as world up.
+        Every generated view frames the whole model (the eye direction is pointing to the center).
+        @param stepDegrees angular step of both directions, must be > 0 (default 30)
+        @param horizontalStart/horizontalRange azimuth start angle and range (default 0 / 360)
+        @param verticalStart/verticalRange elevation start angle and range (default -90 / 180);
+               e.g. use (0, 90) to skip the bottom of a ground-standing building model
+        @param fov vertical field of view in degrees, aspect = width / height
+        @param distanceScale distance multiplier, values > 1 add margin around the model
+        @return generated views; a full 360 degrees range does not repeat the start angle, and
+                the top/bottom pole directions are generated only once */
+    extern std::vector<OrbitView> createOrbitViews(const osg::BoundingSphere& bs, float stepDegrees = 30.0f,
+                                                   float horizontalStart = 0.0f, float horizontalRange = 360.0f,
+                                                   float verticalStart = -90.0f, float verticalRange = 180.0f,
+                                                   float fov = 60.0f, float aspect = 1.0f,
+                                                   float distanceScale = 1.05f);
+
     /** Create heightmap from given scene graph */
     extern osg::HeightField* createHeightField(osg::Node* node, int resX, int resY, osg::View* viewer = NULL);
 

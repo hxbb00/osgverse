@@ -15,6 +15,8 @@
 #include <pipeline/IntersectionManager.h>
 #include <pipeline/Rasterizer.h>
 #include <pipeline/Pipeline.h>
+#include <readerwriter/Utilities.h>
+#include <osg/Timer>
 
 #ifndef _DEBUG
 #include <backward.hpp>  // for better debug info
@@ -25,6 +27,34 @@ int main(int argc, char** argv)
 {
     osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
     osgVerse::updateOsgBinaryWrappers();
+
+    // Standalone functional test: remove triangles that are invisible from all orbit views.
+    // e.g. --opt-mesh /path/to/model.osgb --opt-angle 30 --opt-vstart 0 --opt-vrange 90
+    std::string optimizeFile;
+    if (arguments.read("--opt-mesh", optimizeFile))
+    {
+        osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(optimizeFile);
+        if (!model) { std::cout << "Failed to load model: " << optimizeFile << std::endl; return 1; }
+
+        float angleStep = 30.0f, vStart = -90.0f, vRange = 180.0f;
+        arguments.read("--opt-angle", angleStep);
+        arguments.read("--opt-vstart", vStart);
+        arguments.read("--opt-vrange", vRange);
+
+        osg::Timer timer;
+        osgVerse::MeshInternalOptimizer optimizer(angleStep);
+        optimizer.setVerticalRange(vStart, vRange);
+        optimizer.setResolution(1024, 1024);
+        optimizer.optimize(model.get());
+
+        std::cout << "Optimized in " << timer.time_m() << "ms with " << optimizer.getNumViews()
+                  << " orbit views: removed " << optimizer.getNumRemovedTriangles()
+                  << " triangles and " << optimizer.getNumRemovedVertices() << " vertices" << std::endl;
+
+        std::string outFile = optimizeFile + ".optimized.osgb";
+        if (osgDB::writeNodeFile(*model, outFile)) std::cout << "Saved to " << outFile << std::endl;
+        return 0;
+    }
 
 #if true
     osg::ref_ptr<osg::Node> terrain = osgDB::readNodeFile("lz.osg");
