@@ -446,7 +446,7 @@ TreeView::TreeData* SceneHierarchy::findItem(osg::Object* obj) const
     return (itr != _nodeToItemMap.end()) ? itr->second.get() : NULL;
 }
 
-void SceneHierarchy::selectItem(TreeView::TreeData* item, bool notify)
+void SceneHierarchy::selectItem(TreeView::TreeData* item, bool notify, bool scrollIntoView)
 {
     if (!item) return;
     _selectedItem = item;
@@ -454,6 +454,7 @@ void SceneHierarchy::selectItem(TreeView::TreeData* item, bool notify)
     {
         _treeView->selectedItemID = item->id;
         item->flags |= ImGuiTreeNodeFlags_Selected;
+        if (scrollIntoView) _treeView->showItemInView(item->id);
     }
     if (notify && _clickAction) _clickAction(_treeView.get(), item);
 }

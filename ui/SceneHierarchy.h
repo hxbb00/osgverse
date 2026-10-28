@@ -52,7 +52,7 @@ namespace osgVerse
 
         /** Programmatically select an item (highlight it in the tree and optionally run
             the click action). Used for picking a node in the 3D view. */
-        void selectItem(TreeView::TreeData* item, bool notify = true);
+        void selectItem(TreeView::TreeData* item, bool notify = true, bool scrollIntoView = false);
 
         /** Clear the current selection (also runs the click action with a NULL item) */
         void clearSelection(bool notify = true);

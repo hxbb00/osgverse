@@ -644,6 +644,18 @@ TreeView::TreeData* TreeView::findByID(const std::string& id) const
     return output.empty() ? NULL : output[0];
 }
 
+void TreeView::showItemInView(const std::string& id)
+{
+    pendingScrollItemID = id; pendingOpenItemIDs.clear();
+    TreeData* target = findByID(id);
+    if (target == NULL) { pendingScrollItemID.clear(); return; }
+
+    // Remember all ancestors: they have to be opened while drawing, otherwise the item row would not
+    // be generated at all and could not be scrolled to
+    std::vector<TreeData*> parents = findParents(target);
+    for (size_t i = 0; i < parents.size(); ++i) pendingOpenItemIDs.push_back(parents[i]->id);
+}
+
 bool TreeView::show(ImGuiManager* mgr, ImGuiContentHandler* content)
 {
     for (size_t i = 0; i < treeDataList.size(); ++i)
@@ -651,6 +663,7 @@ bool TreeView::show(ImGuiManager* mgr, ImGuiContentHandler* content)
         TreeData& td = *treeDataList[i];
         showRecursively(td, mgr, content);
     }
+    pendingOpenItemIDs.clear();
     return !selectedItemID.empty();
 }
 
@@ -662,8 +675,22 @@ void TreeView::showRecursively(TreeData& td, ImGuiManager* mgr, ImGuiContentHand
     if (td.children.empty()) td.flags |= ImGuiTreeNodeFlags_Leaf;
     else td.flags &= ~ImGuiTreeNodeFlags_Leaf;
 
+    // Open ancestors of a pending "show in view" item so that its row is generated during this frame
+    for (size_t i = 0; i < pendingOpenItemIDs.size(); ++i)
+    {
+        if (pendingOpenItemIDs[i] == td.id) { ImGui::SetNextItemOpen(true); break; }
+    }
+
     ImGui::PushStyleColor(ImGuiCol_Text, td.color);
-    if (ImGui::TreeNodeEx(td.name.c_str(), td.flags))
+    bool opened = ImGui::TreeNodeEx(td.name.c_str(), td.flags);
+
+    // Scroll right after drawing the target row (before its children change ImGui's last item)
+    if (!pendingScrollItemID.empty() && pendingScrollItemID == td.id)
+    {
+        ImGui::SetScrollHereY(0.5f); pendingScrollItemID.clear();
+    }
+
+    if (opened)
     {
         if (ImGui::IsItemClicked(0))
         {

@@ -310,12 +310,17 @@ namespace osgVerse
         };
         std::vector<osg::ref_ptr<TreeData>> treeDataList;
         std::string selectedItemID;
+        std::string pendingScrollItemID;
+        std::vector<std::string> pendingOpenItemIDs;
         ActionCallback2 callback, callbackR, callbackSB;
 
         std::vector<TreeData*> findParents(TreeData* child) const;
         std::vector<TreeData*> findByName(const std::string& name) const;
         std::vector<TreeData*> findByUserData(osg::Referenced* ud) const;
         TreeData* findByID(const std::string& id) const;
+
+        /** Expand the item's ancestors and scroll the view so the item becomes visible */
+        void showItemInView(const std::string& id);
 
         virtual bool show(ImGuiManager* mgr, ImGuiContentHandler* content);
         void showRecursively(TreeData& td, ImGuiManager*, ImGuiContentHandler*);

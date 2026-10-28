@@ -119,7 +119,7 @@ public:
             }
 
             // Nothing hit (empty space, or the sky which is not part of sceneRoot): clear selection
-            if (item != NULL) _hierarchy->selectItem(item, true);
+            if (item != NULL) _hierarchy->selectItem(item, true, true);
             else _hierarchy->clearSelection(true);
         }
         return false;
