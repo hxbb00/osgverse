@@ -648,7 +648,7 @@ namespace osgVerse
         std::map<size_t, std::vector<osg::Transform*>> boneListMap;
         for (size_t i = 0; i < _skinningDataList.size(); ++i)
         {
-            SkinningData& sd = _skinningDataList[i]; osg::Matrix parentInvMatrix;
+            SkinningData& sd = _skinningDataList[i];
             std::vector<osg::Transform*>& boneList = boneListMap[i];
             for (size_t b = 0; b < sd.joints.size(); ++b)
             {
@@ -661,21 +661,51 @@ namespace osgVerse
                     { OSG_WARN << "[LoaderGLTF] Invalid empty bone: " << sd.joints[b] << std::endl; }
             }
 
-            osg::Node* skeletonRoot = _nodeCreationMap[sd.skeletonBaseIndex];
-            if (skeletonRoot && skeletonRoot->getNumParents() > 0)
+            osg::Node* skeletonRoot = (sd.skeletonBaseIndex >= 0)
+                                    ? _nodeCreationMap[sd.skeletonBaseIndex] : NULL;
+
+            // The character space is the parent space of the root joint. OZZ composes the
+            // skeleton starting from the root joint's local transform, so transforms above it
+            // (armature / Y-up / RTC nodes) must be folded into the mesh vertices instead of
+            // being applied to a scene node again
+            osg::Transform* rootBone = NULL;
+            for (size_t b = 0; b < boneList.size(); ++b)
             {
-                osg::MatrixList matrices = skeletonRoot->getParent(0)->getWorldMatrices();
-                if (!matrices.empty()) parentInvMatrix = osg::Matrix::inverse(matrices.front());
+                osg::Node* parent = boneList[b]->getNumParents() > 0 ? boneList[b]->getParent(0) : NULL;
+                bool parentIsBone = false;
+                for (size_t k = 0; k < boneList.size(); ++k)
+                { if (boneList[k] == parent) { parentIsBone = true; break; } }
+                if (!parentIsBone) { rootBone = boneList[b]; break; }
             }
-            createInvBindMatrices(sd, boneList, _modelDef.accessors[sd.invBindPoseAccessor], parentInvMatrix);
+            if (!rootBone && !boneList.empty()) rootBone = boneList[0];
+
+            osg::Matrix characterWorld;
+            if (rootBone && rootBone->getNumParents() > 0)
+            {
+                osg::MatrixList matrices = rootBone->getParent(0)->getWorldMatrices();
+                if (!matrices.empty()) characterWorld = matrices.front();
+            }
+            osg::Matrix toCharacter = osg::Matrix::inverse(characterWorld);
+
+            for (std::map<osg::Geometry*, PlayerAnimation::GeometryJointData>::iterator
+                 jdItr = sd.jointData.begin(); jdItr != sd.jointData.end(); ++jdItr)
+                jdItr->second._toCharacter = toCharacter;
+
+            createInvBindMatrices(sd, boneList, toCharacter);
             if (!sd.meshList.empty()) sd.player->initialize(boneList, sd.meshList, sd.jointData);
 
             sd.skeletonRoot = skeletonRoot ? skeletonRoot->asGroup() : NULL;
 #if !DISABLE_SKINNING_DATA
             sd.meshRoot = new osg::Geode; sd.meshRoot->setName("CharacterGeode");
             sd.meshRoot->addUpdateCallback(sd.player.get());
-            if (sd.skeletonRoot.valid()) sd.skeletonRoot->addChild(sd.meshRoot.get());
-            else _root->addChild(sd.meshRoot.get());
+
+            // The regenerated mesh must be placed in the character space, never under a bone:
+            // a bone may carry its own static transform which would then be applied twice.
+            // Vertices were baked into the character space (R^-1 * G_mesh * v), so the mesh node
+            // itself is placed with R = characterWorld.
+            osg::ref_ptr<osg::MatrixTransform> meshMT = new osg::MatrixTransform;
+            meshMT->setName("CharacterMesh"); meshMT->setMatrix(characterWorld);
+            meshMT->addChild(sd.meshRoot.get()); _root->addChild(meshMT.get());
 #endif
         }
 
@@ -1474,29 +1504,22 @@ namespace osgVerse
     }
 
     void LoaderGLTF::createInvBindMatrices(SkinningData& sd, const std::vector<osg::Transform*>& bones,
-                                           tinygltf::Accessor& accessor, const osg::Matrix& invParent)
+                                           const osg::Matrix& toCharacter)
     {
-        const tinygltf::BufferView& attrView = _modelDef.bufferViews[accessor.bufferView];
-        if (attrView.buffer < 0) return;
-
-        const tinygltf::Buffer& buffer = _modelDef.buffers[attrView.buffer];
-        int compSize = tinygltf::GetComponentSizeInBytes(accessor.componentType);
-        int compNum = accessor.type, size = accessor.count;
-        if (compNum != TINYGLTF_TYPE_MAT4 || size != (int)bones.size()) return;
-
-        size_t stride = (attrView.byteStride > 0 && attrView.byteStride != (compSize * 4 * sizeof(float)))
-                      ? attrView.byteStride : 0;
-        size_t offset = accessor.byteOffset + attrView.byteOffset;
-        size_t matSize = compSize * 4; std::vector<float> matrices(size * matSize);
-        copyBufferData(&matrices[0], &buffer.data[offset], matrices.size() * sizeof(float), stride, size);
-        for (int i = 0; i < size; ++i)
+        // The bind pose of a joint is its current world matrix expressed in the character space.
+        // Deriving it from the node hierarchy (instead of the inverse bind accessor) keeps the
+        // mesh, the bind poses and the OZZ skeleton in exactly the same space, and also works
+        // when several mesh nodes have different transforms for one skin.
+        for (size_t i = 0; i < bones.size(); ++i)
         {
-            osg::Matrixf matrix(&matrices[i * matSize]);
+            osg::MatrixList worldMatrices = bones[i]->getWorldMatrices();
+            if (worldMatrices.empty()) continue;
+
+            // OSG multiplies row vectors (v * M), so the world -> character composition is
+            // worldMatrix * toCharacter
+            osg::Matrix invBind = osg::Matrix::inverse(worldMatrices.front() * toCharacter);
             for (size_t j = 0; j < sd.meshList.size(); ++j)
-            {
-                PlayerAnimation::GeometryJointData& jData = sd.jointData[sd.meshList[j]];
-                jData._invBindPoseMap[bones[i]] = invParent * matrix;
-            }
+                sd.jointData[sd.meshList[j]]._invBindPoseMap[bones[i]] = osg::Matrixf(invBind);
         }
     }
 
@@ -1604,48 +1627,112 @@ namespace osgVerse
         for (std::map<std::string, int>::iterator attrib = target.begin();
              attrib != target.end(); ++attrib)
         {
-            tinygltf::Accessor& attrAccessor = _modelDef.accessors[attrib->second];
-            const tinygltf::BufferView& attrView = _modelDef.bufferViews[attrAccessor.bufferView];
-            int size = attrAccessor.count; if (!size || attrView.buffer < 0) continue;
+            // Morph targets may be SPARSE accessors: in that case bufferView is -1 and the
+            // non-zero values are stored in the sparse indices/values buffer views. Using
+            // _modelDef.bufferViews[-1] (as the previous code did) crashed on such files.
+            int accIndex = attrib->second;
+            if (accIndex < 0 || accIndex >= (int)_modelDef.accessors.size())
+            {
+                OSG_WARN << "[LoaderGLTF] Invalid morph target accessor index: " << accIndex
+                         << " for " << attrib->first << std::endl; continue;
+            }
 
-            const tinygltf::Buffer& buffer = _modelDef.buffers[attrView.buffer];
+            tinygltf::Accessor& attrAccessor = _modelDef.accessors[accIndex];
+            int size = (int)attrAccessor.count;
             int compNum = (attrAccessor.type != TINYGLTF_TYPE_SCALAR) ? attrAccessor.type : 1;
             int compSize = tinygltf::GetComponentSizeInBytes(attrAccessor.componentType);
-            int copySize = size * (compSize * compNum);
-            size_t offset = attrView.byteOffset + attrAccessor.byteOffset;
-            size_t stride = (attrView.byteStride > 0 && attrView.byteStride != (compSize * compNum))
-                          ? attrView.byteStride : 0;
+            if (size < 1 || compSize < 1) continue;
 
-            if (attrib->first.compare("POSITION") == 0 && compSize == 4 && compNum == 3)
+            // Morph target attributes we support: displacement/normal offsets (float vec3)
+            bool isPosition = (attrib->first.compare("POSITION") == 0);
+            bool isNormal = (attrib->first.compare("NORMAL") == 0);
+            if (!((isPosition || isNormal) && compSize == 4 && compNum == 3))
             {
-                va = new osg::Vec3Array(size);
-                copyBufferData(&(*va)[0], &buffer.data[offset], copySize, stride, size);
+                OSG_WARN << "[LoaderGLTF] Unsupported target " << attrib->first << " with "
+                         << compNum << "-components and dataSize=" << compSize << std::endl;
+                continue;
+            }
+
+            struct ViewPointer
+            {
+                const char* data; size_t offset, length;
+                ViewPointer() : data(NULL), offset(0), length(0) {}
+            };
+            struct ViewReader
+            {
+                const tinygltf::Model& def;
+                explicit ViewReader(const tinygltf::Model& m) : def(m) {}
+                ViewPointer get(int viewIndex) const
+                {
+                    ViewPointer ptr;
+                    if (viewIndex < 0 || viewIndex >= (int)def.bufferViews.size()) return ptr;
+                    const tinygltf::BufferView& view = def.bufferViews[viewIndex];
+                    if (view.buffer < 0 || view.buffer >= (int)def.buffers.size()) return ptr;
+                    const tinygltf::Buffer& buffer = def.buffers[view.buffer];
+                    size_t end = view.byteOffset + view.byteLength;
+                    if (end > buffer.data.size()) return ptr;
+
+                    ptr.data = (const char*)buffer.data.data() + view.byteOffset;
+                    ptr.offset = 0; ptr.length = view.byteLength; return ptr;
+                }
+            } reader(_modelDef);
+
+            // Compose the result array: zero-initialized (base value = no displacement), then
+            // filled from the base buffer view and/or the sparse substitution
+            osg::Vec3Array* result = new osg::Vec3Array(size);
+            float* dst = (float*)&(*result)[0];
+            const size_t elemSize = (size_t)compSize * compNum;
+
+            ViewPointer base = reader.get(attrAccessor.bufferView);
+            if (base.data != NULL)
+            {
+                const tinygltf::BufferView& view = _modelDef.bufferViews[attrAccessor.bufferView];
+                size_t stride = (view.byteStride > 0) ? view.byteStride : elemSize;
+                for (int i = 0; i < size; ++i)
+                {
+                    size_t o = attrAccessor.byteOffset + stride * (size_t)i;
+                    if (o + elemSize > base.length) break;
+                    memcpy(dst + (size_t)i * 3, base.data + o, elemSize);
+                }
+            }
+
+            const tinygltf::Accessor::Sparse& sparse = attrAccessor.sparse;
+            if (sparse.isSparse && sparse.count > 0)
+            {
+                ViewPointer indices = reader.get(sparse.indices.bufferView);
+                ViewPointer values = reader.get(sparse.values.bufferView);
+                int idxSize = tinygltf::GetComponentSizeInBytes(sparse.indices.componentType);
+                if (indices.data == NULL || values.data == NULL || idxSize < 1)
+                    OSG_WARN << "[LoaderGLTF] Invalid sparse morph target data: "
+                             << attrib->first << std::endl;
+                else
+                {
+                    for (int k = 0; k < sparse.count; ++k)
+                    {
+                        size_t io = sparse.indices.byteOffset + (size_t)k * idxSize;
+                        size_t vo = sparse.values.byteOffset + (size_t)k * elemSize;
+                        if (io + idxSize > indices.length || vo + elemSize > values.length) break;
+
+                        unsigned int index = 0;
+                        if (idxSize == 1) index = *(const unsigned char*)(indices.data + io);
+                        else if (idxSize == 2) index = *(const unsigned short*)(indices.data + io);
+                        else index = *(const unsigned int*)(indices.data + io);
+                        if ((int)index >= size) continue;
+                        memcpy(dst + (size_t)index * 3, values.data + vo, elemSize);
+                    }
+                }
+            }
+
+            if (isPosition) { va = result;
 #if OSG_VERSION_GREATER_THAN(3, 1, 8)
                 va->setNormalize(attrAccessor.normalized);
 #endif
             }
-            else if (attrib->first.compare("NORMAL") == 0 && compSize == 4 && compNum == 3)
-            {
-                na = new osg::Vec3Array(size);
-                copyBufferData(&(*na)[0], &buffer.data[offset], copySize, stride, size);
+            else { na = result;
 #if OSG_VERSION_GREATER_THAN(3, 1, 8)
                 na->setNormalize(attrAccessor.normalized);
 #endif
             }
-            else if (attrib->first.compare("TANGENT") == 0 &&
-                     compSize == 4 && compNum == 4)
-            {   // Do nothing as we calculate tangent/binormal by ourselves
-#if 0
-                ta = new osg::Vec4Array(size);
-                copyBufferData(&(*ta)[0], &buffer.data[offset], copySize, stride, size);
-#if OSG_VERSION_GREATER_THAN(3, 1, 8)
-                ta->setNormalize(attrAccessor.normalized);
-#endif
-#endif
-            }
-            else
-                OSG_WARN << "[LoaderGLTF] Unsupported target " << attrib->first << " with "
-                         << compNum << "-components and dataSize=" << compSize << std::endl;
         }
 
         // Save targets to specified geometry callback

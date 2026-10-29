@@ -58,6 +58,16 @@ int main(int argc, char** argv)
     osg::ref_ptr<osg::MatrixTransform> playerRoot = new osg::MatrixTransform;
     std::string animToPlay; arguments.read("--animation", animToPlay);
     std::string bsToPlay; arguments.read("--blendshape", bsToPlay);
+    float bsWeight = 1.0f; arguments.read("--blendshape-weight", bsWeight);
+
+    // Create the viewer before reading models, so that --agent* options are consumed here and
+    // will not be treated as file names by osgDB::readNodeFiles()
+    osgViewer::Viewer viewer;
+    viewer.addEventHandler(new osgViewer::StatsHandler);
+    viewer.addEventHandler(new osgViewer::WindowSizeHandler);
+    viewer.addEventHandler(new osgGA::StateSetManipulator(viewer.getCamera()->getStateSet()));
+    viewer.setCameraManipulator(new osgGA::TrackballManipulator);
+    osgVerse::configureViewerForAgent(arguments, &viewer);  // --agent capture support
 
     osg::ref_ptr<osg::MatrixTransform> root = new osg::MatrixTransform;
 #if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
@@ -132,7 +142,7 @@ int main(int argc, char** argv)
             OSG_NOTICE << "... Total: " << bs->getNumBlendShapes() << std::endl;
         }
         if (!bsToPlay.empty())
-            animManager->setBlendShape(bsToPlay, 1.0f);  // For blendshape test
+            animManager->setBlendShape(bsToPlay, bsWeight);  // For blendshape test
 
         // Animations
         std::vector<std::string> animations = animManager->getAnimationNames();
@@ -176,11 +186,6 @@ int main(int argc, char** argv)
             });
     }
 
-    osgViewer::Viewer viewer;
-    viewer.addEventHandler(new osgViewer::StatsHandler);
-    viewer.addEventHandler(new osgViewer::WindowSizeHandler);
-    viewer.addEventHandler(new osgGA::StateSetManipulator(viewer.getCamera()->getStateSet()));
-    viewer.setCameraManipulator(new osgGA::TrackballManipulator);
     viewer.setSceneData(root.get());
     viewer.setUpViewOnSingleScreen(0);
 
@@ -241,6 +246,29 @@ int main(int argc, char** argv)
         for (std::map<osgVerse::PlayerAnimation*, osg::Geode*>::iterator it = animManagers.begin();
              it != animManagers.end(); ++it) it->first->applyTransforms(*skeleton, true, true, axis.get(), rootBoneId);
         viewer.frame();
+
+        // Report the imported data once, so that a wrong import convention (mesh vs skeleton
+        // spaces) can be noticed without looking at the image
+        static int s_frameCount = 0;
+        if (++s_frameCount == 10)
+        {
+            if (player.valid())
+            {
+                osg::BoundingSphere bs = player->getBound();
+                OSG_NOTICE << "[Test] Original model bounds: center = " << bs.center()
+                           << ", radius = " << bs.radius() << std::endl;
+            }
+            for (std::map<osgVerse::PlayerAnimation*, osg::Geode*>::iterator it = animManagers.begin();
+                 it != animManagers.end(); ++it)
+            {
+                it->second->computeBound();
+                osg::BoundingSphere bs = it->second->getBound();
+                osg::BoundingBox kb = it->first->computeSkeletonBounds();
+                OSG_NOTICE << "[Test] Skinned mesh bounds: center = " << bs.center()
+                           << ", radius = " << bs.radius() << "; skeleton bounds = ("
+                           << kb._min << ") - (" << kb._max << ")" << std::endl;
+            }
+        }
     }
     //osgDB::writeNodeFile(*player, "test_skeleton.osg");
     return 0;

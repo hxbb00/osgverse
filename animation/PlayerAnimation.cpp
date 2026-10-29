@@ -118,6 +118,35 @@ namespace ozz
                     applySoaTransform(skeleton, matrices, (numJoints + 3) / 4 - 1, soaIndex);
             }
 
+            void build(ozz::animation::Skeleton& skeleton,
+                       const std::vector<osgVerse::PlayerAnimation::JointBinding>& joints)
+            {   // Build skeleton from index based binding, no scene graph node required
+                skeleton.Deallocate(); int32_t numJoints = (int32_t)joints.size();
+                if (numJoints < 1) return;
+
+                size_t charsCount = 1;
+                for (int i = 0; i < numJoints; ++i) charsCount += joints[i].name.size() + 1;
+                char* cursor = skeleton.Allocate((int32_t)charsCount, numJoints);
+                for (int i = 0; i < numJoints; ++i)
+                {
+                    const std::string& name = joints[i].name;
+                    skeleton.joint_names_[i] = cursor;
+                    memcpy(cursor, name.c_str(), name.size()); cursor += name.size();
+                    *cursor++ = '\0';
+                    skeleton.joint_parents_[i] = (int16_t)joints[i].parent;
+                }
+
+                osg::Matrix matrices[4]; int soaIndex = 0;
+                for (int i = 0; i < numJoints; ++i)
+                {
+                    matrices[soaIndex] = joints[i].toMatrix();
+                    if ((++soaIndex) == 4)
+                    { applySoaTransform(skeleton, matrices, i / 4, soaIndex); soaIndex = 0; }
+                }
+                if (soaIndex != 0)
+                    applySoaTransform(skeleton, matrices, (numJoints + 3) / 4 - 1, soaIndex);
+            }
+
         protected:
             void applySoaTransform(ozz::animation::Skeleton& skeleton, osg::Matrix* matrices,
                                    int idx, int numSoa)
@@ -221,18 +250,46 @@ namespace ozz
                              << wCount << "; vertex count: " << vCount << std::endl; return;
                 }
 
-                // Get and apply transformation matrix of current geometry
-                osg::Matrix worldMatrix;
+                // Get and apply transformation matrix of current geometry. Vertices and the OZZ
+                // skeleton must live in the same "character space" (parent space of the root
+                // joint), so the per-geometry world matrix is pre-multiplied with _toCharacter.
+                osg::Matrix worldMatrix = jData._toCharacter;  // OSG uses row vectors
                 if (geom.getNumParents() > 0)
-                    worldMatrix = geom.getParent(0)->getWorldMatrices()[0];
-                
+                    worldMatrix = geom.getParent(0)->getWorldMatrices()[0] * worldMatrix;
+                const bool transformGeometry = !worldMatrix.isIdentity();
+
+                // A rig may have been skinned in a bind pose different from its node rest pose.
+                // OZZ composes the skeleton from the rest pose, so the vertices have to be
+                // retargeted from bind to rest first (per vertex, along its strongest joint).
+                // The delta is identity for the usual case of bind == rest.
+                std::vector<const osg::Matrixf*> vDeltas(vCount, (const osg::Matrixf*)NULL);
+                bool hasDelta = false;
+                for (size_t i = 0; i < wCount && i < vCount && !jData._bindToRestMap.empty(); ++i)
+                {
+                    const std::vector<std::pair<osg::Transform*, float>>& jMap = jData._weightList[i];
+                    const osg::Matrixf* best = NULL; float bestWeight = 0.0f;
+                    for (size_t k = 0; k < jMap.size(); ++k)
+                    {
+                        if (jMap[k].second <= bestWeight) continue;
+                        std::map<osg::Transform*, osg::Matrixf>::iterator dItr =
+                            jData._bindToRestMap.find(jMap[k].first);
+                        if (dItr == jData._bindToRestMap.end()) continue;
+                        bestWeight = jMap[k].second; best = &(dItr->second);
+                    }
+                    if (best != NULL && !best->isIdentity())
+                        { vDeltas[i] = best; hasDelta = true; }
+                }
+
                 // Apply to mesh part
                 OzzMesh::Part meshPart; meshPart.positions.resize(vCount * 3);
-                if (!worldMatrix.isIdentity())
+                if (transformGeometry || hasDelta)
                 {
                     for (size_t c = 0; c < vCount; ++c)
                     {
-                        size_t idx = c * 3; osg::Vec3 v = (*va)[c] * worldMatrix;
+                        osg::Vec3 v = (*va)[c];
+                        if (transformGeometry) v = v * worldMatrix;
+                        if (vDeltas[c] != NULL) v = v * (*(vDeltas[c]));
+                        size_t idx = c * 3;
                         for (int k = 0; k < 3; ++k) meshPart.positions[idx + k] = v[k];
                     }
                 }
@@ -242,13 +299,29 @@ namespace ozz
                 if (ta && ta->size() == vCount)
                 {
                     meshPart.tangents.resize(vCount * 4);
-                    memcpy(&meshPart.tangents[0], &(*ta)[0], vCount * sizeof(float) * 4);
+                    for (size_t c = 0; c < vCount; ++c)
+                    {
+                        const osg::Vec4& t = (*ta)[c];
+                        osg::Vec3 xyz(t.x(), t.y(), t.z());
+                        if (transformGeometry) xyz = osg::Matrix::transform3x3(xyz, worldMatrix);
+                        if (vDeltas[c] != NULL) xyz = osg::Matrix::transform3x3(xyz, *(vDeltas[c]));
+                        size_t idx = c * 4;
+                        meshPart.tangents[idx + 0] = xyz[0]; meshPart.tangents[idx + 1] = xyz[1];
+                        meshPart.tangents[idx + 2] = xyz[2]; meshPart.tangents[idx + 3] = t.w();
+                    }
                 }
 
                 if (na && na->size() == vCount)
                 {
                     meshPart.normals.resize(vCount * 3);
-                    memcpy(&meshPart.normals[0], &(*na)[0], vCount * sizeof(float) * 3);
+                    for (size_t c = 0; c < vCount; ++c)
+                    {
+                        osg::Vec3 n = (*na)[c];
+                        if (transformGeometry) n = osg::Matrix::transform3x3(n, worldMatrix);
+                        if (vDeltas[c] != NULL) n = osg::Matrix::transform3x3(n, *(vDeltas[c]));
+                        n.normalize(); size_t idx = c * 3;
+                        for (int k = 0; k < 3; ++k) meshPart.normals[idx + k] = n[k];
+                    }
                 }
                 if (ca && ca->size() == vCount)
                 {
@@ -266,47 +339,49 @@ namespace ozz
                     memcpy(&meshPart.uvs[0], &(*uv)[0], vCount * sizeof(float) * 2);
                 }
 
-                // Compute joint weights
-                size_t numJointsToWeight = jData._weightList[0].size(), count = 0;
-                if (numJointsToWeight != 4)
-                {
-                    OSG_WARN << "[PlayerAnimation] Unsupported joint-weight size: "
-                             << numJointsToWeight << std::endl;
-                    return;  // FIXME: a valid range besides [1, 4]?
-                }
-
+                // Compute joint weights. A vertex can have 1..4 influences in glTF/FBX, and OZZ
+                // expects exactly 4 joint indices with 3 weights per vertex (the 4th weight is
+                // implicitly 1 - sum). Silently merging the last two joints (the previous
+                // behaviour) deformed any 4-influence vertex incorrectly.
                 for (size_t i = 0; i < wCount; ++i)
                 {
-                    std::vector<float> weightValues; float weightSum = 0.0f;
                     std::vector<std::pair<osg::Transform*, float>>& jMap = jData._weightList[i];
-                    for (std::vector<std::pair<osg::Transform*, float>>::iterator itr = jMap.begin();
-                         itr != jMap.end(); ++itr, ++count)
+                    std::vector<std::pair<uint16_t, float>> influences;
+                    influences.reserve(4);
+                    for (size_t k = 0; k < jMap.size(); ++k)
                     {
-                        if (_nodeMap.find(itr->first) == _nodeMap.end())
+                        osg::Transform* joint = jMap[k].first; float weight = jMap[k].second;
+                        if (weight <= 0.0f) continue;
+
+                        std::map<osg::Transform*, uint16_t>::iterator itr = _nodeMap.find(joint);
+                        if (itr == _nodeMap.end())
                         {
                             OSG_WARN << "[PlayerAnimation] Invalid joint linked to mesh: "
-                                     << (itr->first ? itr->first->getName() : std::string("NULL"))
-                                     << std::endl;
+                                     << (joint ? joint->getName() : std::string("NULL"))
+                                     << std::endl; continue;
                         }
-
-                        meshPart.joint_indices.push_back(_nodeMap[itr->first]);
-                        weightValues.push_back(itr->second); weightSum += itr->second;
-                        if (count == numJointsToWeight - 1) break;
+                        influences.push_back(std::pair<uint16_t, float>(itr->second, weight));
                     }
 
-                    while (count < numJointsToWeight - 1)
+                    // Keep the strongest 4 influences, then normalize them
+                    if (influences.size() > 4)
                     {
-                        meshPart.joint_indices.push_back(0);
-                        weightValues.push_back(0.0f); count++;
+                        std::sort(influences.begin(), influences.end(),
+                                  [](const std::pair<uint16_t, float>& a,
+                                     const std::pair<uint16_t, float>& b)
+                                  { return a.second > b.second; });
+                        influences.resize(4);
                     }
-
-                    // Recompute and remove last weight as computed at runtime
-                    for (size_t j = 0; j < weightValues.size() - 1; ++j)
+                    float weightSum = 0.0f;
+                    for (size_t k = 0; k < influences.size(); ++k) weightSum += influences[k].second;
+                    for (size_t k = 0; k < 4; ++k)
                     {
-                        meshPart.joint_weights.push_back(
-                            (weightSum > 0.0f) ? (weightValues[j] / weightSum) : 0.0f);
+                        uint16_t joint = (k < influences.size()) ? influences[k].first : 0;
+                        float weight = (k < influences.size() && weightSum > 0.0f)
+                                     ? influences[k].second / weightSum : 0.0f;
+                        meshPart.joint_indices.push_back(joint);
+                        if (k < 3) meshPart.joint_weights.push_back(weight);
                     }
-                    count = 0;
                 }
 
 #if false
@@ -324,10 +399,45 @@ namespace ozz
                           << ", W = " << meshPart.joint_weights.size() << std::endl;
 #endif
 
-                // Handle blendshapes
+                // Handle blendshapes. The morph deltas are stored in mesh local space by the
+                // importers, but the vertices are baked into the character space (which includes
+                // e.g. the Y-up to Z-up rotation and the skeleton-root parent transform). Without
+                // rotating the deltas too, a jaw/eye displacement would move along the wrong
+                // axis (usually depth), making eyes z-fight and flicker.
                 BlendShapeAnimation* bsa =
                     dynamic_cast<osgVerse::BlendShapeAnimation*>(geom.getUpdateCallback());
                 _blendshapes.push_back(bsa != NULL ? bsa : NULL);
+                if (bsa != NULL && transformGeometry)
+                {
+                    std::vector<osg::ref_ptr<BlendShapeAnimation::BlendShapeData>>& allShapes =
+                        bsa->getAllBlendShapes();
+                    for (size_t s = 0; s < allShapes.size(); ++s)
+                    {
+                        BlendShapeAnimation::BlendShapeData* bsd = allShapes[s].get();
+                        if (bsd->vertices.valid())
+                        {
+                            osg::Vec3Array& d = *(bsd->vertices);
+                            for (size_t v = 0; v < d.size(); ++v)
+                                d[v] = osg::Matrix::transform3x3(d[v], worldMatrix);
+                        }
+                        if (bsd->normals.valid())
+                        {
+                            osg::Vec3Array& d = *(bsd->normals);
+                            for (size_t v = 0; v < d.size(); ++v)
+                                d[v] = osg::Matrix::transform3x3(d[v], worldMatrix);
+                        }
+                        if (bsd->tangents.valid())
+                        {
+                            osg::Vec4Array& d = *(bsd->tangents);
+                            for (size_t v = 0; v < d.size(); ++v)
+                            {
+                                osg::Vec3 xyz = osg::Matrix::transform3x3(
+                                    osg::Vec3(d[v].x(), d[v].y(), d[v].z()), worldMatrix);
+                                d[v].set(xyz[0], xyz[1], xyz[2], d[v].w());
+                            }
+                        }
+                    }
+                }
 
                 // Apply to OZZ mesh
                 osg::TriangleIndexFunctor<CollectTriangleOperator> functor;
@@ -335,19 +445,33 @@ namespace ozz
 
                 OzzMesh mesh; mesh.parts.push_back(meshPart);
                 mesh.triangle_indices.assign(functor.triangles.begin(), functor.triangles.end());
-                for (std::map<osg::Transform*, osg::Matrixf>::iterator itr = jData._invBindPoseMap.begin();
-                     itr != jData._invBindPoseMap.end(); ++itr)
-                { mesh.joint_remaps.push_back(_nodeMap[itr->first]); }
 
-                std::sort(mesh.joint_remaps.begin(), mesh.joint_remaps.end());  // required by OZZ
-                for (size_t j = 0; j < mesh.joint_remaps.size(); ++j)
+                // OZZ requires joint remaps to be sorted, and inverse bind poses must follow the
+                // same order. Joints are resolved with find() so an invalid node never becomes
+                // joint 0 silently.
+                std::vector<std::pair<uint16_t, osg::Matrixf>> invBinds;
+                invBinds.reserve(jData._invBindPoseMap.size());
+                for (std::map<osg::Transform*, osg::Matrixf>::iterator itr =
+                     jData._invBindPoseMap.begin(); itr != jData._invBindPoseMap.end(); ++itr)
                 {
-                    uint16_t id = mesh.joint_remaps[j];
-                    std::map<osg::Transform*, osg::Matrixf>::iterator itr = jData._invBindPoseMap.begin();
-                    for (; itr != jData._invBindPoseMap.end(); ++itr)
-                    { if (_nodeMap[itr->first] == id) break; }
+                    std::map<osg::Transform*, uint16_t>::iterator idItr = _nodeMap.find(itr->first);
+                    if (idItr == _nodeMap.end())
+                    {
+                        OSG_WARN << "[PlayerAnimation] Invalid joint in inverse bind pose map: "
+                                 << (itr->first ? itr->first->getName() : std::string("NULL"))
+                                 << std::endl; continue;
+                    }
+                    invBinds.push_back(std::pair<uint16_t, osg::Matrixf>(idItr->second, itr->second));
+                }
 
-                    const osg::Matrixf& m = itr->second;
+                std::sort(invBinds.begin(), invBinds.end(),
+                          [](const std::pair<uint16_t, osg::Matrixf>& a,
+                             const std::pair<uint16_t, osg::Matrixf>& b)
+                          { return a.first < b.first; });
+                for (size_t j = 0; j < invBinds.size(); ++j)
+                {
+                    mesh.joint_remaps.push_back(invBinds[j].first);
+                    const osg::Matrixf& m = invBinds[j].second;
                     ozz::math::Float4x4 pose = ozz::math::Float4x4::identity();
                     pose.cols[0] = ozz::math::simd_float4::Load(m(0, 0), m(0, 1), m(0, 2), m(0, 3));
                     pose.cols[1] = ozz::math::simd_float4::Load(m(1, 0), m(1, 1), m(1, 2), m(1, 3));
@@ -996,15 +1120,140 @@ PlayerAnimation::PlayerAnimation()
 
 PlayerAnimation::~PlayerAnimation()
 {
-    OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
-    if (ozz->_allocatedBuffer != NULL)
-        ozz::memory::default_allocator()->Deallocate(ozz->_allocatedBuffer);
 }
 
 void PlayerAnimation::setSkinningValidator(ValidateSkinningFunc func)
 {
     OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
     if (ozz) ozz->_validator = func;
+}
+
+bool PlayerAnimation::initialize(const std::vector<JointBinding>& joints,
+                                 const std::vector<MeshBinding>& meshes)
+{
+    OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
+    if (joints.empty())
+    {
+        OSG_WARN << "[PlayerAnimation] Empty skeleton binding." << std::endl; return false;
+    }
+
+    // Build skeleton directly from the index based binding
+    ozz::animation::CreateSkeletonVisitor csv;
+    csv.build(ozz->_skeleton, joints);
+    const int numJoints = ozz->_skeleton.num_joints();
+    if (numJoints < 1) return false;
+
+    ozz->_meshes.clear(); ozz->_meshNames.clear();
+    _meshStateSetList.clear(); _blendshapes.clear();
+    for (size_t m = 0; m < meshes.size(); ++m)
+    {
+        const MeshBinding& src = meshes[m];
+        osg::Vec3Array* va = src.positions.get();
+        size_t vCount = va ? va->size() : 0;
+        if (vCount < 1)
+        {
+            OSG_WARN << "[PlayerAnimation] Skip empty mesh binding: " << src.name << std::endl;
+            continue;
+        }
+        else if (vCount > 65535)  // OZZ mesh indices are 16-bit
+        {
+            OSG_WARN << "[PlayerAnimation] Mesh " << src.name << " has " << vCount
+                     << " vertices which exceeds the OZZ 16-bit index limit." << std::endl;
+            continue;
+        }
+
+        OzzMesh mesh; OzzMesh::Part part;
+        part.positions.resize(vCount * 3);
+        memcpy(&part.positions[0], &(*va)[0], vCount * sizeof(float) * 3);
+        if (src.normals.valid() && src.normals->size() == vCount)
+        {
+            part.normals.resize(vCount * 3);
+            memcpy(&part.normals[0], &(*src.normals)[0], vCount * sizeof(float) * 3);
+        }
+        if (src.tangents.valid() && src.tangents->size() == vCount)
+        {
+            part.tangents.resize(vCount * 4);
+            memcpy(&part.tangents[0], &(*src.tangents)[0], vCount * sizeof(float) * 4);
+        }
+        if (src.uvs.valid() && src.uvs->size() == vCount)
+        {
+            part.uvs.resize(vCount * 2);
+            memcpy(&part.uvs[0], &(*src.uvs)[0], vCount * sizeof(float) * 2);
+        }
+        if (src.colors.valid() && src.colors->size() == vCount)
+        {
+            part.colors.resize(vCount * 4);
+            memcpy(&part.colors[0], &(*src.colors)[0], vCount * sizeof(uint8_t) * 4);
+        }
+
+        // 4 joint indices and 3 weights per vertex; the 4th weight is the remainder for OZZ
+        const bool validWeights = (src.jointIndices.size() == vCount * 4 &&
+                                   src.jointWeights.size() == vCount * 4);
+        if (!validWeights)
+        {
+            OSG_WARN << "[PlayerAnimation] Mesh " << src.name << " has invalid joint weights, "
+                     << "all vertices will be bound to the root joint." << std::endl;
+        }
+
+        part.joint_indices.resize(vCount * 4);
+        part.joint_weights.resize(vCount * 3);
+        for (size_t v = 0; v < vCount; ++v)
+        {
+            uint16_t ids[4] = { 0, 0, 0, 0 }; float w[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+            if (validWeights)
+            {
+                for (int k = 0; k < 4; ++k)
+                {
+                    int id = (int)src.jointIndices[v * 4 + k];
+                    ids[k] = (id >= 0 && id < numJoints) ? (uint16_t)id : (uint16_t)0;
+                    w[k] = osg::maximum(src.jointWeights[v * 4 + k], 0.0f);
+                }
+            }
+
+            float sum = w[0] + w[1] + w[2] + w[3];
+            if (sum <= 0.0f) { ids[0] = 0; w[0] = 1.0f; sum = 1.0f; }
+            for (int k = 0; k < 4; ++k)
+            {
+                part.joint_indices[v * 4 + k] = ids[k];
+                if (k < 3) part.joint_weights[v * 3 + k] = w[k] / sum;
+            }
+        }
+
+        if (src.indices.valid())
+        {
+            size_t count = src.indices->size();
+            mesh.triangle_indices.resize(count);
+            for (size_t i = 0; i < count; ++i)
+                mesh.triangle_indices[i] = (uint16_t)((*src.indices)[i]);
+        }
+
+        // OZZ requires sorted joint remaps and matching inverse bind poses
+        mesh.joint_remaps.resize(numJoints);
+        mesh.inverse_bind_poses.resize(numJoints, ozz::math::Float4x4::identity());
+        for (int j = 0; j < numJoints; ++j)
+        {
+            mesh.joint_remaps[j] = (uint16_t)j;
+            if (j >= (int)src.inverseBindPoses.size()) continue;
+
+            const osg::Matrix& mat = src.inverseBindPoses[j];
+            ozz::math::Float4x4& pose = mesh.inverse_bind_poses[j];
+            pose.cols[0] = ozz::math::simd_float4::Load(
+                mat(0, 0), mat(0, 1), mat(0, 2), mat(0, 3));
+            pose.cols[1] = ozz::math::simd_float4::Load(
+                mat(1, 0), mat(1, 1), mat(1, 2), mat(1, 3));
+            pose.cols[2] = ozz::math::simd_float4::Load(
+                mat(2, 0), mat(2, 1), mat(2, 2), mat(2, 3));
+            pose.cols[3] = ozz::math::simd_float4::Load(
+                mat(3, 0), mat(3, 1), mat(3, 2), mat(3, 3));
+        }
+
+        mesh.parts.push_back(part);
+        ozz->_meshes.push_back(mesh);
+        ozz->_meshNames.push_back(src.name.empty() ? std::string("Mesh") : src.name);
+        _meshStateSetList.push_back(src.stateSet);
+        _blendshapes.push_back(src.blendshape);
+    }
+    return initializeInternal();
 }
 
 bool PlayerAnimation::initialize(osg::Node& skeletonRoot, osg::Node& meshRoot,
@@ -1015,7 +1264,8 @@ bool PlayerAnimation::initialize(osg::Node& skeletonRoot, osg::Node& meshRoot,
     // Load skeleton data from 'skeletonRoot'
     ozz::animation::CreateSkeletonVisitor csv;
     skeletonRoot.accept(csv); csv.build(ozz->_skeleton);
-    _skeletonRoot = csv.getSkeletonNodes().front();
+    if (!csv.getSkeletonNodes().empty()) _skeletonRoot = csv.getSkeletonNodes().front();
+    else { OSG_WARN << "[PlayerAnimation] No skeleton node found." << std::endl; return false; }
 
     // Load mesh data from 'meshRoot' and 'jointDataMap'
     ozz::animation::CreateMeshVisitor cmv(csv.getSkeletonNodes(), jointDataMap);
@@ -1031,7 +1281,8 @@ bool PlayerAnimation::initialize(const std::vector<osg::Transform*>& nodes,
     OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
     ozz::animation::CreateSkeletonVisitor csv;
     csv.initialize(nodes); csv.build(ozz->_skeleton);
-    _skeletonRoot = csv.getSkeletonNodes().front();
+    if (!csv.getSkeletonNodes().empty()) _skeletonRoot = csv.getSkeletonNodes().front();
+    else { OSG_WARN << "[PlayerAnimation] No skeleton node given." << std::endl; return false; }
 
     // TODO: girl.fbx have multiple players? It will call initialize() multiple times!
     ozz::animation::CreateMeshVisitor cmv(csv.getSkeletonNodes(), jointDataMap);
@@ -1070,7 +1321,9 @@ bool PlayerAnimation::loadAnimation(const std::string& key, const std::vector<os
 
     ozz::animation::AnimationConverter ac;
     ac.build(sampler, nodes, animDataMap); sampler.looping = true;
-    ozz->_allocatedBuffer = ac.allocatedBuffer;
+    if (sampler.buffer != NULL)  // release the buffer of a previous animation with same key
+        ozz::memory::default_allocator()->Deallocate(sampler.buffer);
+    sampler.buffer = ac.allocatedBuffer;  // ownership moved to the sampler
     return loadAnimationInternal(key);
 }
 
@@ -1404,6 +1657,41 @@ bool PlayerAnimation::initializeInternal()
                             << "(joint count mismatch)" << std::endl; return false;
         }
     }
+
+    // Validate that the bind pose is self-consistent: at rest, every skinning matrix
+    // (model matrix * inverse bind pose) must be the identity, otherwise the importer mixed
+    // different coordinate spaces and the mesh would be deformed even without any animation
+    ozz::vector<ozz::math::Float4x4> restModels(num_joints);
+    ozz::animation::LocalToModelJob ltmJob;
+    ltmJob.skeleton = &(ozz->_skeleton);
+    ltmJob.input = ozz->_skeleton.joint_rest_poses();
+    ltmJob.output = ozz::make_span(restModels);
+    if (ltmJob.Run())
+    {
+        for (size_t i = 0; i < ozz->_meshes.size(); ++i)
+        {
+            const OzzMesh& mesh = ozz->_meshes[i];
+            for (size_t j = 0; j < mesh.joint_remaps.size() && j < mesh.inverse_bind_poses.size(); ++j)
+            {
+                int joint = mesh.joint_remaps[j];
+                ozz::math::Float4x4 m = restModels[joint] * mesh.inverse_bind_poses[j];
+                float dev = 0.0f;
+                for (int c = 0; c < 4; ++c)
+                {
+                    float e[4] = { (c == 0) ? 1.0f : 0.0f, (c == 1) ? 1.0f : 0.0f,
+                                   (c == 2) ? 1.0f : 0.0f, (c == 3) ? 1.0f : 0.0f };
+                    dev = osg::maximum(dev, std::abs(ozz::math::GetX(m.cols[c]) - e[0]));
+                    dev = osg::maximum(dev, std::abs(ozz::math::GetY(m.cols[c]) - e[1]));
+                    dev = osg::maximum(dev, std::abs(ozz::math::GetZ(m.cols[c]) - e[2]));
+                    dev = osg::maximum(dev, std::abs(ozz::math::GetW(m.cols[c]) - e[3]));
+                }
+                if (dev > 0.01f)
+                    OSG_WARN << "[PlayerAnimation] Mesh " << i << " joint " << joint << " ("
+                             << ozz->_skeleton.joint_names()[joint] << ") has an inconsistent "
+                             << "bind pose, deviation = " << dev << std::endl;
+            }
+        }
+    }
     return true;
 }
 
@@ -1459,9 +1747,10 @@ PlayerAnimation::VertexWeights PlayerAnimation::getSkeletonVertexWeights() const
                 float w = jointWeights[n1] + jointWeights[n1 + 1] + jointWeights[n1 + 2];
                 for (int k = 0; k < 4; ++k)
                 {
+                    // OZZ stores only 3 weights, the last one is implicitly 1 - sum
                     float weight = (k < 3) ? jointWeights[n1 + k] : (1.0f - w);
                     if (weight > 0.0f) weightList.push_back(
-                        JointAndWeight(jointIds[n0 + k], jointWeights[n1 + k]));
+                        JointAndWeight(jointIds[n0 + k], weight));
                 }
             }
         }

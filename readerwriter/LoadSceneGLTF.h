@@ -74,7 +74,7 @@ namespace osgVerse
         bool createMesh(osg::Geode* geode, tinygltf::Mesh& mesh, int meshIndex, int skinIndex);
         void createMaterial(osg::StateSet* ss, tinygltf::Material mat);
         void createInvBindMatrices(SkinningData& sd, const std::vector<osg::Transform*>& bones,
-                                   tinygltf::Accessor& accessor, const osg::Matrix& invParent);
+                                   const osg::Matrix& toCharacter);
         void createAnimationSampler(PlayerAnimation::AnimationData& anim, const std::string& p,
                                     tinygltf::Accessor& in, tinygltf::Accessor& out);
         void createBlendshapeData(osg::Geometry* geom, std::map<std::string, int>& target);

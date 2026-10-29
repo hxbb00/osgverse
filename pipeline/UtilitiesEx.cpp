@@ -28,6 +28,10 @@
 #define XXH_STATIC_LINKING_ONLY
 #define XXH_IMPLEMENTATION
 #include "3rdparty/xxhash.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_STATIC  // keep the implementation file-local: other modules of the
+                                // engine also embed stb_image_write in the same binary
+#include "3rdparty/stb/stb_image_write.h"
 #include "modeling/Math.h"
 #include "ShaderLibrary.h"
 #include "Pipeline.h"
@@ -40,6 +44,43 @@ using namespace osgVerse;
 /************** ScreenSnapshotCallback **************/
 ScreenSnapshotCallback::ScreenSnapshotCallback(bool c, int fps)
 : _lastTime(0), _count(0), _capturing(c) { _image = new osg::Image; setCaptureFrequency(fps); }
+
+namespace
+{
+    /** Write a captured RGBA screenshot with the bundled stb library. This avoids the libpng
+        based osgdb_png plugin, which crashed (png_write_row reading an invalid buffer) for some
+        images and is an extra runtime dependency for such a small feature */
+    bool writeImageWithStb(const osg::Image& image, const std::string& file)
+    {
+        std::string ext = osgDB::getLowerCaseFileExtension(file);
+        if (ext != "png" && ext != "jpg" && ext != "jpeg" &&
+            ext != "bmp" && ext != "tga") return false;
+        if (image.getDataType() != GL_UNSIGNED_BYTE || image.data() == NULL) return false;
+
+        int w = image.s(), h = image.t();
+        int comp = osg::Image::computeNumComponents(image.getPixelFormat());
+        if (w < 1 || h < 1 || comp < 1 || comp > 4) return false;
+
+        // stb expects the first row to be the top one
+        const unsigned char* pixels = image.data();
+        int rowStep = (int)image.getRowStepInBytes();
+        osg::ref_ptr<osg::Image> flipped;
+        if (image.getOrigin() == osg::Image::BOTTOM_LEFT)
+        {
+            flipped = new osg::Image(image, osg::CopyOp::DEEP_COPY_IMAGES);
+            flipped->flipVertical();
+            pixels = flipped->data(); rowStep = (int)flipped->getRowStepInBytes();
+        }
+
+        int r = 0;
+        if (ext == "png") r = stbi_write_png(file.c_str(), w, h, comp, pixels, rowStep);
+        else if (ext == "jpg" || ext == "jpeg")
+            r = stbi_write_jpg(file.c_str(), w, h, comp, pixels, 90);
+        else if (ext == "bmp") r = stbi_write_bmp(file.c_str(), w, h, comp, pixels);
+        else if (ext == "tga") r = stbi_write_tga(file.c_str(), w, h, comp, pixels);
+        return r != 0;
+    }
+}
 
 void ScreenSnapshotCallback::flush(const std::string& prefix)
 {
@@ -55,11 +96,13 @@ void ScreenSnapshotCallback::flush(const std::string& prefix)
          it != _outputList.end(); ++it)
     {
         std::string file = prefix + it->first;
-        if (osgDB::writeImageFile(*(it->second), file))
+        bool ok = writeImageWithStb(*(it->second), file);  // stb first, no plugin required
+        if (!ok) ok = osgDB::writeImageFile(*(it->second), file);
+        if (ok)
             OSG_NOTICE << "[ScreenSnapshotCallback] Wrote " << file << std::endl;
         else
             OSG_WARN << "[ScreenSnapshotCallback] Failed to write " << file
-                     << " (is a plugin for this image format installed?)" << std::endl;
+                     << " (unsupported pixel format or extension?)" << std::endl;
     }
     _outputList.clear();
 }
@@ -193,6 +236,13 @@ bool osgVerse::configureViewerForAgent(osg::ArgumentParser& arguments, osgViewer
         osgGA::CameraManipulator* manip = viewer->getCameraManipulator();
         if (manip) manip->setByInverseMatrix(lookAt);
         else viewer->getCamera()->setViewMatrix(lookAt);
+
+        // Orbit based manipulators keep their own distance and recompute the eye position from
+        // it every frame, so the requested eye would be silently replaced by "center + distance
+        // along the view direction". Drop the manipulator in automation mode so that the
+        // --agent-eye value is honored exactly (a later user interaction is not expected here).
+        viewer->setCameraManipulator(NULL);
+        viewer->getCamera()->setViewMatrix(lookAt);
     }
 
     // 3) Snapshot callback. It has to be attached to the camera which really draws the image on

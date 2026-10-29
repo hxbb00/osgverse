@@ -34,7 +34,22 @@ namespace osgVerse
             typedef std::vector<std::pair<osg::Transform*, float>> JointWeights;  // [joint, weight]
             std::vector<JointWeights> _weightList;  // size equals to vertex count
             std::map<osg::Transform*, osg::Matrixf> _invBindPoseMap;  // [joint, invBindPose]
+
+            /** [joint, bind->rest delta] in character space. A rig may store a bind pose (the
+                pose the mesh was skinned in) different from the node rest pose (what the OZZ
+                skeleton uses). OZZ requires vertices to be expressed in the skeleton rest pose,
+                so the mesh must be retargeted from bind to rest at load time; otherwise it looks
+                correct when no animation plays but detaches from the bones as soon as they move.
+                Identity when bind == rest, which is the common case. */
+            std::map<osg::Transform*, osg::Matrixf> _bindToRestMap;
             osg::ref_ptr<osg::StateSet> _stateset;
+
+            /** Transform from model/world space to the character space, which is the parent space
+                of the root joint. It lets the importer keep vertices, inverse bind poses and the
+                OZZ skeleton in one single space, so that no transform above the skeleton root is
+                lost or applied twice. Identity by default. */
+            osg::Matrix _toCharacter;
+            GeometryJointData() : _toCharacter(osg::Matrix::identity()) {}
         };
 
         struct AnimationData
@@ -47,6 +62,50 @@ namespace osgVerse
             osg::AnimationPath* toAnimationPath() const;
             void fromAnimationPath(const osg::AnimationPath* path);
         };
+
+        /** Index based skeleton joint. Unlike GeometryJointData which references scene graph
+            nodes, a JointBinding only stores names/indices, so the binding keeps valid when the
+            scene graph is rebuilt, shared between players, or generated procedurally (SMPL-X,
+            SkinTokens). */
+        struct JointBinding
+        {
+            std::string name;
+            int parent;  // -1 for root joints
+            osg::Vec3 translation, scale;
+            osg::Quat rotation;
+
+            JointBinding() : parent(-1), scale(1.0f, 1.0f, 1.0f) {}
+            osg::Matrix toMatrix() const
+            { return osg::Matrix::scale(scale) * osg::Matrix::rotate(rotation)
+                     * osg::Matrix::translate(translation); }
+        };
+
+        /** Index based skinned mesh. All vertex attributes and inverse bind poses must be
+            expressed in the same character space, which is the parent space of the root joint
+            (i.e. what LocalToModelJob composes the skeleton into). */
+        struct MeshBinding
+        {
+            osg::ref_ptr<osg::Vec3Array> positions, normals;
+            osg::ref_ptr<osg::Vec4Array> tangents;
+            osg::ref_ptr<osg::Vec2Array> uvs;
+            osg::ref_ptr<osg::Vec4ubArray> colors;
+            osg::ref_ptr<osg::DrawElementsUInt> indices;
+
+            std::vector<uint16_t> jointIndices;  // 4 per vertex, index into the joint list
+            std::vector<float> jointWeights;     // 4 per vertex, normalized to 1
+            std::vector<osg::Matrix> inverseBindPoses;  // one per skeleton joint
+
+            osg::ref_ptr<osg::StateSet> stateSet;
+            osg::ref_ptr<BlendShapeAnimation> blendshape;
+            std::string name;
+        };
+
+        /** Initialize the player from index based bindings. This is the recommended entry for
+        *   procedurally generated characters (SMPL-X / SkinTokens) and does not depend on any
+        *   scene graph node name or pointer. See MeshBinding for the expected character space.
+        */
+        bool initialize(const std::vector<JointBinding>& joints,
+                        const std::vector<MeshBinding>& meshes);
 
         /** Initialize the player skeleton and mesh from OSG scene graph
         *   - skeletonRoot: node_name = joint_name/parent_idx, matrix = rest_pose

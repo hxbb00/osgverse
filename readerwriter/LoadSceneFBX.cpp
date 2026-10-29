@@ -85,7 +85,38 @@ namespace osgVerse
         {
             SkinningData& sd = it->second; ufbx_skin_deformer* skin = sd.deformer;
             std::map<osg::Geometry*, PlayerAnimation::GeometryJointData> jointDataMap;
-            
+
+            // Find all bone transforms of current player first: the character space (parent space
+            // of the root bone) must be known before any mesh data is baked
+            std::vector<osg::Transform*> nodeList;
+            for (size_t k = 0; k < _scene->nodes.count; ++k)
+            {
+                unsigned int boneId = _scene->nodes[k]->typed_id;
+                if (_boneToNodeMap.find(boneId) == _boneToNodeMap.end()) continue;
+
+                osg::Transform* t = _boneToNodeMap[boneId].get();
+                nodeList.push_back(t);
+            }
+
+            osg::Transform* rootBone = NULL;
+            for (size_t b = 0; b < nodeList.size(); ++b)
+            {
+                osg::Node* parent = nodeList[b]->getNumParents() > 0 ? nodeList[b]->getParent(0) : NULL;
+                bool parentIsBone = false;
+                for (size_t k = 0; k < nodeList.size(); ++k)
+                { if (nodeList[k] == parent) { parentIsBone = true; break; } }
+                if (!parentIsBone) { rootBone = nodeList[b]; break; }
+            }
+            if (!rootBone && !nodeList.empty()) rootBone = nodeList[0];
+
+            osg::Matrix characterWorld;
+            if (rootBone && rootBone->getNumParents() > 0)
+            {
+                osg::MatrixList matrices = rootBone->getParent(0)->getWorldMatrices();
+                if (!matrices.empty()) characterWorld = matrices.front();
+            }
+            osg::Matrix toCharacter = osg::Matrix::inverse(characterWorld);
+
             // Traverse all meshes of current player
             std::set<osg::Transform*> nodeUsed; std::vector<osg::Geometry*> meshList;
             for (std::map<osg::Geometry*, std::vector<SkinningData::JointWeights>>::iterator
@@ -93,7 +124,9 @@ namespace osgVerse
             {
                 PlayerAnimation::GeometryJointData& jointData = jointDataMap[it2->first];
                 std::map<osg::Transform*, osg::Matrixf>& invPoses = jointData._invBindPoseMap;
+                std::map<osg::Transform*, osg::Matrixf>& bindToRest = jointData._bindToRestMap;
                 jointData._stateset = it2->first->getStateSet(); meshList.push_back(it2->first);
+                jointData._toCharacter = toCharacter;
 
                 // Compute skinning weights
                 std::vector<SkinningData::JointWeights>& jWeights = it2->second;
@@ -123,21 +156,24 @@ namespace osgVerse
                         {
                             osg::Transform* t = _boneToNodeMap[boneId].get(); nodeUsed.insert(t);
                             jw1.push_back(std::pair<osg::Transform*, float>(t, w));
-                            invPoses[t] = osg::Matrix::inverse(toMatrix(cluster->bind_to_world));
+
+                            // The mesh is skinned in the cluster bind pose, which may differ from
+                            // the bone node rest pose used by the OZZ skeleton (e.g. a rig whose
+                            // bind pose is an A-pose while the nodes rest in a relaxed pose). The
+                            // inverse bind pose therefore comes from the node rest, and the
+                            // bind->rest delta retargets the vertices into the rest pose.
+                            osg::MatrixList worldMatrices = t->getWorldMatrices();
+                            if (!worldMatrices.empty())
+                            {
+                                osg::Matrix restChar = worldMatrices.front() * toCharacter;
+                                osg::Matrix bindChar = toMatrix(cluster->bind_to_world) * toCharacter;
+                                invPoses[t] = osg::Matrixf(osg::Matrix::inverse(restChar));
+                                bindToRest[t] = osg::Matrixf(
+                                    osg::Matrix::inverse(bindChar) * restChar);
+                            }
                         }
                     }
                 }  // for (size_t i = 0; i < jWeights.size(); ++i)
-            }
-
-            // Find all bone transforms of current player
-            std::vector<osg::Transform*> nodeList;
-            for (size_t k = 0; k < _scene->nodes.count; ++k)
-            {
-                unsigned int boneId = _scene->nodes[k]->typed_id;
-                if (_boneToNodeMap.find(boneId) == _boneToNodeMap.end()) continue;
-
-                osg::Transform* t = _boneToNodeMap[boneId].get();
-                /*if (nodeUsed.find(t) != nodeUsed.end())*/ nodeList.push_back(t);
             }
             
             // Create animation callback of current player
@@ -156,7 +192,9 @@ namespace osgVerse
                 meshRoot->addUpdateCallback(player.get());
 
                 osg::ref_ptr<osg::MatrixTransform> meshRootMT = new osg::MatrixTransform;
-                meshRootMT->setMatrix(invRootMatrix);  // will not be affected by root
+                // Vertices are baked into the character space, so place the mesh node with
+                // characterWorld (relative to the FBX root) instead of the root itself
+                meshRootMT->setMatrix(characterWorld * invRootMatrix);
                 meshRootMT->addChild(meshRoot.get()); _root->addChild(meshRootMT.get());
                 it->first->setNodeMask(0);  // FIXME: ugly to hide original meshes
                 it->first->setUserValue("OriginalPlayerMesh", true);

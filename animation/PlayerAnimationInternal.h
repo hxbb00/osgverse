@@ -38,7 +38,7 @@ class OzzAnimation : public osg::Referenced
 {
 public:
     typedef void (*ValidateSkinningFunc)(osg::Vec3*, osg::Vec3*, int, int);
-    OzzAnimation() : _validator(NULL), _allocatedBuffer(NULL) {}
+    OzzAnimation() : _validator(NULL) {}
 
     bool loadSkeleton(const char* filename, ozz::animation::Skeleton* skeleton);
     bool loadAnimation(const char* filename, ozz::animation::Animation* anim);
@@ -52,13 +52,20 @@ public:
     struct AnimationSampler
     {
         AnimationSampler() : weight(0.0f), playbackSpeed(1.0f), timeRatio(-1.0f),
-            startTime(0.0f), resetTimeRatio(true), looping(false) {}
+            startTime(0.0f), resetTimeRatio(true), looping(false), buffer(NULL) {}
+        ~AnimationSampler()
+        {
+            // Each sampler owns its own animation buffer, otherwise loading a second animation
+            // from structure data would leak the buffer of the previous one
+            if (buffer != NULL) ozz::memory::default_allocator()->Deallocate(buffer);
+        }
         ozz::animation::Animation animation;
         //ozz::animation::SamplingCache cache;
         ozz::vector<ozz::math::SoaTransform> locals;
         ozz::vector<ozz::math::SimdFloat4> jointWeights;
         float weight, playbackSpeed, timeRatio, startTime;
         bool resetTimeRatio, looping;
+        void* buffer;  // owns the memory referenced by Animation's spans
     };
 
     std::map<std::string, AnimationSampler> _animations;
@@ -70,7 +77,6 @@ public:
     ozz::vector<OzzMesh> _meshes;
     ozz::vector<std::string> _meshNames;
     ValidateSkinningFunc _validator;
-    void* _allocatedBuffer;
 
     static osg::Matrix convertMatrix(const ozz::math::Float4x4& m)
     {
