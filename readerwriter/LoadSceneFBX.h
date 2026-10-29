@@ -18,7 +18,9 @@ namespace osgVerse
     class LoaderFBX : public osg::Referenced
     {
     public:
-        LoaderFBX(std::istream& in, const std::string& d, int usingPBR = 1);
+        // usingPBR: 0 - disabled, 1: enabled, 2: forced; skinning: false loads a static mesh
+        // only (no PlayerAnimation / OZZ skinning data)
+        LoaderFBX(std::istream& in, const std::string& d, int usingPBR = 1, bool skinning = true);
 
         osg::MatrixTransform* getRoot() { return _root.get(); }
         ufbx_scene* getFbxScene() { return _scene; }
@@ -78,11 +80,13 @@ namespace osgVerse
         osg::ref_ptr<osg::MatrixTransform> _root;
         ufbx_scene* _scene;
         std::string _workingDir;
-        int _usingMaterialPBR;
+        int _usingMaterialPBR; bool _enableSkinning;
     };
 
-    OSGVERSE_RW_EXPORT osg::ref_ptr<osg::Group> loadFbx(const std::string& file, int usingPBR);
-    OSGVERSE_RW_EXPORT osg::ref_ptr<osg::Group> loadFbx2(std::istream& in, const std::string& dir, int usingPBR);
+    OSGVERSE_RW_EXPORT osg::ref_ptr<osg::Group> loadFbx(const std::string& file, int usingPBR,
+                                                        bool skinning = true);
+    OSGVERSE_RW_EXPORT osg::ref_ptr<osg::Group> loadFbx2(std::istream& in, const std::string& dir,
+                                                         int usingPBR, bool skinning = true);
 }
 
 #endif

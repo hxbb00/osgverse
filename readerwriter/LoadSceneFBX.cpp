@@ -35,8 +35,8 @@ static osg::Image* createDefaultImageForColor(const osg::Vec4& color)
 
 namespace osgVerse
 {
-    LoaderFBX::LoaderFBX(std::istream& in, const std::string& d, int pbr)
-        : _scene(NULL), _workingDir(d + "/"), _usingMaterialPBR(pbr)
+    LoaderFBX::LoaderFBX(std::istream& in, const std::string& d, int pbr, bool skinning)
+        : _scene(NULL), _workingDir(d + "/"), _usingMaterialPBR(pbr), _enableSkinning(skinning)
     {
         std::istreambuf_iterator<char> eos;
         std::vector<char> data(std::istreambuf_iterator<char>(in), eos);
@@ -416,7 +416,7 @@ namespace osgVerse
 
         // Pre-calculate skinned vertex data
         ufbx_skin_deformer* skin = NULL;
-        if (srcMesh->skin_deformers.count > 0)
+        if (_enableSkinning && srcMesh->skin_deformers.count > 0)
         {
             SkinningData& sd = _skinningDataMap[geode.get()];
             skin = srcMesh->skin_deformers.data[0]; sd.deformer = skin;
@@ -791,7 +791,7 @@ namespace osgVerse
         tex2D->setImage(image.get()); return tex2D.release();
     }
 
-    osg::ref_ptr<osg::Group> loadFbx(const std::string& file, int pbr)
+    osg::ref_ptr<osg::Group> loadFbx(const std::string& file, int pbr, bool skinning)
     {
         std::string workDir = osgDB::getFilePath(file), http = osgDB::getServerProtocol(file);
         if (!http.empty()) return NULL;
@@ -802,14 +802,14 @@ namespace osgVerse
             return NULL;
         }
 
-        osg::ref_ptr<LoaderFBX> loader = new LoaderFBX(in, workDir, pbr > 0);
+        osg::ref_ptr<LoaderFBX> loader = new LoaderFBX(in, workDir, pbr > 0, skinning);
         if (loader->getRoot()) loader->getRoot()->setName(file);
         return loader->getRoot();
     }
 
-    osg::ref_ptr<osg::Group> loadFbx2(std::istream& in, const std::string& dir, int pbr)
+    osg::ref_ptr<osg::Group> loadFbx2(std::istream& in, const std::string& dir, int pbr, bool skinning)
     {
-        osg::ref_ptr<LoaderFBX> loader = new LoaderFBX(in, dir, pbr > 0);
+        osg::ref_ptr<LoaderFBX> loader = new LoaderFBX(in, dir, pbr > 0, skinning);
         return loader->getRoot();
     }
 }

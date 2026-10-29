@@ -18,8 +18,11 @@ namespace osgVerse
     class LoaderGLTF : public osg::Referenced
     {
     public:
-        // usingPBR: 0 - disabled, 1: enabled, 2: forced
-        LoaderGLTF(std::istream& in, const std::string& d, bool isBinary, int usingPBR, bool yUp = true);
+        // usingPBR: 0 - disabled, 1: enabled, 2: forced; skinning: false loads a static mesh
+        // only (no PlayerAnimation / OZZ skinning data), which is what an auto-rigging pipeline
+        // needs as input
+        LoaderGLTF(std::istream& in, const std::string& d, bool isBinary, int usingPBR,
+                   bool yUp = true, bool skinning = true);
 
         osg::Group* getRoot() { return _root.get(); }
         tinygltf::Model& getModelData() { return _modelDef; }
@@ -104,13 +107,14 @@ namespace osgVerse
         VrmCharacterData _vrmCharacterData;
         tinygltf::Model _modelDef;
         std::string _workingDir;
-        int _usingMaterialPBR; bool _3dtilesFormat;
+        int _usingMaterialPBR; bool _3dtilesFormat; bool _enableSkinning;
     };
 
     OSGVERSE_RW_EXPORT osg::ref_ptr<osg::Group> loadGltf(
-        const std::string& file, bool isBinary, int usingPBR, bool yUp = true);
+        const std::string& file, bool isBinary, int usingPBR, bool yUp = true, bool skinning = true);
     OSGVERSE_RW_EXPORT osg::ref_ptr<osg::Group> loadGltf2(
-        std::istream& in, const std::string& dir, bool isBinary, int usingPBR, bool yUp = true);
+        std::istream& in, const std::string& dir, bool isBinary, int usingPBR,
+        bool yUp = true, bool skinning = true);
 }
 
 #endif

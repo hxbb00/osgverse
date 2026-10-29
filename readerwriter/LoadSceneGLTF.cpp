@@ -435,7 +435,8 @@ namespace osgVerse
     }
 
     LoaderGLTF::LoaderGLTF(std::istream& in, const std::string& d, bool isBinary,
-                           int pbr, bool yUp) : _usingMaterialPBR(pbr), _3dtilesFormat(false)
+                           int pbr, bool yUp, bool skinning)
+        : _usingMaterialPBR(pbr), _3dtilesFormat(false), _enableSkinning(skinning)
     {
         std::string protocol = osgDB::getServerProtocol(d);
         osgDB::ReaderWriter* rwWeb = (protocol.empty()) ? NULL
@@ -613,7 +614,7 @@ namespace osgVerse
         if (!loaded) { OSG_WARN << "[LoaderGLTF] Unable to load GLTF scene" << std::endl; return; }
 
         // Preload skin data
-        for (size_t i = 0; i < _modelDef.skins.size(); ++i)
+        for (size_t i = 0; _enableSkinning && i < _modelDef.skins.size(); ++i)
         {
             const tinygltf::Skin& skin = _modelDef.skins[i];
             SkinningData sd; sd.skeletonBaseIndex = skin.skeleton;
@@ -808,8 +809,8 @@ namespace osgVerse
         {
             geode->setName(node.name + "_Geode");
             if (!node.extras_json_string.empty()) geode->addDescription(node.extras_json_string);
-            _deferredMeshList.push_back(
-                DeferredMeshData(geode.get(), _modelDef.meshes[node.mesh], node.mesh, node.skin));
+            _deferredMeshList.push_back(DeferredMeshData(geode.get(), _modelDef.meshes[node.mesh],
+                                                         node.mesh, _enableSkinning ? node.skin : -1));
         }
         /*if (emptyTRS && emptyM && node.children.empty())
         {
@@ -1794,7 +1795,8 @@ namespace osgVerse
         return NULL;
     }
 
-    osg::ref_ptr<osg::Group> loadGltf(const std::string& file, bool isBinary, int usingPBR, bool yUp)
+    osg::ref_ptr<osg::Group> loadGltf(const std::string& file, bool isBinary, int usingPBR,
+                                      bool yUp, bool skinning)
     {
         std::string workDir = osgDB::getFilePath(file), http = osgDB::getServerProtocol(file);
         if (!http.empty() && http.find("file") == std::string::npos) return NULL;
@@ -1806,15 +1808,15 @@ namespace osgVerse
             return NULL;
         }
 
-        osg::ref_ptr<LoaderGLTF> loader = new LoaderGLTF(in, workDir, isBinary, usingPBR, yUp);
+        osg::ref_ptr<LoaderGLTF> loader = new LoaderGLTF(in, workDir, isBinary, usingPBR, yUp, skinning);
         if (loader->getRoot()) loader->getRoot()->setName(file);
         return loader->getRoot();
     }
 
     osg::ref_ptr<osg::Group> loadGltf2(std::istream& in, const std::string& dir,
-                                       bool isBinary, int usingPBR, bool yUp)
+                                       bool isBinary, int usingPBR, bool yUp, bool skinning)
     {
-        osg::ref_ptr<LoaderGLTF> loader = new LoaderGLTF(in, dir, isBinary, usingPBR, yUp);
+        osg::ref_ptr<LoaderGLTF> loader = new LoaderGLTF(in, dir, isBinary, usingPBR, yUp, skinning);
         return loader->getRoot();
     }
 }

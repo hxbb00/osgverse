@@ -16,12 +16,13 @@ IF(VERSE_SUPPORT_CPP17)
         INCLUDE_DIRECTORIES(${GGML_INCLUDE_DIR})
         ADD_DEFINITIONS(-DVERSE_WITH_GGML -DVERSE_WITH_DEPTHANYTHING3)
         SET(LIBRARY_FILES ${LIBRARY_FILES} DepthAnythingEngine.h DepthAnythingEngine.cpp
-                          FreeSplatterEngine.h FreeSplatterEngine.cpp TrellisPipeline.h TrellisPipeline.cpp)
+                          FreeSplatterEngine.h FreeSplatterEngine.cpp TrellisPipeline.h TrellisPipeline.cpp
+                          SkinTokensEngine.h SkinTokensEngine.cpp)
         SET(LIBRARY_INCLUDE_FILES ${LIBRARY_INCLUDE_FILES} DepthAnythingEngine.h
-                                  FreeSplatterEngine.h TrellisPipeline.h)
+                                  FreeSplatterEngine.h TrellisPipeline.h SkinTokensEngine.h)
     ELSE(GGML_FOUND)
         MESSAGE("[osgVerse] Dependency GGML not found. "
-                "osgVerseAI features will be ignored: 'depth-anything3';'free-splatter';'trellis2'.")
+                "osgVerseAI features will be ignored: 'depth-anything3';'free-splatter';'trellis2';'skin-tokens'.")
     ENDIF(GGML_FOUND)
 
     IF(ONNXRUNTIME_FOUND)

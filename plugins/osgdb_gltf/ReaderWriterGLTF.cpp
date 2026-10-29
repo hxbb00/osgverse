@@ -29,6 +29,8 @@ public:
         supportsOption("DisabledPBR", "Use PBR materials or not");
         supportsOption("ForcedPBR", "Force using PBR materials or not");
         supportsOption("UpAxis", "Set up axis to Y (0) or Z (1) (default = 0)");
+        supportsOption("DisabledSkinning", "Load a static mesh only: do not create character "
+                       "skeletons / skinning data (useful before auto-rigging)");
         supportsOption("WriteImageHint=<hint>", "Export option: Hint of writing image to stream: "
                        "<IncludeData> writes Image::data() directly; "
                        "<IncludeFile> writes the image file itself to stream; "
@@ -47,6 +49,7 @@ public:
         int noPBR = options ? atoi(options->getPluginStringData("DisabledPBR").c_str()) : 0;
         int forcedPBR = options ? atoi(options->getPluginStringData("ForcedPBR").c_str()) : 0;
         int yUp = options ? atoi(options->getPluginStringData("UpAxis").c_str()) : 0;
+        bool skinning = options ? atoi(options->getPluginStringData("DisabledSkinning").c_str()) == 0 : true;
         
         osg::ref_ptr<osg::Node> group;
         if (ext == "cmpt")
@@ -60,9 +63,11 @@ public:
             group = readCesiumFormatPnts(fin, osgDB::getFilePath(fileName));
         }
         else if (ext == "glb" || ext == "b3dm" || ext == "i3dm" || ext == "vrm")
-            group = osgVerse::loadGltf(fileName, true, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2), yUp == 0).get();
+            group = osgVerse::loadGltf(fileName, true, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2),
+                                       yUp == 0, skinning).get();
         else
-            group = osgVerse::loadGltf(fileName, false, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2), yUp == 0).get();
+            group = osgVerse::loadGltf(fileName, false, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2),
+                                       yUp == 0, skinning).get();
         if (!group) OSG_WARN << "[ReaderWriterGLTF] Failed to load " << fileName << std::endl;
         return group.get();
     }
@@ -70,6 +75,7 @@ public:
     virtual ReadResult readNode(std::istream& fin, const osgDB::Options* options) const
     {
         std::string dir = "", mode; bool isBinary = false, yUp = true; int pbrMode = 1;
+        bool skinning = true;
         if (options)
         {
             std::string fileName = options->getPluginStringData("filename");
@@ -91,6 +97,7 @@ public:
             int noPBR = atoi(options->getPluginStringData("DisabledPBR").c_str());
             int forcedPBR = atoi(options->getPluginStringData("ForcedPBR").c_str());
             pbrMode = (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2);
+            skinning = atoi(options->getPluginStringData("DisabledSkinning").c_str()) == 0;
             mode = options->getPluginStringData("Mode");
             std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
             if (mode == "binary") isBinary = true;
@@ -98,7 +105,7 @@ public:
 
         if (dir.empty() && options && !options->getDatabasePathList().empty())
             dir = options->getDatabasePathList().front();
-        return osgVerse::loadGltf2(fin, dir, isBinary, pbrMode, yUp).get();
+        return osgVerse::loadGltf2(fin, dir, isBinary, pbrMode, yUp, skinning).get();
     }
 
     virtual WriteResult writeNode(const osg::Node& node, const std::string& path, const osgDB::Options* options) const

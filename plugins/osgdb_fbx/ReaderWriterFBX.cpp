@@ -19,6 +19,8 @@ public:
         supportsOption("Directory", "Setting the working directory");
         supportsOption("DisabledPBR", "Use PBR materials or not");
         supportsOption("ForcedPBR", "Force using PBR materials or not");
+        supportsOption("DisabledSkinning", "Load a static mesh only: do not create character "
+                       "skeletons / skinning data (useful before auto-rigging)");
         supportsOption("WriteImageHint=<hint>", "Export option: Hint of writing image to stream: "
                        "<IncludeData> writes embedded image data into the FBX (default); "
                        "<UseExternal> writes separate image files next to the FBX file");
@@ -36,7 +38,8 @@ public:
         if (fileName.empty()) return ReadResult::FILE_NOT_HANDLED;
         int noPBR = options ? atoi(options->getPluginStringData("DisabledPBR").c_str()) : 0;
         int forcedPBR = options ? atoi(options->getPluginStringData("ForcedPBR").c_str()) : 0;
-        return osgVerse::loadFbx(fileName, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2)).get();
+        bool skinning = options ? atoi(options->getPluginStringData("DisabledSkinning").c_str()) == 0 : true;
+        return osgVerse::loadFbx(fileName, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2), skinning).get();
     }
 
     virtual ReadResult readNode(std::istream& fin, const osgDB::Options* options) const
@@ -48,7 +51,8 @@ public:
 
         int noPBR = options ? atoi(options->getPluginStringData("DisabledPBR").c_str()) : 0;
         int forcedPBR = options ? atoi(options->getPluginStringData("ForcedPBR").c_str()) : 0;
-        return osgVerse::loadFbx2(fin, dir, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2)).get();
+        bool skinning = options ? atoi(options->getPluginStringData("DisabledSkinning").c_str()) == 0 : true;
+        return osgVerse::loadFbx2(fin, dir, (noPBR == 1) ? 0 : (forcedPBR == 0 ? 1 : 2), skinning).get();
     }
 
     virtual WriteResult writeNode(const osg::Node& node, const std::string& path,
