@@ -168,6 +168,9 @@ namespace osgVerse
                                         float quadW, float quadH, const osg::Vec4& texcoord,
                                         bool screenSpaced = true, bool clearColor = true);
 
+    /** Get the resolution of the default display / desktop, used for full-screen initialization */
+    extern void obtainScreenResolution(unsigned int& w, unsigned int& h);
+
     /** Align the camera (usually RTT) to a bounding box to capture one of its face exactly */
     extern void alignCameraToBox(osg::Camera* camera, const osg::BoundingBoxd& bb, int resW, int resH,
                                  osg::TextureCubeMap::Face face = osg::TextureCubeMap::POSITIVE_Z);

@@ -372,32 +372,6 @@ protected:
     mutable unsigned int _lastFrameNumber;
 };
 
-#if defined(VERSE_WINDOWS)
-#include <windows.h>
-void obtainScreenResolution(unsigned int& w, unsigned int& h)
-{
-    HWND hd = ::GetDesktopWindow(); RECT rect; ::GetWindowRect(hd, &rect);
-    w = (rect.right - rect.left); h = (rect.bottom - rect.top);
-    OSG_NOTICE << "[StandardPipeline] Get screen size " << w << " x " << h << "\n";
-}
-#elif defined(VERSE_X11)
-#include <X11/Xlib.h>
-void obtainScreenResolution(unsigned int& w, unsigned int& h)
-{
-    Display* disp = XOpenDisplay(NULL);
-    Screen* screen = DefaultScreenOfDisplay(disp);
-    w = screen->width; h = screen->height;
-    OSG_NOTICE << "[StandardPipeline] Get screen size " << w << " x " << h << "\n";
-}
-#else
-void obtainScreenResolution(unsigned int& w, unsigned int& h)
-{
-    w = osg::DisplaySettings::instance()->getScreenWidth();
-    h = osg::DisplaySettings::instance()->getScreenHeight();
-    OSG_NOTICE << "[StandardPipeline] Get screen size " << w << " x " << h << "\n";
-}
-#endif
-
 namespace osgVerse
 {
     // Range over which the state of the eye adaptation is encoded in its 1x1 buffer, see

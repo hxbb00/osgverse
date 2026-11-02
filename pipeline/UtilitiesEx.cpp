@@ -243,6 +243,10 @@ bool osgVerse::configureViewerForAgent(osg::ArgumentParser& arguments, osgViewer
         // --agent-eye value is honored exactly (a later user interaction is not expected here).
         viewer->setCameraManipulator(NULL);
         viewer->getCamera()->setViewMatrix(lookAt);
+        // Viewer::realize() installs a default TrackballManipulator when there is none and the
+        // camera still accepts event focus, which would re-home the camera and silently ignore
+        // the requested --agent-eye. No user interaction is expected in automation mode.
+        viewer->getCamera()->setAllowEventFocus(false);
     }
 
     // 3) Snapshot callback. It has to be attached to the camera which really draws the image on

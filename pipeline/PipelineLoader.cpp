@@ -9,7 +9,6 @@
 #include <osgDB/ReadFile>
 #include <osgDB/FileNameUtils>
 #include <osgViewer/Viewer>
-extern void obtainScreenResolution(unsigned int& w, unsigned int& h);
 
 namespace osgVerseUtils
 {
@@ -331,7 +330,8 @@ namespace osgVerse
                            << "setupStandardPipeline(). It may cause problems!!" << std::endl;
             }
 
-            unsigned int width = 0, height = 0; obtainScreenResolution(width, height);
+            unsigned int width = 0, height = 0;
+            osgVerse::obtainScreenResolution(width, height);
             if (props.contains("width")) width = props.get("width").get<double>();
             if (props.contains("height")) height = props.get("height").get<double>();
             if (!width) width = 1920; if (!height) height = 1080;

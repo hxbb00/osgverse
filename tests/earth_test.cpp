@@ -2,12 +2,14 @@
 #include <osg/Texture2D>
 #include <osg/MatrixTransform>
 #include <osgDB/ReadFile>
+#include <osgDB/FileUtils>
 #include <osgDB/WriteFile>
 #include <osgGA/TrackballManipulator>
 #include <osgGA/StateSetManipulator>
 #include <osgUtil/CullVisitor>
 #include <osgViewer/Viewer>
 #include <osgViewer/ViewerEventHandlers>
+#include <osgViewer/config/SingleWindow>
 #include <iostream>
 #include <sstream>
 
@@ -20,6 +22,7 @@
 #include <pipeline/ResourceManager.h>
 #include <pipeline/Pipeline.h>
 #include <pipeline/Utilities.h>
+#include <pipeline/VolumetricCloud.h>
 #include <VerseCommon.h>
 
 #ifndef _DEBUG
@@ -116,14 +119,45 @@ const char* finalVertCode = {
 };
 
 const char* finalFragCode = {
-    "uniform sampler2D EarthTexture, OceanTexture;\n"
+    "uniform sampler2D EarthTexture, OceanTexture, CloudTexture, EarthDepth;\n"
+    "uniform float CloudAmount;\n"
+    "uniform vec2 CloudSize;\n"
+    "uniform int DebugCloud, UseBilateral;\n"
     "VERSE_FS_IN vec4 texCoord; \n"
     "VERSE_FS_OUT vec4 fragColor;\n"
+
+    "vec4 sampleCloud(vec2 uv) {\n"
+    "    if (UseBilateral <= 0) return VERSE_TEX2D(CloudTexture, uv);\n"
+    "    vec2 cloudPos = uv * CloudSize - 0.5;\n"
+    "    vec2 base = floor(cloudPos);\n"
+    "    vec2 fraction = cloudPos - base;\n"
+    "    float centerDepth = VERSE_TEX2D(EarthDepth, uv).r;\n"
+    "    vec4 accum = vec4(0.0); float weightSum = 0.0;\n"
+    "    for (int j = 0; j < 2; ++j) {\n"
+    "        for (int i = 0; i < 2; ++i) {\n"
+    "            vec2 sampleUv = (base + vec2(float(i), float(j)) + 0.5) / CloudSize;\n"
+    "            float depth = VERSE_TEX2D(EarthDepth, sampleUv).r;\n"
+    "            float weight = (i == 0 ? 1.0 - fraction.x : fraction.x) *\n"
+    "                           (j == 0 ? 1.0 - fraction.y : fraction.y);\n"
+    "            weight /= 1.0 + 3000.0 * abs(depth - centerDepth);\n"
+    "            accum += VERSE_TEX2D(CloudTexture, sampleUv) * weight;\n"
+    "            weightSum += weight;\n"
+    "        }\n"
+    "    }\n"
+    "    return accum / max(weightSum, 1e-5);\n"
+    "}\n"
 
     "void main() {\n"
     "    vec4 sceneColor = VERSE_TEX2D(EarthTexture, texCoord.st);\n"
     "    vec4 oceanColor = VERSE_TEX2D(OceanTexture, texCoord.st);\n"
-    "    fragColor = mix(sceneColor, oceanColor, oceanColor.a); \n"
+    "    vec4 cloudColor = sampleCloud(texCoord.st);\n"
+    "    vec3 baseColor = mix(sceneColor.rgb, oceanColor.rgb, oceanColor.a);\n"
+    "    vec3 finalColor = baseColor * mix(1.0, cloudColor.a, CloudAmount)\n"
+    "                    + cloudColor.rgb * CloudAmount;\n"
+    "    if (DebugCloud == 1) finalColor = vec3(cloudColor.a);\n"
+    "    else if (DebugCloud == 2) finalColor = cloudColor.rgb;\n"
+    "    else if (DebugCloud == 3) finalColor = baseColor;\n"
+    "    fragColor = vec4(finalColor, 1.0); \n"
     "    VERSE_FS_FINAL(fragColor);\n"
     "}\n"
 };
@@ -194,7 +228,26 @@ int main(int argc, char** argv)
     osgDB::Registry::instance()->addFileExtensionAlias("tif", "verse_tiff");
     osgVerse::updateOsgBinaryWrappers();
 
-    bool useOcean = arguments.read("--ocean"), useSky = arguments.read("--sky"), withAxes = arguments.read("--with-axes");
+    bool useOcean = arguments.read("--ocean"), useSky = arguments.read("--sky");
+    bool useClouds = arguments.read("--clouds"), withAxes = arguments.read("--with-axes");
+    int cloudQuality = (int)osgVerse::CloudRenderSettings::Medium;
+    arguments.read("--cloud-quality", cloudQuality);
+    int cloudType = (int)osgVerse::CloudLayerSettings::Cumulus;
+    arguments.read("--cloud-type", cloudType);
+    int cloudDebug = 0; arguments.read("--cloud-debug", cloudDebug);
+
+    // Without --resolution the screen resolution is queried and the scene is shown in a
+    // borderless full-screen window; --resolution switches back to a normal window
+    int w = 1920, h = 1080;
+    bool customResolution = arguments.read("--resolution", w, h);
+    if (!customResolution || w <= 0 || h <= 0)
+    {
+        unsigned int screenW = 0, screenH = 0;
+        osgVerse::obtainScreenResolution(screenW, screenH);
+        w = (int)(screenW ? screenW : 1280); h = (int)(screenH ? screenH : 720);
+        customResolution = false;
+    }
+
     bool bLeft = arguments.read("--image-bottomleft"), wgs84 = arguments.read("--web-wgs84");
     bool usePolar = arguments.read("--polar"), use2D = arguments.read("--map2d");
     bool usePolarNorth = usePolar || arguments.read("--polar-north");
@@ -274,8 +327,19 @@ int main(int argc, char** argv)
         }
     }
 
-    osg::ref_ptr<osg::Node> tiles = osgDB::readNodeFiles(arguments, new osgDB::Options("DisabledPBR=1"));
-    if (useOcean || useSky)
+    // Only pass real local files to osgDB::readNodeFiles(): it treats every non-option token as
+    // a file name, which would make it try to load option values such as --resolution or
+    // --agent-eye numbers (and crash inside the web plugin for long ECEF values)
+    std::vector<std::string> extraFiles;
+    for (int i = 1; i < arguments.argc(); ++i)
+    {
+        std::string name = arguments[i];
+        if (!osg::ArgumentParser::isOption(name.c_str()) && osgDB::fileExists(name))
+            extraFiles.push_back(name);
+    }
+    osg::ref_ptr<osg::Node> tiles =
+        osgDB::readNodeFiles(extraFiles, new osgDB::Options("DisabledPBR=1"));
+    if (useOcean || useSky || useClouds)
     {
         std::string mainFolder = BASE_DIR + "/models/Earth"; arguments.read("--folder", mainFolder);
         earthURLs = " Orthophoto=mbtiles://" + mainFolder + "/DOM_lv4.mbtiles/{z}-{x}-{y}.jpg"
@@ -296,11 +360,10 @@ int main(int argc, char** argv)
 #endif
     if (!earth) { std::cout << "Failed to create earth: " << earthURLs << "\n"; return 1; }
 
-    // Create sky and ocean
+    // Create sky, ocean and clouds
     osgVerse::EarthAtmosphereOcean earthRenderingUtils;
-    if (useOcean || useSky)
+    if (useOcean || useSky || useClouds)
     {
-        int w = 1920, h = 1080; arguments.read("--resolution", w, h);
         if (!use2D)
         {
             // Initialize earth utilities
@@ -314,10 +377,13 @@ int main(int argc, char** argv)
                 osgVerse::Pipeline::createTexture(osgVerse::Pipeline::RGBA_INT8, w, h);
             osg::ref_ptr<osg::Texture> earthMaskBuffer =
                 osgVerse::Pipeline::createTexture(osgVerse::Pipeline::R_INT8, w, h);
+            osg::ref_ptr<osg::Texture2D> earthDepthBuffer;
+            if (useClouds) earthDepthBuffer = osgVerse::VolumetricCloud::createDepthTexture(w, h);
 
             osg::Camera* earthCamera = osgVerse::createRTTCamera(osg::Camera::COLOR_BUFFER0, NULL, NULL, false);
             earthCamera->attach(osg::Camera::COLOR_BUFFER0, earthColorBuffer.get(), 0, 0, false, 16, 4);
             earthCamera->attach(osg::Camera::COLOR_BUFFER1, earthMaskBuffer.get());
+            if (earthDepthBuffer.valid()) earthCamera->attach(osg::Camera::DEPTH_BUFFER, earthDepthBuffer.get());
             earthCamera->setViewport(0, 0, w, h);
             if (tiles.valid()) earthCamera->addChild(tiles.get());
             earthCamera->addChild(earth.get());
@@ -341,6 +407,32 @@ int main(int argc, char** argv)
                         osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "scattering_sky.vert.glsl"),
                         osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "scattering_sky.frag.glsl"));
                 root->addChild(skyAndGlobeCamera);
+            }
+
+            // Add the global volumetric cloud layer (spherical shell around the earth)
+            osg::ref_ptr<osg::Texture> cloudColorBuffer;
+            osg::ref_ptr<osgVerse::VolumetricCloud> clouds;
+            if (useClouds)
+            {
+                clouds = new osgVerse::VolumetricCloud;
+                clouds->setRenderSettings(osgVerse::CloudRenderSettings(
+                    (osgVerse::CloudRenderSettings::Quality)osg::clampBetween(cloudQuality, 0, 3)));
+                clouds->setPlanetMode(true, osg::Vec3(0.0f, 0.0f, 0.0f), 6371000.0f);
+                clouds->setSunDirection(osg::Vec3(-1.0f, 0.0f, 0.0f));  // matches WorldSunDir default
+                clouds->setSunColor(osg::Vec3(2.80f, 2.65f, 2.45f));
+                clouds->setAmbientColor(osg::Vec3(1.00f, 1.05f, 1.15f));
+                clouds->setAtmosphereIntegration(earthRenderingUtils.transmittance.get(),
+                                                 earthRenderingUtils.irradiance.get(),
+                                                 earthRenderingUtils.inscatter.get(),
+                                                 earthRenderingUtils.glare.get());
+
+                osgVerse::CloudLayerSettings layer((osgVerse::CloudLayerSettings::Type)
+                    osg::clampBetween(cloudType, 0, 4));
+                layer.windSpeed = 0.0f;  // ECEF wind advection is handled per-layer in a later step
+                clouds->addLayer(layer);
+                clouds->createCloudPass(earthDepthBuffer.get(), w, h);
+                root->addChild(clouds.get());
+                cloudColorBuffer = clouds->getCloudBuffer();
             }
 
             // Add post-processing ocean camera if necessary
@@ -369,10 +461,24 @@ int main(int argc, char** argv)
             // Merge results to an HUD camera to show
             osg::Camera* finalCamera = osgVerse::createHUDCamera(
                 NULL, w, h, osg::Vec3(), 1.0f, 1.0f, osg::Vec4(0.0f, 0.0f, 1.0f, 1.0f), true);
-            finalCamera->getOrCreateStateSet()->setTextureAttributeAndModes(0, mergedGlobeBuffer.get());
-            finalCamera->getOrCreateStateSet()->setTextureAttributeAndModes(1, oceanColorBuffer.get());
-            finalCamera->getOrCreateStateSet()->addUniform(new osg::Uniform("EarthTexture", (int)0));
-            finalCamera->getOrCreateStateSet()->addUniform(new osg::Uniform("OceanTexture", (int)1));
+            osg::StateSet* finalSS = finalCamera->getOrCreateStateSet();
+            osg::Texture* cloudTexture = cloudColorBuffer.valid() ? cloudColorBuffer.get()
+                : osgVerse::createDefaultTexture(osg::Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+            osgVerse::applyTextureAttributeAndModes(finalSS, 0, mergedGlobeBuffer.get());
+            osgVerse::applyTextureAttributeAndModes(finalSS, 1, oceanColorBuffer.get());
+            osgVerse::applyTextureAttributeAndModes(finalSS, 2, cloudTexture);
+            osg::Texture* earthDepthTex = earthDepthBuffer.valid() ? earthDepthBuffer.get()
+                : osgVerse::createDefaultTexture(osg::Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+            osgVerse::applyTextureAttributeAndModes(finalSS, 3, earthDepthTex);
+            finalSS->addUniform(new osg::Uniform("EarthTexture", (int)0));
+            finalSS->addUniform(new osg::Uniform("OceanTexture", (int)1));
+            finalSS->addUniform(new osg::Uniform("CloudTexture", (int)2));
+            finalSS->addUniform(new osg::Uniform("EarthDepth", (int)3));
+            finalSS->addUniform(new osg::Uniform("CloudAmount", cloudColorBuffer.valid() ? 1.0f : 0.0f));
+            finalSS->addUniform(new osg::Uniform("CloudSize", clouds.valid() ?
+                clouds->getCloudBufferSize() : osg::Vec2(1.0f, 1.0f)));
+            finalSS->addUniform(new osg::Uniform("UseBilateral", cloudColorBuffer.valid() ? 1 : 0));
+            finalSS->addUniform(new osg::Uniform("DebugCloud", cloudDebug));
             root->addChild(finalCamera);
 
             osg::ref_ptr<osg::Program> program = new osg::Program;
@@ -388,7 +494,7 @@ int main(int argc, char** argv)
             finalCamera->getOrCreateStateSet()->setAttributeAndModes(program.get());
         }
         else
-        { OSG_NOTICE << "Ocean and sky rendering effects are incompatible with 2D maps\n"; return 1; }
+        { OSG_NOTICE << "Ocean, sky and cloud rendering effects are incompatible with 2D maps\n"; return 1; }
     }
     else
     {
@@ -457,7 +563,7 @@ int main(int argc, char** argv)
     osgViewer::Viewer viewer;
     viewer.getCamera()->setNearFarRatio(0.00001);
     //viewer.setIncrementalCompileOperation(incrementalCompiler.get());
-    if (useOcean || useSky) viewer.addEventHandler(new EnvironmentHandler(&earthRenderingUtils, useOcean));
+    if (useOcean || useSky || useClouds) viewer.addEventHandler(new EnvironmentHandler(&earthRenderingUtils, useOcean));
     viewer.addEventHandler(new osgViewer::StatsHandler);
     viewer.addEventHandler(new osgViewer::WindowSizeHandler);
     viewer.addEventHandler(new osgGA::StateSetManipulator(viewer.getCamera()->getOrCreateStateSet()));
@@ -466,6 +572,10 @@ int main(int argc, char** argv)
     viewer.setRealizeOperation(new osgVerse::RealizeOperation);
 
     int screenNo = 0; arguments.read("--screen", screenNo);
-    viewer.setUpViewOnSingleScreen(screenNo);
+    osg::ref_ptr<osgViewer::SingleWindow> windowConfig =
+        new osgViewer::SingleWindow(0, 0, w, h, screenNo);
+    windowConfig->setWindowDecoration(customResolution);
+    viewer.apply(windowConfig.get());
+    osgVerse::configureViewerForAgent(arguments, &viewer);
     return viewer.run();
 }

@@ -71,6 +71,7 @@ ENDIF(NOT VERSE_USE_EXTERNAL_GLES)
 
 NEW_EXAMPLE(osgVerse_Test_3DGS gaussian_splatting_test.cpp)  # 3D gaussian splatting load and render example
 NEW_EXAMPLE(osgVerse_Test_Earth earth_test.cpp)  # Lightweight earth, atmosphere and ocean creation example
+NEW_EXAMPLE(osgVerse_Test_Cloud_Rendering cloud_rendering_test.cpp)  # Volumetric cloud rendering example
 NEW_EXAMPLE(osgVerse_Test_Forward_Pbr forward_pbr_test.cpp)  # Forward PBR rendering pass example
 NEW_EXAMPLE(osgVerse_Test_Pipeline pipeline_test.cpp)  # Basic pipeline usage and platform-testing example
 NEW_EXAMPLE(osgVerse_Test_Report_Graph report_graph_test.cpp)  # Scene graph structure printer example

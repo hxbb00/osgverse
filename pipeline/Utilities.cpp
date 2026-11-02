@@ -10,6 +10,7 @@
 #include <osg/Geometry>
 #include <osg/PolygonMode>
 #include <osg/Geode>
+#include <osg/DisplaySettings>
 #include <osgDB/FileUtils>
 #include <osgDB/FileNameUtils>
 #include <osgDB/ReadFile>
@@ -1693,5 +1694,37 @@ namespace osgVerse
         std::string dateTime{ buf, std::strftime(buf, sizeof(buf), "%F %T", &tp) };
         snprintf(buf2, 5, ".%03d", (int)millseconds);
         return dateTime + std::string(buf2);
+    }
+}
+
+#if defined(VERSE_X11)
+// Xlib defines many generic macros (Status, None, Success, ...) which may conflict with
+// names used above, so it is only included here, after all the other implementations
+#   include <X11/Xlib.h>
+#endif
+
+namespace osgVerse
+{
+    void obtainScreenResolution(unsigned int& w, unsigned int& h)
+    {
+        w = 0; h = 0;
+#if defined(VERSE_WINDOWS)
+        HWND hd = ::GetDesktopWindow(); RECT rect; ::GetWindowRect(hd, &rect);
+        w = (unsigned int)(rect.right - rect.left); h = (unsigned int)(rect.bottom - rect.top);
+#elif defined(VERSE_X11)
+        Display* disp = XOpenDisplay(NULL);
+        if (disp != NULL)
+        {
+            Screen* screen = DefaultScreenOfDisplay(disp);
+            w = (unsigned int)screen->width; h = (unsigned int)screen->height;
+            XCloseDisplay(disp);
+        }
+#endif
+        if (!w || !h)
+        {
+            w = osg::DisplaySettings::instance()->getScreenWidth();
+            h = osg::DisplaySettings::instance()->getScreenHeight();
+        }
+        OSG_NOTICE << "[Utilities] Get screen size " << w << " x " << h << "\n";
     }
 }
