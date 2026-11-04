@@ -323,6 +323,7 @@ SET(VERSE_USE_OSG_STATIC OFF CACHE BOOL "Use static build of OpenSceneGraph (wil
 SET(VERSE_USE_NVGPU_ON_OPTIMUS ON CACHE BOOL "Use high-performance GPU on Nvidia Optimus systems")
 SET(VERSE_USE_MTT_DRIVER OFF CACHE BOOL "Use MooreThreads MTT drivers (OpenGL implementation may be slightly different)")
 SET(VERSE_SUPPORT_CPP17 ON CACHE BOOL "Enable build of libraries using C++ 17 standard (otherwise use C++ 14)")
+SET(VERSE_USE_WEBGPU OFF CACHE BOOL "Enable WebGPU support (Emscripten with gles-on-webgpu), which adds GraphicsWindowWGPU")
 
 SET(VERSE_COMPILER_NAME "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 IF(USE_WASM_OPTIONS)

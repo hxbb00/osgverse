@@ -160,15 +160,18 @@ osgVerse/
 ### Quick Build (Recommended)
 
 Use the provided setup scripts. The first argument selects the build mode
-(`DEFAULT` | `CORE` | `GLES2` | `GLES3` | `WEBGL1` | `WEBGL2` | `ANDROID`);
-run without arguments to choose interactively. `WEBGL1/2` also require the
-emsdk path as the second argument.
+(`DEFAULT` | `CORE` | `GLES2` | `GLES3` | `WEBGL1` | `WEBGL2` | `ANDROID` |
+`WEBGPU`); run without arguments to choose interactively. `WEBGL1/2` also
+require the emsdk path as the second argument; `WEBGPU` (experimental, GLES 3
+over WebGPU through gles-on-webgpu) requires the emsdk path and the
+gles-on-webgpu wasm SDK (`include/` + `lib/*.a`) as the second and third ones.
 
 **Windows:**
 ```cmd
 Setup.bat DEFAULT       :: Desktop OpenGL -> build/verse_def, install -> build/sdk_def
 Setup.bat GLES3         :: OpenGL ES 3   -> build/verse_es,  install -> build/sdk_es
 Setup.bat WEBGL2 D:\emsdk   :: WebAssembly  -> build/verse_wasm2, install -> build/sdk_wasm2
+Setup.bat WEBGPU D:\angle-wasm-sdk  :: WebGPU -> build/verse_wasm_webgpu, demo -> build/wgpu_simple_wasm/out
 ```
 
 **Linux/macOS:** same modes with `./Setup.sh DEFAULT` etc.

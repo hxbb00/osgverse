@@ -3,7 +3,8 @@ setlocal enabledelayedexpansion
 chcp 65001
 
 :: BuildSystemMode: 0 = MSVC, 1 = WASM, 2 = Harmony
-:: BuildMode: 0 = compat, 1 = core, 2 = gles, 3 = webgl1, 4 = webgl2, 5 = android, 6 = harmony
+:: BuildMode: 0 = compat, 1 = core, 2 = gles, 3 = webgl1, 4 = webgl2, 5 = android, 6 = harmony,
+::            7 = webgpu (WebAssembly with gles-on-webgpu)
 set BuildSystemMode=0
 set BuildMode=-1
 set BuildGles2=0
@@ -35,6 +36,7 @@ if "!OptionalDir!"=="GLES3" (set BuildMode=2& set BuildGles2=0& set QuietMode=1)
 if "!OptionalDir!"=="WEBGL1" (set BuildMode=3& set QuietMode=1)
 if "!OptionalDir!"=="WEBGL2" (set BuildMode=4& set QuietMode=1)
 if "!OptionalDir!"=="ANDROID" (set BuildMode=5& set QuietMode=1)
+if "!OptionalDir!"=="WEBGPU" (set BuildMode=7& set QuietMode=1)
 if not "!BuildMode!"=="" set OptionalDir=%2
 
 if not "!OptionalDir!"=="" (
@@ -44,6 +46,7 @@ if not "!OptionalDir!"=="" (
 )
 set GLES_LibPath="!OptionalDir!/libGLESv2.lib"
 set EGL_LibPath="!OptionalDir!/libEGL.lib"
+set AngleWasmRoot=!OptionalDir!
 
 where cmake --version >nul 2>&1
 if not %errorlevel%==0 (
@@ -70,9 +73,10 @@ echo 3. WASM / WebGL 1.0
 echo 4. WASM / WebGL 2.0 (optional with osgEarth)
 echo 5. Android / OpenGLES 3
 echo 6. Harmony / OpenGLES 3
+echo 7. WASM / WebGPU (Experimental, gles-on-webgpu)
 echo q. Quit
 echo -----------------------------------
-set /p BuildMode="Enter selection [0-6] > "
+set /p BuildMode="Enter selection [0-7] > "
 
 :postsel
 if "!BuildMode!"=="0" (
@@ -118,6 +122,17 @@ if "!BuildMode!"=="6" (
     set BuildResultChecker=build\sdk_harmony\lib\libosgViewer.so
     set CMakeResultChecker=build\osg_harmony\CMakeCache.txt
     set BuildSystemMode=2
+    goto precheck
+)
+if "!BuildMode!"=="7" (
+    set BuildResultChecker=build\sdk_wasm_webgpu\lib\libosgViewer.a
+    set CMakeResultChecker=build\osg_webgpu\CMakeCache.txt
+    set BuildSystemMode=1
+    if not exist "!AngleWasmRoot!/include/GLES3/gl3.h" (
+        echo gles-on-webgpu SDK not found. Please run as follows:
+        echo   Setup.bat WEBGPU ^<your_path^>/angle-wasm-sdk
+        goto exit
+    )
     goto precheck
 )
 if "!BuildMode!"=="q" (
@@ -206,8 +221,10 @@ if "!BuildSystemMode!"=="1" (
     )
 
     if "!QuietMode!"=="0" (
-        set /p Wasm64Flag="Would you like to use WASM 64bit (experimental, default: no)? (y/n) > "
-        if /i "!Wasm64Flag!"=="y" set UseWasmOption=2
+        if not "!BuildMode!"=="7" (
+            set /p Wasm64Flag="Would you like to use WASM 64bit (experimental, default: no)? (y/n) > "
+            if /i "!Wasm64Flag!"=="y" set UseWasmOption=2
+        )
     )
     set EmsdkToolchain="%EMSDK%\upstream\emscripten\cmake\Modules\Platform\Emscripten.cmake"
     set ThirdPartyBuildDir=%CurrentDir%\build\3rdparty_wasm
@@ -332,6 +349,10 @@ if not "!SkipOsgBuild!"=="1" (
         %SedEXE% -i.bak "s#dlopen(#NULL;\/\/dlopen\/\/(#g" "%OpenSceneGraphRoot%\src\osgDB\DynamicLibrary.cpp"
         %SedEXE% -i.bak "s#isTexture2DArraySupported = validContext#isTexture2DArraySupported = isTexture3DSupported;\/\/validContext#g" "%OpenSceneGraphRoot%\src\osg\GLExtensions.cpp"
     )
+    if "!BuildMode!"=="7" (
+        %SedEXE% -i.bak "s#dlopen(#NULL;\/\/dlopen\/\/(#g" "%OpenSceneGraphRoot%\src\osgDB\DynamicLibrary.cpp"
+        %SedEXE% -i.bak "s#isTexture2DArraySupported = validContext#isTexture2DArraySupported = isTexture3DSupported;\/\/validContext#g" "%OpenSceneGraphRoot%\src\osg\GLExtensions.cpp"
+    )
     %SedEXE% -i.bak "s#ifndef GL_EXT_texture_compression_s3tc#if defined(GL_EXT_texture_compression_s3tc)==0 || defined(GL_EXT_texture_compression_s3tc_srgb)==0#g" "%OpenSceneGraphRoot%\include/osg/Texture"
     %SedEXE% -i.bak "s#glTexParameterf(target, GL_TEXTURE_LOD_BIAS, _lodbias)#;\/\/glTexParameterf(target, \/\/GL_TEXTURE_LOD_BIAS, _lodbias)#g" "%OpenSceneGraphRoot%\src\osg\Texture.cpp"
     %SedEXE% -i.bak "s#std::max#osg::maximum#g" "%OpenSceneGraphRoot%\src\osg\Texture.cpp"
@@ -422,6 +443,31 @@ if "!BuildMode!"=="4" (
         cmake !ThirdDepOptions! !ExtraOptions! %CurrentDir%\helpers\osg_builder\wasm2
         cmake --build . -j8 --target install --config Release
         if not !errorlevel! == 0 (goto exit)
+    )
+)
+if "!BuildMode!"=="7" (
+    :: WASM toolchain: WebGPU, with GLES 3 served by gles-on-webgpu.
+    :: No GL emulation flags here: every gl*() call must resolve to gles-on-webgpu
+    if not exist %CurrentDir%\build\osg_webgpu\ mkdir %CurrentDir%\build\osg_webgpu
+    set ExtraOptions=-DCMAKE_TOOLCHAIN_FILE="%EmsdkToolchain%" ^
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
+        -DCMAKE_INSTALL_PREFIX=%CurrentDir%\build\sdk_wasm_webgpu ^
+        -DOSG_SOURCE_DIR=%OpenSceneGraphRoot% ^
+        -DOSG_BUILD_DIR=%CurrentDir%\build\osg_webgpu\osg ^
+        -DANGLE_INCLUDE_DIR=!AngleWasmRoot!/include ^
+        -DOPENGL_INCLUDE_DIR=!AngleWasmRoot!/include ^
+        -DEGL_INCLUDE_DIR=!AngleWasmRoot!/include ^
+        -DOPENGL_gl_LIBRARY=!AngleWasmRoot!/lib/libGLESv2_EGL.a ^
+        -DEGL_LIBRARY=!AngleWasmRoot!/lib/libGLESv2_EGL.a
+    if not "!SkipOsgBuild!"=="1" (
+        cd %CurrentDir%\build\osg_webgpu
+        cmake !BasicCmakeOptions! !ExtraOptions! %CurrentDir%\helpers\osg_builder\webgpu
+        cmake --build . -j8 --target install
+        if not !errorlevel! == 0 (goto exit)
+    )
+    if not exist %CurrentDir%\build\sdk_wasm_webgpu\lib\libosgViewer.a (
+        echo libosgViewer.a was not installed in build\sdk_wasm_webgpu\lib
+        goto exit
     )
 )
 if "!BuildMode!"=="6" (
@@ -517,6 +563,41 @@ if "!BuildMode!"=="6" (
     cmake !ThirdDepOptions! !ExtraOptions! !ExtraOptions2! -DOSG_ROOT="%CurrentDir%\build\sdk_harmony" %CurrentDir%
     cmake --build . -j8 --target install
     if not !errorlevel! == 0 (goto exit)
+)
+if "!BuildMode!"=="7" (
+    :: WASM toolchain: WebGPU, with GLES 3 served by gles-on-webgpu.
+    :: Only the libraries are built: the wasm demos shipped with osgVerse target
+    :: WebGL 2 (SDL window + -sFULL_ES3), which this build does not use.
+    if not exist %CurrentDir%\build\verse_wasm_webgpu\ mkdir %CurrentDir%\build\verse_wasm_webgpu
+    cd %CurrentDir%\build\verse_wasm_webgpu
+    cmake !ThirdDepOptions! !ExtraOptions! -DUSE_WASM_OPTIONS=!UseWasmOption! -DVERSE_USE_WEBGPU=ON ^
+        -DVERSE_BUILD_EXAMPLES=OFF -DVERSE_ENABLE_GLFW=OFF -DVERSE_BUILD_WITH_CUDA=OFF ^
+        -DOSG_GLES_INCLUDE_DIR=!AngleWasmRoot!/include ^
+        -DOSG_GLES_LIBRARY=!AngleWasmRoot!/lib/libGLESv2_EGL.a ^
+        -DOSG_EGL_LIBRARY=!AngleWasmRoot!/lib/libGLESv2_EGL.a ^
+        -DCMAKE_C_FLAGS="-I!AngleWasmRoot!/include" ^
+        -DCMAKE_CXX_FLAGS="-I!AngleWasmRoot!/include" ^
+        -DOSG_ROOT="%CurrentDir%\build\sdk_wasm_webgpu" %CurrentDir%
+    cmake --build . -j8 --config Release --target osgVerseDependency osgVerseAnimation osgVerseModeling ^
+        osgVerseReaderWriter osgVersePipeline osgVerseScript osgVerseWrappers osgVerseUI osgVerseAI
+    if not !errorlevel! == 0 (goto exit)
+
+    :: The WebGPU demo is configured as its own project because a WebGPU build
+    :: links different libraries than the WebGL 2 build above.
+    echo *** Building wasm\wgpu_simple_demo...
+    if not exist %CurrentDir%\build\wgpu_simple_wasm\ mkdir %CurrentDir%\build\wgpu_simple_wasm
+    cd %CurrentDir%\build\wgpu_simple_wasm
+    cmake !BasicCmakeOptions! -DCMAKE_TOOLCHAIN_FILE="%EmsdkToolchain%" ^
+        -DANGLE_WASM_ROOT=!AngleWasmRoot! ^
+        -DOSG_SDK=%CurrentDir%\build\sdk_wasm_webgpu ^
+        -DVERSE_BUILD=%CurrentDir%\build\verse_wasm_webgpu ^
+        -DOSGVERSE_SRC=%CurrentDir% ^
+        -DTHIRDPARTY_WASM=%ThirdPartyBuildDir% ^
+        %CurrentDir%\wasm\wgpu_simple_demo
+    cmake --build . -j8
+    if not !errorlevel! == 0 (goto exit)
+    echo The page is ready: %CurrentDir%\build\wgpu_simple_wasm\out\osgVerse_WebGPUSimple.html
+    echo Serve it with wasm\run_webserver.py ^(COOP/COEP headers are required for SharedArrayBuffer^)
 )
 goto exit
 

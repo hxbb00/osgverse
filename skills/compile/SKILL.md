@@ -1,6 +1,6 @@
 ---
 name: compiler
-description: 编译/构建osgVerse与OpenSceneGraph，使用Setup脚本切换图形接口平台（DEFAULT/CORE/GLES2/GLES3/WEBGL1/WEBGL2/ANDROID），处理编译失败、重置编译、依赖库安装等编译相关问题。当用户提到编译、构建、Setup脚本、构建失败、切换图形平台、重置编译时使用。
+description: 编译/构建osgVerse与OpenSceneGraph，使用Setup脚本切换图形接口平台（DEFAULT/CORE/GLES2/GLES3/WEBGL1/WEBGL2/ANDROID/WEBGPU），处理编译失败、重置编译、依赖库安装等编译相关问题。当用户提到编译、构建、Setup脚本、构建失败、切换图形平台、重置编译时使用。
 homepage: https://gitee.com/xarray/osgverse
 metadata: {"nanobot":{"emoji":"🌤️","requires":{"bins":["cmake", "git"]}}}
 ---
@@ -34,6 +34,7 @@ osgVerse提供了自动化的Setup编译脚本，建议可以使用脚本来完�
 - WEBGL1: 以WebGL 1为底层接口编译到WASM，此时Setup脚本需要带第2参数，即emscripten工程的根目录（emscripten需要已经安装和激活）；中间文件包括`build/3rdparty_wasm`，`build/osg_wasm`，`build/verse_wasm`，编译结果位于`build/verse_wasm`
 - WEBGL2: 以WebGL 2为底层接口编译到WASM，此时Setup脚本需要带第2参数，即emscripten工程的根目录（emscripten需要已经安装和激活）；中间文件包括`build/3rdparty_wasm`，`build/osg_wasm2`，`build/verse_wasm2`，编译结果位于`build/verse_wasm2`
 - ANDROID: 以OpenGL ES 3.0为底层接口编译到Android平台，用户需要准备好`java`，`gradle`程序，并设置环境变量ANDROID_SDK和ANDROID_NDK来定义Android依赖库的位置；中间文件包括`build/3rdparty_android`，`build/osg_android`，`build/verse_android`
+- WEBGPU: 以WebGPU（通过gles-on-webgpu提供的GLES 3）为底层接口编译到WASM，此时Setup脚本需要带第2和第3参数，分别是emscripten工程的根目录和gles-on-webgpu的wasm SDK目录（包含include和lib）；中间文件包括`build/3rdparty_wasm`，`build/osg_webgpu`，`build/verse_wasm_webgpu`，示例页面位于`build/wgpu_simple_wasm/out`
 
 ## Dependencies
 
@@ -74,7 +75,7 @@ osgVerse可以使用的依赖库如下列表所示，除了OpenSceneGraph，其�
 
 默认系统中已有`cmake`，`git`这些指令，不需要再单独搜索它们的路径。然后通过Visual Studio的Command Prompt进入终端界面。
 
-进入脚本模式，为了避免在编译过程中等待用户输入，需要带一个CMD参数。这里的<CMD>可以是: DEFAULT，CORE，GLES2，GLES3，WEBGL1，WEBGL2，ANDROID，对应之前所述的具体图形接口。
+进入脚本模式，为了避免在编译过程中等待用户输入，需要带一个CMD参数。这里的<CMD>可以是: DEFAULT，CORE，GLES2，GLES3，WEBGL1，WEBGL2，ANDROID，WEBGPU，对应之前所述的具体图形接口。
 ```bash
 Setup.bat <CMD>
 ```

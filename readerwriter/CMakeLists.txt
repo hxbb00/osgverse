@@ -52,6 +52,12 @@ ELSE()
     SET(LIBRARY_FILES ${LIBRARY_FILES} GraphicsWindowSDL_Fallback.cpp)
 ENDIF()
 
+# WebGPU windowing system, only used by the WebGPU (gles-on-webgpu) build
+IF(VERSE_USE_WEBGPU)
+    SET(LIBRARY_INCLUDE_FILES ${LIBRARY_INCLUDE_FILES} GraphicsWindowWGPU.h)
+    SET(LIBRARY_FILES ${LIBRARY_FILES} GraphicsWindowWGPU.cpp)
+ENDIF(VERSE_USE_WEBGPU)
+
 INCLUDE_DIRECTORIES(../3rdparty/libhv ../3rdparty/libhv/all
                     ../3rdparty/stb ../3rdparty/rapidjson ../helpers/toolchain_builder)
 ADD_DEFINITIONS(-DVERSE_RW_LIBRARY -DKHRONOS_STATIC -DHV_STATICLIB

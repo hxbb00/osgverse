@@ -141,3 +141,63 @@ For OSG 3.6.5, third-party includes (like Google Angle GL/GLES subfolders) shoul
   * Copy osgemscripten.html/js/wasm/data to folder
   * Start a simple HTTP server: python -m http.server
   * View 127.0.0.1:8000 in browser
+
+#### OSG for WASM (Emscripten + WebGPU, experimental)
+* The GLES3 entry points come from gles-on-webgpu (an ANGLE fork whose back-end renders with the
+  browser's WebGPU) instead of Emscripten's WebGL 2 emulation. No GL emulation switch
+  (`-sFULL_ES3`, `-sMIN_WEBGL_VERSION`, `-sMAX_WEBGL_VERSION`) may be used, or Emscripten's libGL
+  would shadow the ANGLE symbols at link time.
+* CMake options: (not in cmake-gui)
+  * OPENGL_PROFILE: GLES3
+  * OSG_GL1_AVAILABLE / OSG_GL2_AVAILABLE / OSG_GL3_AVAILABLE / OSG_GLES2_AVAILABLE: OFF
+  * OSG_GLES3_AVAILABLE: ON
+  * OSG_WINDOWING_SYSTEM: "None"
+  * DYNAMIC_OPENSCENEGRAPH: OFF
+  * DYNAMIC_OPENTHREADS: OFF
+  * BUILD_OSG_APPLICATIONS: NO
+  * _OPENTHREADS_ATOMIC_USE_GCC_BUILTINS_EXITCODE: 0
+  * ANGLE_INCLUDE_DIR: `<angle_wasm_sdk>`/include
+  * OPENGL_INCLUDE_DIR / EGL_INCLUDE_DIR: `<angle_wasm_sdk>`/include
+  * OPENGL_gl_LIBRARY / EGL_LIBRARY: `<angle_wasm_sdk>`/lib/libGLESv2_EGL.a
+* Prepare the gles-on-webgpu wasm SDK first (https://github.com/xarray/gles-on-webgpu, compiled
+  with -pthread because OSG and osgVerse are):
+  ```bash
+  cd <gles_on_webgpu_path>
+  source <emsdk_path>/emsdk_env.sh
+
+  emcmake cmake -S . -B out-wasm-pthread \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DGLES_ON_WEBGPU_PLATFORM=wasm \
+      -DGLES_ON_WEBGPU_WASM_PTHREAD=ON
+  cmake --build out-wasm-pthread -j"$(nproc)"
+
+  # Pack the SDK used by osgVerse: headers + 14 static libraries
+  SDK=$PWD/out-wasm-pthread/angle-wasm-sdk
+  rm -rf "$SDK" && mkdir -p "$SDK/include" "$SDK/lib"
+  cp -a include/EGL include/GLES include/GLES2 include/GLES3 include/KHR "$SDK/include/"
+  cp out-wasm-pthread/*.a "$SDK/lib/"
+  ```
+* Recommended way: let the setup script do everything (third-party libs, OSG, osgVerse and the
+  `wasm/wgpu_simple_demo` demo):
+  ```bash
+  # Linux / WSL
+  cd <osgverse_path>
+  ./Setup.sh WEBGPU <emsdk_path> <gles_on_webgpu_path>/out-wasm-pthread/angle-wasm-sdk
+
+  # Windows (run emsdk_env.bat first, ANGLE wasm SDK as 2nd argument)
+  Setup.bat WEBGPU <gles_on_webgpu_path>\out-wasm-pthread\angle-wasm-sdk
+  ```
+  * Intermediate files: `build/3rdparty_wasm`, `build/osg_webgpu`, `build/verse_wasm_webgpu`
+  * OSG installation: `build/sdk_wasm_webgpu`
+  * Demo page: `build/wgpu_simple_wasm/out/osgVerse_WebGPUSimple.html`
+* Manual OSG build with this builder directory:
+  * <em>cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=`<emsdk_path>`/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_INSTALL_PREFIX=`<sdk_path>` -DOSG_SOURCE_DIR=`<osg_root_path>` -DOSG_BUILD_DIR=`<build_path>`/osg -DANGLE_INCLUDE_DIR=`<angle_wasm_sdk>`/include -DOPENGL_INCLUDE_DIR=`<angle_wasm_sdk>`/include -DEGL_INCLUDE_DIR=`<angle_wasm_sdk>`/include -DOPENGL_gl_LIBRARY=`<angle_wasm_sdk>`/lib/libGLESv2_EGL.a -DEGL_LIBRARY=`<angle_wasm_sdk>`/lib/libGLESv2_EGL.a `<osgverse_path>`/helpers/osg_builder/webgpu</em>
+  * <em>cmake --build . -j8 --target install</em>
+  * osgVerse must then be built with `-DVERSE_USE_WEBGPU=ON` (this compiles
+    `readerwriter/GraphicsWindowWGPU.cpp` into osgVerseReaderWriter) together with the same
+    ANGLE include/library variables; see `Setup.sh` mode `WEBGPU` for the full command line.
+* Run it in web browsers
+  * Serve `build/wgpu_simple_wasm/out` with a COOP/COEP server, because `-pthread` needs
+    SharedArrayBuffer: <em>python3 wasm/run_webserver.py</em>
+  * Open <em>http://127.0.0.1:8000/osgVerse_WebGPUSimple.html</em> in a WebGPU-capable browser
+    (https:// or http://localhost is a secure context, which WebGPU requires)

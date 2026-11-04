@@ -20,6 +20,7 @@ osgVerse, a complete 3D engine solution based on OpenSceneGraph.
 | OpenHarmony      | HarmonyCmd-26.0 (or later)   | :heavy_check_mark: | (TODO) Need to compile an example app |
 | IOS              |                              | :soon:             |       |
 | WebAssmebly      | Emscripten 3.1.64 (or later) | :heavy_check_mark: | Supports GLES2 (WebGL1) and GLES3 (WebGL2) |
+| WebGPU           | Emscripten 5.0.0 (or later) | :heavy_check_mark: | Supports GLES3 (need gles-on-webgpu) |
 
 #### Main Features (ongoing to v1.0)
 - [x] Supports from OSG 3.1.1 to the latest version, and GLSL 1.2 to 4.6, so to work with most hardware in the world.
@@ -35,7 +36,7 @@ osgVerse, a complete 3D engine solution based on OpenSceneGraph.
 - [x] Supports dependency-free earth scene construction and high quality terrain/atmosphere/ocean rendering. (without osgEarth)
 - [ ] (PARTLY) Supports major desktop and mobile operating systems, including Windows, Linux, Mac OSX, Android, Harmony and IOS.
 - [x] Supports major embedded devices with GPU supports, including ARM and RISC-V.
-- [x] Supports Emscripten / WASM compilation and works with WebGL 1/2 based browsers.
+- [x] Supports Emscripten / WASM compilation and works with WebGL 1/2 and WebGPU based browsers.
 - [ ] Provides an initial visual scene editing tool, comparing with the famous Unity Editor.
 
 #### Screenshots
@@ -413,6 +414,10 @@ Our project is already tested on graphics cards listed as below:
   - Select "3. WASM / WebGL 1.0" or "4. WASM / WebGL 2.0" and start building WASM at `<osgverse_folder>`/build/verse_wasm.
   - Start an HTTPS server at `<osgverse_folder>`/build/verse_wasm/bin. See `<osgverse_folder>`/wasm/run_webserver.py as an example.
   - Copy `<osgverse_folder>`/assets to the same root folder of the server, and enjoy our WebGL examples.
+  - (Experimental) WebGPU rendering: build gles-on-webgpu (https://github.com/xarray/gles-on-webgpu) for wasm first, then use mode "6. WASM / WebGPU (Experimental)".
+    - Linux/WSL: $ ./Setup.sh WEBGPU `<emsdk_folder>` `<gles-on-webgpu_folder>`/out-wasm-pthread/angle-wasm-sdk
+    - Windows: $ Setup.bat WEBGPU `<gles-on-webgpu_folder>`\out-wasm-pthread\angle-wasm-sdk
+    - The demo page is generated in `<osgverse_folder>`/build/wgpu_simple_wasm/out (source: wasm/wgpu_simple_demo), served the same way.
 
 #### Core CMake options
 | Option                      | Type    | Default Value | Notes |
@@ -446,4 +451,5 @@ Our project is already tested on graphics cards listed as below:
 | VERSE_NO_SIMD_FEATURES      | Boolean | OFF           | Enable to ignore all SIMD features (when struggling with compile errors) |
 | VERSE_WASM_USE_PTHREAD      | Boolean | ON            | Enable Pthread for WASM, which requires COOP / COEP on server-side, for WASM build only |
 | VERSE_WASM_OPTIMIZE_SIZE    | Boolean | OFF           | Enable -O3 for WASM, which is slow but with small generated size |
+| VERSE_USE_WEBGPU            | Boolean | OFF           | Enable WebGPU support (GLES 3 over gles-on-webgpu), which compiles GraphicsWindowWGPU |
 | VERSE_FIND_LEGACY_OPENGL    | Boolean | OFF           | Enable to use legacy mode to search OpenGL libraries, for some Linux systems like Kylin |

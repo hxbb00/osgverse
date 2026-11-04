@@ -10,6 +10,9 @@ UsingGles2=0
 UseWasmOption=1
 SkipCMakeConfig=0
 SkipOsgBuild=0
+VerseLibraryTargets="osgVerseDependency osgVerseAnimation osgVerseModeling
+                     osgVerseReaderWriter osgVersePipeline osgVerseScript
+                     osgVerseWrappers osgVerseUI osgVerseAI"
 
 # Android related variables
 GradleLocalPropFile=$CurrentDir/android/local.properties
@@ -66,16 +69,20 @@ case "$QuietModeString" in
                  QuietMode=1 ;;
     "ANDROID")   BuildMode="5"
                  QuietMode=1 ;;
+    "WEBGPU")    BuildMode="7"
+                 QuietMode=1 ;;
 esac
 
 if [ -z "$BuildMode" ]; then
     GLES_LibPath="$1/libGLESv2.so"
     EGL_LibPath="$1/libEGL.so"
     EmsdkToolchain="$1/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+    AngleWasmRoot="$2"
 else
     GLES_LibPath="$2/libGLESv2.so"
     EGL_LibPath="$2/libEGL.so"
     EmsdkToolchain="$2/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+    AngleWasmRoot="$3"  # WEBGPU takes the gles-on-webgpu wasm SDK as the 3rd argument
 fi
 
 # Select how to compile
@@ -91,9 +98,11 @@ if [ "$QuietMode" = 0 ]; then
     3. WASM / WebGL 1.0
     4. WASM / WebGL 2.0 (optional with osgEarth)
     5. Android / OpenGLES 3
+    6. Harmony / OpenGLES 3
+    7. WASM / WebGPU (with gles-on-webgpu)
     q. Quit
     -----------------------------------"
-    read -p "Enter selection [0-5] > " BuildMode
+    read -p "Enter selection [0-7] > " BuildMode
 fi
 
 case "$BuildMode" in
@@ -117,6 +126,10 @@ case "$BuildMode" in
         BuildResultChecker=build/osg_android/${AndroidBuildType}/${AndroidAbi}/lib/libosgViewer${AndroidDebugPostfix}.a
         CMakeResultChecker=build/osg_android/CMakeCache.txt
         ;;
+    7)  echo "WebAssembly WebGPU (Experimental)."
+        BuildResultChecker=build/sdk_wasm_webgpu/lib/libosgViewer.a
+        CMakeResultChecker=build/osg_webgpu/CMakeCache.txt
+        ;;
     q)  exit 0
         ;;
     *)  echo "OpenGL Compatible Mode."
@@ -131,10 +144,16 @@ if [ "$BuildMode" = '2' ]; then
         echo "libEGL.so or libGLESv2.so not found. Please run as follows: ./Setup.sh <path_of_libEGL>"
         exit 1
     fi
-elif [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ]; then
+elif [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ] || [ "$BuildMode" = '7' ]; then
     # WASM toolchain
     if [ ! -f "$EmsdkToolchain" ]; then
-        echo "Emscripten.cmake not found. Please run as follows: ./Setup.sh <your_path>/emsdk-3.?.?/"
+        echo "Emscripten.cmake not found. Please run as follows: ./Setup.sh <your_path>/emsdk/"
+        exit 1
+    fi
+
+    if [ "$BuildMode" = '7' ] && [ ! -f "$AngleWasmRoot/include/GLES3/gl3.h" ]; then
+        echo "gles-on-webgpu SDK not found. Please run as follows:"
+        echo "  ./Setup.sh WEBGPU <your_path>/emsdk <your_path>/angle-wasm-sdk"
         exit 1
     fi
 elif [ "$BuildMode" = '5' ]; then
@@ -283,8 +302,8 @@ fi
 
 # Compile 3rdparty libraries
 ThirdPartyBuildDir="$CurrentDir/build/3rdparty"
-if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ]; then
-    if [ "$QuietMode" = 0 ]; then
+if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ] || [ "$BuildMode" = '6' ]; then
+    if [ "$QuietMode" = 0 ] && [ "$BuildMode" != '7' ]; then
         read -p "Would you like to use WASM 64bit (experimental, default: no)? (y/n) > " Wasm64Flag
         if [ "$Wasm64Flag" = 'y' ]; then
             UseWasmOption=2
@@ -339,7 +358,7 @@ ThirdDepOptions="
     -DZLIB_INCLUDE_DIR=$CurrentDir/helpers/toolchain_builder/zlib
     -DZLIB_LIBRARY_RELEASE=$ThirdPartyBuildDir/zlib/libzlib.a
     -DVERSE_BUILD_3RDPARTIES=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ]; then
+if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ] || [ "$BuildMode" = '7' ]; then
     if [ -e "$CurrentDir/../Dependencies/wasm/lib/libtiff.a" ]; then
         ThirdDepOptions="
             $ThirdDepOptions
@@ -384,7 +403,7 @@ if [ "$SkipOsgBuild" = 0 ]; then
     PatchFileSafely 's/ANDROID_3RD_PARTY()/#ANDROID_3RD_PARTY(#)/g' "$OpenSceneGraphRoot/CMakeLists.txt"
 
     # Fix OpenSceneGraph build warnings and errors
-    if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ]; then
+    if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ] || [ "$BuildMode" = '7' ]; then
         PatchFileSafely 's#dlopen(#NULL;\/\/dlopen\/\/(#g' "$OpenSceneGraphRoot/src/osgDB/DynamicLibrary.cpp"
     else
         PatchFileSafely 's#NULL;\/\/dlopen\/\/(#dlopen(#g' "$OpenSceneGraphRoot/src/osgDB/DynamicLibrary.cpp"
@@ -403,7 +422,7 @@ if [ "$SkipOsgBuild" = 0 ]; then
     PatchFileSafely 's#static osg::buffered_object<std::string> s_glRendererList;#static osg::buffered_object<std::string>\& s_glRendererList = *new osg::buffered_object<std::string>;#g' "$OpenSceneGraphRoot/src/osg/GLExtensions.cpp"
     PatchFileSafely 's#static osg::buffered_value<int> s_glInitializedList;#static osg::buffered_value<int>\& s_glInitializedList = *new osg::buffered_value<int>;#g' "$OpenSceneGraphRoot/src/osg/GLExtensions.cpp"
     PatchFileSafely 's#static BufferedExtensions s_extensions;#static BufferedExtensions\& s_extensions = *new BufferedExtensions;#g' "$OpenSceneGraphRoot/src/osg/GLExtensions.cpp"
-    if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ]; then
+    if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ] || [ "$BuildMode" = '7' ]; then
         PatchFileSafely 's#isTexture2DArraySupported = validContext#isTexture2DArraySupported = isTexture3DSupported;\/\/validContext#g' "$OpenSceneGraphRoot/src/osg/GLExtensions.cpp"
     fi
 fi
@@ -505,6 +524,38 @@ elif [ "$BuildMode" = '5' ]; then
     # Android toolchain
     echo "The compilation will be processed by Gradle..."
 
+elif [ "$BuildMode" = '7' ]; then
+
+    # WASM toolchain (WebGPU, with GLES 3 served by gles-on-webgpu)
+    if [ ! -d "$CurrentDir/build/osg_webgpu" ]; then
+        mkdir $CurrentDir/build/osg_webgpu
+    fi
+
+    # No GL emulation flags here: every gl*() call must resolve to gles-on-webgpu
+    ExtraOptions="
+        -DCMAKE_TOOLCHAIN_FILE="$EmsdkToolchain"
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        -DCMAKE_INSTALL_PREFIX=$CurrentDir/build/sdk_wasm_webgpu
+        -DOSG_SOURCE_DIR=$OpenSceneGraphRoot
+        -DOSG_BUILD_DIR=$CurrentDir/build/osg_webgpu/osg
+        -DANGLE_INCLUDE_DIR=$AngleWasmRoot/include
+        -DOPENGL_INCLUDE_DIR=$AngleWasmRoot/include
+        -DEGL_INCLUDE_DIR=$AngleWasmRoot/include
+        -DOPENGL_gl_LIBRARY=$AngleWasmRoot/lib/libGLESv2_EGL.a
+        -DEGL_LIBRARY=$AngleWasmRoot/lib/libGLESv2_EGL.a"
+    if [ "$SkipOsgBuild" = 0 ]; then
+        cd $CurrentDir/build/osg_webgpu
+        if [ "$SkipCMakeConfig" = 0 ]; then
+            $CMakeExe $ExtraOptions $CurrentDir/helpers/osg_builder/webgpu
+        fi
+        cmake --build . -j8 --target install --config Release || exit 1
+    fi
+
+    if [ ! -f "$CurrentDir/build/sdk_wasm_webgpu/lib/libosgViewer.a" ]; then
+        echo "libosgViewer.a was not installed in build/sdk_wasm_webgpu/lib"
+        exit 1
+    fi
+
 else
 
     # OpenGL default
@@ -587,6 +638,55 @@ elif [ "$BuildMode" = '5' ]; then
     ./gradlew assemble${AndroidBuildType} -Pabi=$AndroidAbi || exit 1
     # adb install -r android/app/build/outputs/apk/debug/app-debug.apk
     # adb logcat -s osgVerse SDL
+
+elif [ "$BuildMode" = '7' ]; then
+
+    # WASM toolchain (WebGPU, with GLES 3 served by gles-on-webgpu)
+    if [ ! -d "$CurrentDir/build/verse_wasm_webgpu" ]; then
+        mkdir $CurrentDir/build/verse_wasm_webgpu
+    fi
+
+    # Only the libraries are built: the wasm demos shipped with osgVerse target
+    # WebGL 2 (SDL window + -sFULL_ES3), which this build does not use. The
+    # WebGPU counterpart is wasm/wgpu_simple_demo, built below.
+    OsgRootLocation="$CurrentDir/build/sdk_wasm_webgpu"
+    cd $CurrentDir/build/verse_wasm_webgpu
+    $CMakeExe -DUSE_WASM_OPTIONS=$UseWasmOption -DVERSE_USE_WEBGPU=ON \
+        -DVERSE_BUILD_EXAMPLES=OFF -DVERSE_ENABLE_GLFW=OFF -DVERSE_BUILD_WITH_CUDA=OFF \
+        -DOSG_GLES_INCLUDE_DIR=$AngleWasmRoot/include \
+        -DOSG_GLES_LIBRARY=$AngleWasmRoot/lib/libGLESv2_EGL.a \
+        -DOSG_EGL_LIBRARY=$AngleWasmRoot/lib/libGLESv2_EGL.a \
+        -DCMAKE_C_FLAGS="-I$AngleWasmRoot/include" \
+        -DCMAKE_CXX_FLAGS="-I$AngleWasmRoot/include" \
+        -DOSG_ROOT="$OsgRootLocation" $ThirdDepOptions $ExtraOptions $CurrentDir
+    cmake --build . -j8 --config Release --target $VerseLibraryTargets || exit 1
+
+    if [ ! -f "$CurrentDir/build/verse_wasm_webgpu/lib/libosgVersePipeline.a" ]; then
+        echo "osgVerse libraries were not produced in build/verse_wasm_webgpu/lib"
+        exit 1
+    fi
+
+    # The WebGPU demo is configured as its own project because a WebGPU build
+    # links different libraries than the WebGL 2 build above.
+    echo "*** Building wasm/wgpu_simple_demo..."
+    if [ ! -d "$CurrentDir/build/wgpu_simple_wasm" ]; then
+        mkdir $CurrentDir/build/wgpu_simple_wasm
+    fi
+
+    cd $CurrentDir/build/wgpu_simple_wasm
+    $CMakeExe -DCMAKE_TOOLCHAIN_FILE="$EmsdkToolchain" \
+        -DANGLE_WASM_ROOT=$AngleWasmRoot \
+        -DOSG_SDK=$CurrentDir/build/sdk_wasm_webgpu \
+        -DVERSE_BUILD=$CurrentDir/build/verse_wasm_webgpu \
+        -DOSGVERSE_SRC=$CurrentDir \
+        -DTHIRDPARTY_WASM=$ThirdPartyBuildDir \
+        $CurrentDir/wasm/wgpu_simple_demo
+    cmake --build . -j8 || exit 1
+
+    echo "The page is ready. Serve it with a COOP/COEP server for SharedArrayBuffer:"
+    echo "  cd $CurrentDir/build/wgpu_simple_wasm/out"
+    echo "  python3 $CurrentDir/wasm/run_webserver.py"
+    echo "  then open http://127.0.0.1:8000/osgVerse_WebGPUSimple.html"
 
 else
 
