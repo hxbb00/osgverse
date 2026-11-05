@@ -1,10 +1,12 @@
 #include <osg/io_utils>
 #include <osg/ComputeBoundsVisitor>
+#include <osg/DisplaySettings>
 #include <osg/LightSource>
 #include <osg/Texture2D>
 #include <osg/ShapeDrawable>
 #include <osg/MatrixTransform>
 #include <osgDB/FileNameUtils>
+#include <osgDB/FileUtils>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 #include <osgGA/TrackballManipulator>
@@ -15,11 +17,14 @@
 #include <osgViewer/ViewerEventHandlers>
 #include <pipeline/Pipeline.h>
 #include <pipeline/LightModule.h>
+#include <pipeline/NISUpscaler.h>
 #include <pipeline/RenderCallbackXR.h>
 #include <pipeline/Utilities.h>
 #include <readerwriter/Utilities.h>
+#include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 #ifndef _DEBUG
 #include <backward.hpp>  // for better debug info
@@ -159,7 +164,38 @@ int main(int argc, char** argv)
     osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
     osg::setNotifyHandler(new osgVerse::ConsoleHandler);
 
-    osg::ref_ptr<osg::Node> scene = osgDB::readNodeFiles(arguments);
+    // NIS upscaling: the scene is rendered at a smaller resolution and upscaled to the window
+    bool nisEnabled = arguments.read("--nis");
+    int nisWidth = 0, nisHeight = 0;
+    arguments.read("--nis-size", nisWidth, nisHeight);
+    float nisSharpness = 0.5f; arguments.read("--nis-sharpness", nisSharpness);
+    if (nisEnabled && arguments.find("--openxr") >= 0)
+    {
+        OSG_WARN << "[NIS] NIS upscaling is disabled in OpenXR mode" << std::endl;
+        nisEnabled = false;
+    }
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
+    if (nisEnabled)
+    {
+        OSG_WARN << "[NIS] NIS upscaling is only supported by desktop OpenGL" << std::endl;
+        nisEnabled = false;
+    }
+#else
+    // Compute shaders used by NIS require a GL 4.3+ context
+    if (nisEnabled) osg::DisplaySettings::instance()->setGLContextVersion("4.3");
+#endif
+
+    // Only pass real local files to osgDB::readNodeFiles(): it treats every non-option token as
+    // a file name, which would eat the values of options such as --nis-size or --agent-eye
+    std::vector<std::string> sceneFiles;
+    for (int i = 1; i < arguments.argc(); ++i)
+    {
+        std::string name = arguments[i];
+        if (!osg::ArgumentParser::isOption(name.c_str()) && osgDB::fileExists(name))
+            sceneFiles.push_back(name);
+    }
+    osg::ref_ptr<osg::Node> scene =
+        sceneFiles.empty() ? NULL : osgDB::readNodeFiles(sceneFiles);
     if (!scene) scene = osgDB::readNodeFile(BASE_DIR + "/models/Sponza/Sponza.gltf.125,125,125.scale");
     if (!scene) { OSG_WARN << "Failed to load scene model"; return 1; }
 
@@ -234,6 +270,37 @@ int main(int argc, char** argv)
 
     int screenNo = 0; arguments.read("--screen", screenNo);
     viewer.setUpViewOnSingleScreen(screenNo);
+
+    // NIS upscaling: the scene is rendered by an offscreen camera into a small FBO, upscaled by
+    // the NIS compute shader and presented by a screen quad. The interactive main camera is kept
+    // for the manipulator only, so the user interaction does not change
+    osgVerse::NISUpscalingView nisView;
+    if (nisEnabled)
+    {
+        // The window (and its context) has to exist before sizing the NIS render targets
+        viewer.realize();
+        osg::Camera* mainCamera = viewer.getCamera();
+        const osg::GraphicsContext::Traits* traits = mainCamera->getGraphicsContext()
+                                                   ? mainCamera->getGraphicsContext()->getTraits()
+                                                   : NULL;
+        int winW = (traits && traits->width > 0) ? traits->width : 1280;
+        int winH = (traits && traits->height > 0) ? traits->height : 720;
+        int inW = (nisWidth > 0 && nisHeight > 0) ? nisWidth : (winW + 1) / 2;
+        int inH = (nisWidth > 0 && nisHeight > 0) ? nisHeight : (winH + 1) / 2;
+        inW = (std::max)(1, (std::min)(inW, winW));
+        inH = (std::max)(1, (std::min)(inH, winH));
+
+        // NIS scaler only supports a scale of [0.5, 1.0], so the output is at most 2x the input
+        int outW = (std::min)(winW, inW * 2), outH = (std::min)(winH, inH * 2);
+        nisView = osgVerse::NISUpscaler::createUpscalingView(
+            &viewer, root.get(), inW, inH, outW, outH, nisSharpness);
+        if (!nisView.valid())
+        {
+            OSG_WARN << "[NIS] Failed to create the upscaling chain, direct rendering is used"
+                     << std::endl;
+            nisEnabled = false;
+        }
+    }
 
     // Optional automation for AI agent / scripted testing: set the view, capture and quit
     osgVerse::configureViewerForAgent(arguments, &viewer);

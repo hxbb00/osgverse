@@ -6,14 +6,54 @@
 #include <osg/Shader>
 #include <osg/Program>
 #include <osg/Camera>
+#include <osg/Geometry>
+#include <osg/NodeCallback>
 #include <osg/RenderInfo>
 #include <osg/StateSet>
 
 struct NISOptimizer;
 struct NISConfig;
 
+namespace osgViewer { class View; }
+
 namespace osgVerse
 {
+    class NISUpscaler;
+    struct NISUpscalingView;
+
+    /**
+     * Callback mirroring the view/projection of the interactive (main) camera into the offscreen
+     * camera of a NIS upscaling chain. The interactive camera keeps the manipulator, so the user
+     * interaction is not affected by the upscaling.
+     */
+    class NISMirrorCameraCallback : public osg::NodeCallback
+    {
+    public:
+        NISMirrorCameraCallback(osg::Camera* mainCamera) : _mainCamera(mainCamera) {}
+        virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
+
+    protected:
+        osg::observer_ptr<osg::Camera> _mainCamera;
+    };
+
+    /**
+     * Callback keeping the presentation camera (viewport, projection and screen quad) in sync
+     * with the window size, while the offscreen render camera keeps its fixed resolution.
+     */
+    class NISLayoutCallback : public osg::NodeCallback
+    {
+    public:
+        NISLayoutCallback(osg::Camera* sceneCamera, osg::Camera* displayCamera, osg::Geometry* quad,
+                          int inputWidth, int inputHeight, int outputWidth, int outputHeight);
+        virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
+
+    protected:
+        osg::observer_ptr<osg::Camera> _sceneCamera, _displayCamera;
+        osg::observer_ptr<osg::Geometry> _quad;
+        int _inputWidth, _inputHeight, _outputWidth, _outputHeight;
+        int _lastWidth, _lastHeight;
+    };
+
     /**
      * NVIDIA Image Scaling processor for osgVerse.
      *
@@ -26,6 +66,9 @@ namespace osgVerse
      *   3. Wire input texture from previous pipeline stage (post-tone-mapping)
      *   4. Wire output texture to display stage
      *   5. Use NISDrawCallback on a stage camera to auto-dispatch compute
+     *
+     * For a standalone (non-pipeline) viewer, createUpscalingView() builds the whole chain at
+     * once: offscreen camera -> NIS compute -> screen-space quad on a presentation camera.
      */
     class NISUpscaler : public osg::Referenced
     {
@@ -131,6 +174,39 @@ namespace osgVerse
          */
         void applyShader(osg::StateSet* ss) const;
 
+        // ---- Helpers for quickly building a standalone NIS rendering chain ----
+
+        /**
+         * Create an RGBA8 texture of the exact given size (no power-of-two rescaling), which can
+         * be used as NIS input (render target) or output (compute image + presentation source).
+         */
+        static osg::Texture2D* createTexture(int width, int height);
+
+        /** Create the screen-space quad presenting the NIS output (unlit textured program). */
+        static osg::Geometry* createOutputQuad();
+
+        /** Fit the quad into the window, keeping the output aspect ratio (letter/pillarbox). */
+        static void fitQuadToWindow(osg::Geometry* quad, int outW, int outH, int winW, int winH);
+
+        /**
+         * Build a complete NIS upscaling chain on a realized view:
+         *   - an offscreen camera renders 'scene' into an inputWidth x inputHeight FBO,
+         *   - the NIS compute shader upscales/sharpens it into outputWidth x outputHeight,
+         *   - a post-render camera presents the result on the whole window with a screen quad.
+         * The view's main camera is left to the manipulator (the given scene node is moved from
+         * it to the offscreen camera, or not touched when 'scene' is NULL), so the interactive
+         * behaviour does not change. Other nodes that should be presented must be added to the
+         * display camera of the returned chain.
+         *
+         * The window context must support GL 4.3+ compute shaders: request it with
+         * osg::DisplaySettings::instance()->setGLContextVersion("4.3") before the window is
+         * created. Returns an invalid chain (see NISUpscalingView::valid()) on failure, in which
+         * case the view has not been modified.
+         */
+        static NISUpscalingView createUpscalingView(osgViewer::View* view, osg::Node* scene,
+            int inputWidth, int inputHeight, int outputWidth, int outputHeight,
+            float sharpness = 0.5f, HDRMode hdr = HDR_NONE, Mode mode = SCALER);
+
     protected:
         virtual ~NISUpscaler();
 
@@ -159,6 +235,25 @@ namespace osgVerse
         osg::ref_ptr<osg::Texture2D> _coefScalerTexture;
         osg::ref_ptr<osg::Texture2D> _coefUSMTexture;
         osg::ref_ptr<osg::Program> _program;
+    };
+
+    /**
+     * Result of NISUpscaler::createUpscalingView(): the offscreen camera rendering into
+     * 'inputTexture', the upscaler, and the presentation camera showing 'outputTexture'.
+     */
+    struct NISUpscalingView
+    {
+        osg::ref_ptr<osg::Camera> sceneCamera;    //!< Pre-render camera drawing into inputTexture
+        osg::ref_ptr<osg::Camera> displayCamera;  //!< Post-render camera presenting outputTexture
+        osg::ref_ptr<osg::Geometry> displayQuad;  //!< Screen-space quad of the display camera
+        osg::ref_ptr<osg::Texture2D> inputTexture, outputTexture;
+        osg::ref_ptr<NISUpscaler> upscaler;
+
+        bool valid() const
+        {
+            return upscaler.valid() && sceneCamera.valid() && displayCamera.valid() &&
+                   inputTexture.valid() && outputTexture.valid();
+        }
     };
 
     /**
