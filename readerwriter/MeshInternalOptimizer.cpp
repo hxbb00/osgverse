@@ -7,6 +7,7 @@
 #include <iterator>
 #include "pipeline/Rasterizer.h"
 #include "pipeline/Utilities.h"
+#include "MeshInternalOptimizer.h"
 #include "Utilities.h"
 
 using namespace osgVerse;

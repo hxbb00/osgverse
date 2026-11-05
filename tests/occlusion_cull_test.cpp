@@ -15,6 +15,7 @@
 #include <pipeline/IntersectionManager.h>
 #include <pipeline/Rasterizer.h>
 #include <pipeline/Pipeline.h>
+#include <readerwriter/MeshInternalOptimizer.h>
 #include <readerwriter/Utilities.h>
 #include <osg/Timer>
 

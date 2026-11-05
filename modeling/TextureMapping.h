@@ -168,6 +168,9 @@ namespace osgVerse
             // face_uvs[face_idx * 6 + vertex_in_face * 2 + 1] = v
             std::vector<float> face_uvs;
             std::vector<int> face_view_ids;
+            // Per-face count of pixels actually written during baking; 0 means
+            // the face's projection fell entirely on background (no source data)
+            std::vector<int> face_baked_pixels;
 
             Bitmap texture_atlas;
             int atlas_width = 0;

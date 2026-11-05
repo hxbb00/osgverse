@@ -770,6 +770,7 @@ namespace osgVerse
 }
 
     void bakeTexture(TextureMapping::Bitmap* atlas, std::vector<bool>* baked_mask,
+                     std::vector<int>* face_baked_pixels,
                      const TextureMapping::Mesh& mesh, const std::vector<FaceRegion>& regions,
                      const std::vector<RegionProjection>& projections, const AtlasLayout& layout,
                      const std::vector<TextureMapping::Image>& images,
@@ -778,6 +779,7 @@ namespace osgVerse
         int aw = layout.atlas_width;
         int ah = layout.atlas_height;
         baked_mask->assign(static_cast<size_t>(aw) * ah, false);
+        face_baked_pixels->assign(mesh.faces.size(), 0);
         for (size_t ri = 0; ri < regions.size(); ++ri)
         {
             const FaceRegion& region = regions[ri];
@@ -839,6 +841,7 @@ namespace osgVerse
                         if (color.a < 0.5f) continue;
                         atlas->setPixel(px, py, color.cast<unsigned char>());
                         (*baked_mask)[static_cast<size_t>(py) * aw + px] = true;
+                        ++(*face_baked_pixels)[region.face_ids[i]];
                     }
             }  // for (size_t i = 0...
         }
@@ -1157,7 +1160,8 @@ namespace osgVerse
         result.texture_atlas.fill(TextureMapping::Colorub(0, 0, 0));
 
         std::vector<bool> baked_mask;
-        bakeTexture(&result.texture_atlas, &baked_mask, mesh, regions, projections, layout, images, options);
+        bakeTexture(&result.texture_atlas, &baked_mask, &result.face_baked_pixels,
+                    mesh, regions, projections, layout, images, options);
         if (options.apply_color_correction)
         {
             COUT << "Applying global color correction..." << std::endl;
