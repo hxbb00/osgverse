@@ -18,6 +18,7 @@
 #include <pipeline/ShadowModule.h>
 #include <pipeline/Utilities.h>
 #include <readerwriter/Utilities.h>
+#include <ui/Utilities.h>
 #include <iostream>
 #include <random>
 #include <sstream>
@@ -235,18 +236,14 @@ int main(int argc, char** argv)
     root->addChild(sceneRoot.get());
 
     // HUD text
-    osg::ref_ptr<osgText::Text> hudText = new osgText::Text;
-    hudText->setPosition(osg::Vec3(20.0f, 1060.0f, 0.0f));
-    hudText->setAlignment(osgText::Text::LEFT_TOP);
-    hudText->setCharacterSize(18.0f);
-    hudText->setColor(osg::Vec4(1.0f, 1.0f, 1.0f, 1.0f));
-    if (osgDB::fileExists(MISC_DIR + "LXGWFasmartGothic.ttf"))
-        hudText->setFont(MISC_DIR + "LXGWFasmartGothic.ttf");
-
-    osg::ref_ptr<osg::Camera> hudCamera = osgVerse::createHUDCamera(NULL, 1920, 1080);
+    osgVerse::HeadUpDisplayCanvas hudCanvas;
+    osg::Camera* hudCamera = hudCanvas.create(1920, 1080);
     osgVerse::Pipeline::setPipelineMask(*hudCamera, FORWARD_SCENE_MASK);
-    { osg::ref_ptr<osg::Geode> g = new osg::Geode; g->addDrawable(hudText.get()); hudCamera->addChild(g.get()); }
-    root->addChild(hudCamera.get());
+    root->addChild(hudCamera);
+    hudCanvas.createText("main", L"", 18, 1000, 120, "root",
+                         osgVerse::HeadUpDisplayCanvas::FREE,
+                         osgVerse::HeadUpDisplayCanvas::TOP | osgVerse::HeadUpDisplayCanvas::LEFT);
+    osgText::Text* hudText = hudCanvas.texts["main"].get();
 
     // Start the viewer with the standard (deferred + post effects) pipeline
     osg::ref_ptr<osgVerse::StandardPipelineViewer> viewer =
@@ -300,7 +297,7 @@ int main(int argc, char** argv)
 
     // HUD handler owns the text content and the hot keys, including the light wireframe toggle
     osg::ref_ptr<LightStatHandler> statHandler =
-        new LightStatHandler(lightModule, hudText.get(), numLights);
+        new LightStatHandler(lightModule, hudText, numLights);
     statHandler->setLightRoot(lightRoot);
     statHandler->setAnimated(animate);
     statHandler->setShowDebug(showLights);

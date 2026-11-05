@@ -19,6 +19,7 @@
 #include <modeling/Octree.h>
 #include <modeling/GeometryMerger.h>
 #include <pipeline/IntersectionManager.h>
+#include <ui/Utilities.h>
 #include <iostream>
 #include <sstream>
 
@@ -78,8 +79,14 @@ struct AtlasProcessor : public osgVerse::GeometryMerger::AtlasProcessor
 class SelectSceneHandler : public osgGA::GUIEventHandler
 {
 public:
-    SelectSceneHandler(osg::Geode* tNode) : _textGeode(tNode)
-    { _condition.nodesToIgnore.insert(_textGeode.get()); }
+    typedef osgVerse::HeadUpDisplayCanvas HeadUpDisplayCanvas;
+    SelectSceneHandler(osgVerse::HeadUpDisplayCanvas* hud, osg::Camera* hudCamera) : _canvas(hud)
+    {
+        _condition.nodesToIgnore.insert(hudCamera);
+        _canvas->createText("main", L"Ctrl+click to inspect a geometry", 20, 800, 40, "root",
+                            HeadUpDisplayCanvas::FREE,
+                            HeadUpDisplayCanvas::TOP | HeadUpDisplayCanvas::LEFT);
+    }
 
     virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
     {
@@ -91,18 +98,7 @@ public:
                 view->getCamera(), ea.getXnormalized(), ea.getYnormalized(), &_condition);
             if (!result.drawable) return false;
 
-            osgText::Text* text = NULL;
-            if (_textGeode->getNumDrawables() == 0)
-            {
-                text = new osgText::Text;
-                text->setPosition(osg::Vec3(10.0f, 40.0f, 0.0f));
-                text->setCharacterSize(20.0f, 1.0f);
-                text->setFont(MISC_DIR + "LXGWFasmartGothic.ttf");
-                _textGeode->addDrawable(text);
-            }
-            else
-                text = static_cast<osgText::Text*>(_textGeode->getDrawable(0));
-
+            osgText::Text* text = _canvas->texts["main"].get();
             std::wstring t = osgVerse::StringAuxiliary::convertUTF8toUTF16("HIT: " + result.drawable->getName());
 #if OSG_VERSION_GREATER_THAN(3, 4, 1)
             if (result.drawable->getUserDataContainer())
@@ -134,7 +130,7 @@ public:
 #endif
 
 protected:
-    osg::observer_ptr<osg::Geode> _textGeode;
+    osgVerse::HeadUpDisplayCanvas* _canvas;
     osgVerse::IntersectionCondition _condition;
 };
 
@@ -287,14 +283,13 @@ int main(int argc, char** argv)
     }
 
     // Start the viewer
-    osg::ref_ptr<osg::Geode> textGeode = new osg::Geode;
-    osg::ref_ptr<osg::Camera> postCamera = osgVerse::createHUDCamera(NULL, 1920, 1080);
-    postCamera->addChild(textGeode.get());
-    root->addChild(postCamera.get());
+    osgVerse::HeadUpDisplayCanvas hudCanvas;
+    osg::Camera* hudCamera = hudCanvas.create(1920, 1080);
+    root->addChild(hudCamera);
     root->addChild(scene.get());
 
     osgViewer::Viewer viewer;
-    viewer.addEventHandler(new SelectSceneHandler(textGeode.get()));
+    viewer.addEventHandler(new SelectSceneHandler(&hudCanvas, hudCamera));
     viewer.addEventHandler(new osgViewer::StatsHandler);
     viewer.addEventHandler(new osgViewer::WindowSizeHandler);
     viewer.addEventHandler(new osgGA::StateSetManipulator(viewer.getCamera()->getOrCreateStateSet()));

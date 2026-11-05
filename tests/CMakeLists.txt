@@ -106,7 +106,7 @@ ENDIF()
 
 IF(NOT VERSE_USE_EXTERNAL_GLES)
     NEW_EXAMPLE(osgVerse_Test_Atmospheric atmospheric_scattering.cpp)  # Precomputed atmosphere textures example // FIXME: implement
-    NEW_EXAMPLE(osgVerse_Test_CSG csg_stencil_test.cpp)  # Stencil-based CSG algorithm example  // FIXME: SCS implement, simple hint UI
+    NEW_EXAMPLE(osgVerse_Test_CSG_Node csg_node_test.cpp)  # OpenCSG (SCS) based CSG node example
     NEW_EXAMPLE(osgVerse_Test_ImGui imgui_test.cpp)  # Basic IMGUI-based UI example  // FIXME: add Drawer2D usage
     NEW_EXAMPLE(osgVerse_Test_MCP_Server mcp_server_test.cpp)  # Basic MCP server support example
     NEW_EXAMPLE(osgVerse_Test_Media_Stream media_stream_test.cpp)  # Media playing/streaming example  // FIXME: use datachannel, remove macro
@@ -156,6 +156,7 @@ IF(VERSE_BUILD_DEPRECATED_TESTS)
         NEW_TEST(osgVerse_Test_Auto_Imposter deprecated/auto_imposter_test.cpp)
         NEW_TEST(osgVerse_Test_Texture_Mapping deprecated/texture_mapping_test.cpp)
         NEW_TEST(osgVerse_Test_HUD_Text deprecated/hud_text_test.cpp)
+        NEW_TEST(osgVerse_Test_CSG deprecated/csg_stencil_test.cpp)
         IF(MSVC_VERSION GREATER 1900)
             NEW_TEST(osgVerse_Test_Restful_Server deprecated/restful_server_test.cpp)
         ENDIF(MSVC_VERSION GREATER 1900)

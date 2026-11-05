@@ -9,6 +9,8 @@
 #include <osgText/Text>
 #include <osgViewer/Viewer>
 #include <osgViewer/ViewerEventHandlers>
+#include <pipeline/Utilities.h>
+#include <ui/Utilities.h>
 #include <iostream>
 #include <sstream>
 
@@ -84,26 +86,6 @@ protected:
     osg::observer_ptr<osgText::Text> _text;
 };
 
-osg::Camera* createHUD(osgText::Text* text, unsigned int w, unsigned int h)
-{
-    osg::Camera* camera = new osg::Camera;
-    camera->setProjectionMatrix(osg::Matrix::ortho2D(0, w, 0, h));
-    camera->setReferenceFrame(osg::Transform::ABSOLUTE_RF);
-    camera->setViewMatrix(osg::Matrix::identity());
-    camera->setClearMask(GL_DEPTH_BUFFER_BIT);
-    camera->setRenderOrder(osg::Camera::POST_RENDER);
-    camera->setAllowEventFocus(false);
-
-    osg::Geode* geode = new osg::Geode;
-    geode->addDrawable(text);
-    camera->addChild(geode);
-
-    osg::Vec3 position(50.0f, h - 50, 0.0f);
-    text->setPosition(position);
-    text->setText("A simple multi-touch-example");
-    return camera;
-}
-
 int main(int argc, char** argv)
 {
     std::string filename = argc > 1 ? argv[1] : "";
@@ -113,18 +95,22 @@ int main(int argc, char** argv)
     osg::ref_ptr<osg::Node> scene = osgDB::readNodeFile(filename);
     if (!scene) { OSG_WARN << "Failed to load EPT point cloud"; return 1; }
 
-    osg::ref_ptr<osgText::Text> text = new osgText::Text;
-    text->setFont("fonts/arial.ttf");
+    osgVerse::HeadUpDisplayCanvas hudCanvas;
+    osg::Camera* hudCamera = hudCanvas.create(1920, 1080);
+    hudCanvas.createText("main", L"A simple multi-touch-example", 20, 800, 40, "root",
+                         osgVerse::HeadUpDisplayCanvas::FREE,
+                         osgVerse::HeadUpDisplayCanvas::BOTTOM | osgVerse::HeadUpDisplayCanvas::LEFT,
+                         "fonts/arial.ttf");
 
     osg::ref_ptr<osg::Group> root = new osg::Group;
     root->addChild(scene.get());
-    root->addChild(createHUD(text.get(), 1920, 1080));
+    root->addChild(hudCamera);
 
     osg::StateSet* stateset = root->getOrCreateStateSet();
     stateset->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
 
     osgViewer::Viewer viewer;
-    viewer.addEventHandler(new PointSelector(viewer.getCamera(), text.get()));
+    viewer.addEventHandler(new PointSelector(viewer.getCamera(), hudCanvas.texts["main"].get()));
     viewer.addEventHandler(new osgViewer::StatsHandler);
     viewer.addEventHandler(new osgViewer::WindowSizeHandler);
     viewer.addEventHandler(new osgGA::StateSetManipulator(viewer.getCamera()->getStateSet()));

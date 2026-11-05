@@ -19,6 +19,7 @@
 #include <pipeline/Utilities.h>
 #include <readerwriter/Utilities.h>
 #include <modeling/Utilities.h>
+#include <ui/Utilities.h>
 #include <cfloat>
 #include <cstdio>
 #include <iostream>
@@ -496,20 +497,16 @@ int main(int argc, char** argv)
                                                       osg::PolygonMode::FILL));
 
     // On-screen information
-    osg::ref_ptr<osg::Geode> textGeode = new osg::Geode;
-    osg::ref_ptr<osgText::Text> text = new osgText::Text;
-    text->setFont(MISC_DIR + "LXGWFasmartGothic.ttf");
-    text->setCharacterSize(20.0f);
-    text->setPosition(osg::Vec3(10.0f, 40.0f, 0.0f));
-    text->setColor(osg::Vec4(1.0f, 1.0f, 1.0f, 1.0f));
-    textGeode->addDrawable(text.get());
-
-    osg::ref_ptr<osg::Camera> hudCamera = osgVerse::createHUDCamera(NULL, 1920, 1080);
-    hudCamera->addChild(textGeode.get());
+    osgVerse::HeadUpDisplayCanvas hudCanvas;
+    osg::Camera* hudCamera = hudCanvas.create(1920, 1080);
+    hudCanvas.createText("main", L"", 20, 1200, 40, "root",
+                         osgVerse::HeadUpDisplayCanvas::FREE,
+                         osgVerse::HeadUpDisplayCanvas::BOTTOM | osgVerse::HeadUpDisplayCanvas::LEFT);
+    osgText::Text* text = hudCanvas.texts["main"].get();
 
     osg::ref_ptr<osg::Group> root = new osg::Group;
     root->addChild(geode.get());
-    root->addChild(hudCamera.get());
+    root->addChild(hudCamera);
 
     // Update the cut and the on-screen information
     osg::ref_ptr<osg::Camera> camera;

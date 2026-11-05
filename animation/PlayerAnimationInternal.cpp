@@ -17,13 +17,15 @@ bool OzzAnimation::loadSkeleton(const char* filename, ozz::animation::Skeleton* 
 {
     ozz::io::File file(filename, "rb");
     if (!file.opened())
-        OSG_WARN << "[PlayerAnimation] Failed to open skeleton file " << filename << std::endl;
+        { OSG_WARN << "[PlayerAnimation] Bad skeleton file: " << filename << std::endl; }
     else
     {
         ozz::io::IArchive archive(&file);
         if (!archive.TestTag<ozz::animation::Skeleton>())
+        {
             OSG_WARN << "[PlayerAnimation] Failed to load skeleton instance from file "
                             << filename << std::endl;
+        }
         else { archive >> *skeleton; return true; }
     }
     return false;
@@ -33,13 +35,15 @@ bool OzzAnimation::loadAnimation(const char* filename, ozz::animation::Animation
 {
     ozz::io::File file(filename, "rb");
     if (!file.opened())
-        OSG_WARN << "[PlayerAnimation] Failed to open animation file " << filename << std::endl;
+        { OSG_WARN << "[PlayerAnimation] Bad animation file: " << filename << std::endl; }
     else
     {
         ozz::io::IArchive archive(&file);
         if (!archive.TestTag<ozz::animation::Animation>())
+        {
             OSG_WARN << "[PlayerAnimation] Failed to load animation instance from file "
                             << filename << std::endl;
+        }
         else { archive >> *anim; return true; }
     }
     return false;
