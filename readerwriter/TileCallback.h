@@ -33,6 +33,8 @@ namespace osgVerse
         :   _x(-1), _y(-1), _z(-1), _skirtRatio(0.02f), _elevationScale(1.0f), _withGlobeAttr(g), _flatten(true),
             _bottomLeft(false), _useWebMercator(false), _layersDone(false),
             _polarStereo(0), _polarBoundary(false) { _createPathFunc = NULL; }
+        TileCallback(const TileCallback& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, TileCallback)
         virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
 
         virtual osg::Vec3d convertToECEF(const osg::Vec3d& lla) const;
@@ -63,6 +65,11 @@ namespace osgVerse
         /** Set layer data path with wildcards */
         void setLayerPath(LayerType id, const std::string& p) { _layerPaths[id] = DataPathPair(p, DONE); }
         std::string getLayerPath(LayerType id) { return _layerPaths[id].first; }
+        std::string getLayerPath(LayerType id) const
+        {
+            std::map<int, DataPathPair>::const_iterator itr = _layerPaths.find(id);
+            return (itr != _layerPaths.end()) ? itr->second.first : std::string();
+        }
 
         /** Set layer data path state */
         void setLayerPathState(LayerType id, LayerState s) { _layerPaths[id].second = s; }

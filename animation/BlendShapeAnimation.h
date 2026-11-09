@@ -13,6 +13,8 @@ namespace osgVerse
     {
     public:
         BlendShapeAnimation();
+        BlendShapeAnimation(const BlendShapeAnimation& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, BlendShapeAnimation)
         void dirtyOriginal() { _originalData = NULL; }
         void apply(const std::vector<std::string>& names, const std::vector<double>& weights);
         virtual void update(osg::NodeVisitor* nv, osg::Drawable* drawable);
@@ -26,6 +28,7 @@ namespace osgVerse
         };
 
         void addBlendShapeData(BlendShapeData* bd) { _blendshapes.push_back(bd); }
+        void clearBlendShapeData() { _blendshapes.clear(); _blendshapeMap.clear(); }
         void registerBlendShape(const std::string& name, BlendShapeData* bd)
         { bd->name = name; _blendshapeMap[name] = bd; }
 

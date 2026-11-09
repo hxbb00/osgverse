@@ -4,7 +4,7 @@
 #include <osgDB/InputStream>
 #include <osgDB/OutputStream>
 #include <readerwriter/DracoProcessor.h>
-#include "Export.h"
+#include "../Export.h"
 #include <mutex>
 using namespace osgVerse;
 

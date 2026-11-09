@@ -16,6 +16,36 @@
 #include <osg/Version>
 #include <string>
 
+/** Declare all osgVerse serializers for static builds. Every wrapper source file registers
+    one 'wrapper_serializer_<ClassName>' entry, and referencing it here makes sure the
+    corresponding object file is kept by the linker. Add new wrapper classes to this list. */
+#define USE_VERSE_WRAPPERS() \
+    USE_SERIALIZER_WRAPPER(DracoGeometry) \
+    USE_SERIALIZER_WRAPPER(GaussianGeometry) \
+    USE_SERIALIZER_WRAPPER(DynamicPointLine) \
+    USE_SERIALIZER_WRAPPER(DynamicPolyline) \
+    USE_SERIALIZER_WRAPPER(DynamicPolygon) \
+    USE_SERIALIZER_WRAPPER(IndirectCommandDrawElements) \
+    USE_SERIALIZER_WRAPPER(CSGNode) \
+    USE_SERIALIZER_WRAPPER(LightDrawable) \
+    USE_SERIALIZER_WRAPPER(LightCullCallback) \
+    USE_SERIALIZER_WRAPPER(ShaderStorageBufferObject) \
+    USE_SERIALIZER_WRAPPER(SkyBox) \
+    USE_SERIALIZER_WRAPPER(MultiEffectGeode) \
+    USE_SERIALIZER_WRAPPER(MultiEffectGroup) \
+    USE_SERIALIZER_WRAPPER(ScriptableProgram) \
+    USE_SERIALIZER_WRAPPER(SymbolManager) \
+    USE_SERIALIZER_WRAPPER(VolumetricCloud) \
+    USE_SERIALIZER_WRAPPER(PlayerAnimation) \
+    USE_SERIALIZER_WRAPPER(TweenAnimation) \
+    USE_SERIALIZER_WRAPPER(BlendShapeAnimation) \
+    USE_SERIALIZER_WRAPPER(ParticleCloud) \
+    USE_SERIALIZER_WRAPPER(ParticleSystemU3D) \
+    USE_SERIALIZER_WRAPPER(Feature) \
+    USE_SERIALIZER_WRAPPER(FeatureCollection) \
+    USE_SERIALIZER_WRAPPER(TileGeometryHandler) \
+    USE_SERIALIZER_WRAPPER(TileCallback)
+
 namespace osgVerse
 {
     class RewrapperManager;

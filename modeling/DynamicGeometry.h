@@ -23,6 +23,9 @@ public:
     void removePoints(int pos, unsigned int numToRemove = 1);
 
     bool isEditing() const { return _editing; }
+    void setEditing(bool b) { _editing = b; }
+    GLenum getMode() const { return _mode; }
+    void setMode(GLenum m) { _mode = m; }
     unsigned int size() const;
     unsigned int getPointList(Vertices& pts);
     bool getPoint(int pos, osg::Vec3& p);
@@ -79,6 +82,7 @@ class DynamicPointLine : public DynamicGeometry
 public:
     DynamicPointLine(bool usePoint = false);
     DynamicPointLine(const DynamicPointLine& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+    META_Object(osgVerse, DynamicPointLine)
 
     void setPointMode(bool b) { _mode = (b ? GL_POINTS : GL_LINES); }
     bool getPointMode() const { return _mode == GL_POINTS ? true : false; }
@@ -94,6 +98,7 @@ class DynamicPolyline : public DynamicGeometry
 public:
     DynamicPolyline(bool loopMode = false);
     DynamicPolyline(const DynamicPolyline& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+    META_Object(osgVerse, DynamicPolyline)
 
     void setLoopMode(bool b) { _mode = (b ? GL_LINE_LOOP : GL_LINE_STRIP); }
     bool getLoopMode() const { return _mode == GL_LINE_LOOP ? true : false; }
@@ -111,6 +116,7 @@ class DynamicPolygon : public DynamicGeometry
 public:
     DynamicPolygon();
     DynamicPolygon(const DynamicPolygon& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+    META_Object(osgVerse, DynamicPolygon)
 
     virtual void finish();
     virtual void updatePrimitiveSet(osg::Vec3Array* va, unsigned int start = 0);

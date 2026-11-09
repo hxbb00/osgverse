@@ -62,6 +62,8 @@ namespace osgVerse
     {
     public:
         VolumetricCloud(Pipeline* p = NULL);
+        VolumetricCloud(const VolumetricCloud& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+        META_Node(osgVerse, VolumetricCloud)
         virtual ~VolumetricCloud() {}
 
         /** Add a cloud layer. Layers are kept in order; the current raymarch pass evaluates
@@ -69,25 +71,34 @@ namespace osgVerse
         void addLayer(const CloudLayerSettings& s);
         void clearLayers() { _layers.clear(); }
         unsigned int getNumLayers() const { return (unsigned int)_layers.size(); }
+        std::vector<CloudLayerSettings>& getLayers() { return _layers; }
+        const std::vector<CloudLayerSettings>& getLayers() const { return _layers; }
 
         void setSunDirection(const osg::Vec3& dir);
         const osg::Vec3& getSunDirection() const { return _sunDirection; }
         void setSunColor(const osg::Vec3& color) { _sunColor = color; }
+        const osg::Vec3& getSunColor() const { return _sunColor; }
         void setAmbientColor(const osg::Vec3& color) { _ambientColor = color; }
+        const osg::Vec3& getAmbientColor() const { return _ambientColor; }
 
         /** Freeze the cloud animation at the given time. Use setAnimateTime(true) to resume */
         void setTime(float t) { _time = t; _timeFrozen = true; }
         void setAnimateTime(bool enabled) { _timeFrozen = !enabled; }
+        float getTime() const { return _time; }
+        bool getTimeFrozen() const { return _timeFrozen; }
 
         /** Per-frame stochastic jitter of the ray-march start. It reduces banding when a
             temporal accumulation pass is available, but without one it shows up as visible
             flicker, so it is disabled by default. The jitter is still per-pixel (IGN) */
         void setTemporalJitter(bool enabled) { _temporalJitter = enabled; }
+        bool getTemporalJitter() const { return _temporalJitter; }
 
         /** Enable the globe/planet mode: cloud layers are spherical shells at
             [radius+bottom, radius+top] instead of a local horizontal slab */
         void setPlanetMode(bool enable, const osg::Vec3& center = osg::Vec3(),
                            float radius = 6371000.0f);
+        bool getPlanetMode(osg::Vec3& center, float& radius) const
+        { center = _planetCenter; radius = _planetRadius; return _planetMode; }
 
         /** Optional atmosphere integration: the transmittance/inscatter LUTs (Proland /
             Bruneton, as created by EarthAtmosphereOcean) are used to fade the clouds into

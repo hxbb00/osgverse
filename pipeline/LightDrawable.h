@@ -9,6 +9,10 @@ namespace osgVerse
     class LightCullCallback : public osg::Drawable::CullCallback
     {
     public:
+        LightCullCallback() {}
+        LightCullCallback(const LightCullCallback& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY)
+            : osg::Drawable::CullCallback(copy, copyop) {}
+        META_Object(osgVerse, LightCullCallback)
         virtual bool cull(osg::NodeVisitor*, osg::Drawable* drawable, osg::State* state) const;
     };
 
@@ -18,6 +22,7 @@ namespace osgVerse
     public:
         LightDrawable();
         LightDrawable(const LightDrawable& copy, const osg::CopyOp& copyop=osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, LightDrawable)
 
         enum Type { Invalid = 0, Directional, PointLight, SpotLight };
         Type getType(bool& unlimited) const;

@@ -18,6 +18,8 @@ namespace osgVerse
         typedef void (*ValidateSkinningFunc)(osg::Vec3*, osg::Vec3*, int, int);
 
         PlayerAnimation();
+        PlayerAnimation(const PlayerAnimation& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, PlayerAnimation)
         void setSkinningValidator(ValidateSkinningFunc func);
         virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
 
@@ -134,6 +136,10 @@ namespace osgVerse
                            const std::map<osg::Transform*, AnimationData>& animDataMap);
         bool loadAnimation(const std::string& key, const std::vector<osg::Transform*>& nodes,
                            const std::map<osg::Transform*, osg::ref_ptr<osg::AnimationPath>>& animDataMap);
+
+        /** Rebuild an animation from exported track data, without requiring any scene graph node.
+            dataList is indexed by skeleton joint, which is what getAnimationDataList() returns. */
+        bool loadAnimation(const std::string& key, const std::vector<AnimationData>& dataList);
         void unloadAnimation(const std::string& key);
 
         /* Update functions */
@@ -169,6 +175,25 @@ namespace osgVerse
             PhysicsHuman::create(). */
         std::vector<osg::Matrix> getSkeletonRestPoseMatrices() const;
 
+        /** Serialization helper: index based bindings used to (re)build this player. They are
+            filled when initialize(joints, meshes) is called; the file based entry points store
+            the skeleton/mesh/animation file names instead. */
+        std::vector<JointBinding>& getJointBindings() { return _jointBindings; }
+        const std::vector<JointBinding>& getJointBindings() const { return _jointBindings; }
+        std::vector<MeshBinding>& getMeshBindings() { return _meshBindings; }
+        const std::vector<MeshBinding>& getMeshBindings() const { return _meshBindings; }
+        void setSkeletonFile(const std::string& f) { _skeletonFile = f; }
+        void setMeshFile(const std::string& f) { _meshFile = f; }
+        const std::string& getSkeletonFile() const { return _skeletonFile; }
+        const std::string& getMeshFile() const { return _meshFile; }
+        std::map<std::string, std::string>& getAnimationFiles() { return _animationFiles; }
+        const std::map<std::string, std::string>& getAnimationFiles() const { return _animationFiles; }
+        std::map<std::string, std::vector<AnimationData>>& getAnimationDataList() { return _animationDataList; }
+        const std::map<std::string, std::vector<AnimationData>>& getAnimationDataList() const
+        { return _animationDataList; }
+        void setBlendingThreshold(float t) { _blendingThreshold = t; }
+        float getBlendingThreshold() const { return _blendingThreshold; }
+
         /** Let an external system (usually a physics ragdoll) drive the skeleton: while enabled,
             update() no longer computes model space joint matrices from animations, and they are
             expected to be set by setModelSpaceJointMatrix() before each frame instead. */
@@ -203,12 +228,19 @@ namespace osgVerse
         virtual ~PlayerAnimation();
         bool initializeInternal();
         bool loadAnimationInternal(const std::string& key);
+        bool exportJointBindings();
+        bool exportMeshBindings();
         void updateSkeletonMesh(osg::Geometry& geom);
 
         std::vector<osg::ref_ptr<BlendShapeAnimation>> _blendshapes;
         std::vector<osg::ref_ptr<osg::StateSet>> _meshStateSetList;
         osg::observer_ptr<osg::Node> _modelRoot, _skeletonRoot;
         osg::ref_ptr<osg::Referenced> _internal;
+        std::vector<JointBinding> _jointBindings;
+        std::vector<MeshBinding> _meshBindings;
+        std::map<std::string, std::string> _animationFiles;
+        std::map<std::string, std::vector<AnimationData>> _animationDataList;
+        std::string _skeletonFile, _meshFile;
         float _blendingThreshold;
         bool _animated, _drawSkeleton, _drawSkinning, _restPose, _externalDriven;
     };

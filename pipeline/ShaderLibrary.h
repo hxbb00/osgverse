@@ -96,6 +96,12 @@ namespace osgVerse
         CodeSegmentList& getDefinitions(osg::Shader::Type t) { return _definitions[t]; }
         void getDefinitions(osg::Shader::Type t, CodeSegmentList& defs) const;
 
+        typedef std::map<int, CodeSegmentList> SegmentMap;
+        std::map<osg::Shader::Type, SegmentMap>& getSegmentMap() { return _segments; }
+        const std::map<osg::Shader::Type, SegmentMap>& getSegmentMap() const { return _segments; }
+        std::map<osg::Shader::Type, CodeSegmentList>& getDefinitionMap() { return _definitions; }
+        const std::map<osg::Shader::Type, CodeSegmentList>& getDefinitionMap() const { return _definitions; }
+
     protected:
         virtual void compileGLObjects(osg::State& state) const;
 

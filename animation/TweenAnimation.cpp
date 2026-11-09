@@ -108,6 +108,15 @@ TweenAnimation::TweenAnimation()
 {
 }
 
+TweenAnimation::TweenAnimation(const TweenAnimation& copy, const osg::CopyOp& copyop)
+:   osg::NodeCallback(copy, copyop), _animations(copy._animations),
+    _animationCallback(copy._animationCallback), _currentName(copy._currentName),
+    _pivotPoint(copy._pivotPoint), _currentAnimationTime(copy._currentAnimationTime),
+    _referenceTime(copy._referenceTime), _playingState(copy._playingState),
+    _useInverseMatrix(copy._useInverseMatrix)
+{
+}
+
 void TweenAnimation::operator()(osg::Node* node, osg::NodeVisitor* nv)
 {
     double delta = 0.02, timestamp = _currentAnimationTime;
@@ -209,6 +218,12 @@ bool TweenAnimation::setProperty(const std::string& name, float offset, float mu
     if (_animations.find(name) == _animations.end()) return false;
     Property& prop = _animations[name].second;
     prop.timeOffset = offset; prop.timeMultiplier = multiplier; return true;
+}
+
+bool TweenAnimation::setAnimationMode(const std::string& name, PlayingMode mode)
+{
+    if (_animations.find(name) == _animations.end()) return false;
+    _animations[name].second.mode = mode; return true;
 }
 
 bool TweenAnimation::addControlPoint(const std::string& name, double time,

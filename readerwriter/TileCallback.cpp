@@ -15,6 +15,18 @@
 #include "TileCallback.h"
 
 using namespace osgVerse;
+
+TileCallback::TileCallback(const TileCallback& copy, const osg::CopyOp& copyop)
+:   osg::NodeCallback(copy, copyop), _layerPaths(copy._layerPaths),
+    _uvRangesToSet(copy._uvRangesToSet), _elevationRef(copy._elevationRef),
+    _worldToLocal(copy._worldToLocal), _extentMin(copy._extentMin), _extentMax(copy._extentMax),
+    _createPathFunc(copy._createPathFunc), _x(copy._x), _y(copy._y), _z(copy._z),
+    _skirtRatio(copy._skirtRatio), _elevationScale(copy._elevationScale),
+    _withGlobeAttr(copy._withGlobeAttr), _flatten(copy._flatten), _bottomLeft(copy._bottomLeft),
+    _useWebMercator(copy._useWebMercator), _layersDone(copy._layersDone),
+    _polarStereo(copy._polarStereo), _polarBoundary(copy._polarBoundary)
+{
+}
 static const int TILE_ROWS = 16, TILE_COLS = 16;
 
 class FindTileGeometry : public osg::NodeVisitor

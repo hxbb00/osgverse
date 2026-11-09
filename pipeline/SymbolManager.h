@@ -41,6 +41,8 @@ namespace osgVerse
     {
     public:
         SymbolManager();
+        SymbolManager(const SymbolManager& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, SymbolManager)
         virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
 
         enum LodLevel { LOD0 = 0/*->Far->*/, LOD1/*->Mid->*/, LOD2/*->Near->*/ };
@@ -77,7 +79,8 @@ namespace osgVerse
 
         // Set the text font file
         void setFontFileName(const std::string& file)
-        { _drawer->loadFont("def", file); }
+        { _fontFile = file; _drawer->loadFont("def", file); }
+        const std::string& getFontFileName() const { return _fontFile; }
 
         // Set text board (in 'mid' mode) offset to icon
         // It works with the MidDistanceTextScale (default: (3, 1)). Note that icon scale is always (1, 1).
@@ -158,6 +161,7 @@ namespace osgVerse
         osg::Vec3 _lodIconScaleFactor;
         double _lodDistances[3]; int _idCounter;
         bool _firstRun, _showIconsInMidDistance;
+        std::string _fontFile;
     };
 }
 

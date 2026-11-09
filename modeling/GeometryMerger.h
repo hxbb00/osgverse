@@ -112,6 +112,9 @@ namespace osgVerse
         virtual unsigned int& baseVertex(const unsigned int& index) { return at(index).baseVertex; }
         virtual unsigned int& baseInstance(const unsigned int& index) { return at(index).baseInstance; }
 
+        std::vector<osg::DrawElementsIndirectCommand>& getCommands() { return asVector(); }
+        const std::vector<osg::DrawElementsIndirectCommand>& getCommands() const { return asVector(); }
+
         void pushUserData(osg::UserDataContainer* ud) { _userDataList.push_back(ud); }
         void popUserData() { _userDataList.pop_back(); }
         void clearUserData() { _userDataList.clear(); }

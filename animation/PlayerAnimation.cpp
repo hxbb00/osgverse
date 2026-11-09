@@ -5,6 +5,7 @@
 #include "pipeline/Utilities.h"
 #include <osg/io_utils>
 #include <osg/Version>
+#include <osg/MatrixTransform>
 #include <osg/TriangleIndexFunctor>
 #include <osgDB/ReadFile>
 #include <nanoid/nanoid.h>
@@ -1122,10 +1123,185 @@ PlayerAnimation::~PlayerAnimation()
 {
 }
 
+PlayerAnimation::PlayerAnimation(const PlayerAnimation& copy, const osg::CopyOp& copyop)
+:   osg::NodeCallback(copy, copyop), _blendshapes(copy._blendshapes),
+    _meshStateSetList(copy._meshStateSetList), _modelRoot(copy._modelRoot),
+    _skeletonRoot(copy._skeletonRoot), _blendingThreshold(copy._blendingThreshold),
+    _animated(copy._animated), _drawSkeleton(copy._drawSkeleton),
+    _drawSkinning(copy._drawSkinning), _restPose(copy._restPose),
+    _externalDriven(copy._externalDriven), _jointBindings(copy._jointBindings),
+    _meshBindings(copy._meshBindings), _animationFiles(copy._animationFiles),
+    _skeletonFile(copy._skeletonFile), _meshFile(copy._meshFile)
+{
+    _internal = new OzzAnimation;
+}
+
 void PlayerAnimation::setSkinningValidator(ValidateSkinningFunc func)
 {
     OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
     if (ozz) ozz->_validator = func;
+}
+
+namespace
+{
+    static void decomposeSoaTransform(const ozz::math::SoaTransform& soaT, int id,
+                                      osg::Vec3& pos, osg::Quat& rot, osg::Vec3& scale)
+    {
+        switch (id)
+        {
+        case 0:
+            scale[0] = ozz::math::GetX(soaT.scale.x); scale[1] = ozz::math::GetX(soaT.scale.y);
+            scale[2] = ozz::math::GetX(soaT.scale.z);
+            rot[0] = ozz::math::GetX(soaT.rotation.x); rot[1] = ozz::math::GetX(soaT.rotation.y);
+            rot[2] = ozz::math::GetX(soaT.rotation.z); rot[3] = ozz::math::GetX(soaT.rotation.w);
+            pos[0] = ozz::math::GetX(soaT.translation.x); pos[1] = ozz::math::GetX(soaT.translation.y);
+            pos[2] = ozz::math::GetX(soaT.translation.z); break;
+        case 1:
+            scale[0] = ozz::math::GetY(soaT.scale.x); scale[1] = ozz::math::GetY(soaT.scale.y);
+            scale[2] = ozz::math::GetY(soaT.scale.z);
+            rot[0] = ozz::math::GetY(soaT.rotation.x); rot[1] = ozz::math::GetY(soaT.rotation.y);
+            rot[2] = ozz::math::GetY(soaT.rotation.z); rot[3] = ozz::math::GetY(soaT.rotation.w);
+            pos[0] = ozz::math::GetY(soaT.translation.x); pos[1] = ozz::math::GetY(soaT.translation.y);
+            pos[2] = ozz::math::GetY(soaT.translation.z); break;
+        case 2:
+            scale[0] = ozz::math::GetZ(soaT.scale.x); scale[1] = ozz::math::GetZ(soaT.scale.y);
+            scale[2] = ozz::math::GetZ(soaT.scale.z);
+            rot[0] = ozz::math::GetZ(soaT.rotation.x); rot[1] = ozz::math::GetZ(soaT.rotation.y);
+            rot[2] = ozz::math::GetZ(soaT.rotation.z); rot[3] = ozz::math::GetZ(soaT.rotation.w);
+            pos[0] = ozz::math::GetZ(soaT.translation.x); pos[1] = ozz::math::GetZ(soaT.translation.y);
+            pos[2] = ozz::math::GetZ(soaT.translation.z); break;
+        default:
+            scale[0] = ozz::math::GetW(soaT.scale.x); scale[1] = ozz::math::GetW(soaT.scale.y);
+            scale[2] = ozz::math::GetW(soaT.scale.z);
+            rot[0] = ozz::math::GetW(soaT.rotation.x); rot[1] = ozz::math::GetW(soaT.rotation.y);
+            rot[2] = ozz::math::GetW(soaT.rotation.z); rot[3] = ozz::math::GetW(soaT.rotation.w);
+            pos[0] = ozz::math::GetW(soaT.translation.x); pos[1] = ozz::math::GetW(soaT.translation.y);
+            pos[2] = ozz::math::GetW(soaT.translation.z); break;
+        }
+    }
+}
+
+bool PlayerAnimation::exportJointBindings()
+{
+    OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
+    if (ozz == NULL) return false;
+
+    ozz::span<const char* const> names = ozz->_skeleton.joint_names();
+    ozz::span<const int16_t> parents = ozz->_skeleton.joint_parents();
+    ozz::span<const ozz::math::SoaTransform> restPoses = ozz->_skeleton.joint_rest_poses();
+    if (names.empty() || parents.size() != names.size() || restPoses.empty()) return false;
+
+    _jointBindings.resize(names.size());
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        JointBinding& j = _jointBindings[i];
+        j.name = names[i] ? names[i] : "";
+        j.parent = parents[i];
+        decomposeSoaTransform(restPoses[i / 4], (int)(i % 4), j.translation, j.rotation, j.scale);
+    }
+    return true;
+}
+
+bool PlayerAnimation::exportMeshBindings()
+{
+    OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
+    if (ozz == NULL) return false;
+
+    const int numJoints = ozz->_skeleton.num_joints();
+    _meshBindings.clear(); _meshBindings.resize(ozz->_meshes.size());
+    for (size_t mi = 0; mi < ozz->_meshes.size(); ++mi)
+    {
+        const OzzMesh& mesh = ozz->_meshes[mi];
+        MeshBinding& dst = _meshBindings[mi];
+        dst.name = (mi < ozz->_meshNames.size()) ? ozz->_meshNames[mi] : std::string();
+        dst.stateSet = (mi < _meshStateSetList.size()) ? _meshStateSetList[mi] : NULL;
+        dst.blendshape = (mi < _blendshapes.size()) ? _blendshapes[mi] : NULL;
+
+        size_t totalVertices = 0;
+        bool hasNormals = true, hasTangents = true, hasUVs = true, hasColors = true;
+        for (size_t p = 0; p < mesh.parts.size(); ++p)
+        {
+            const OzzMesh::Part& part = mesh.parts[p];
+            size_t vCount = part.vertex_count(); totalVertices += vCount;
+            if (part.normals.size() != vCount * 3) hasNormals = false;
+            if (part.tangents.size() != vCount * 4) hasTangents = false;
+            if (part.uvs.size() != vCount * 2) hasUVs = false;
+            if (part.colors.size() != vCount * 4) hasColors = false;
+        }
+        if (totalVertices < 1) continue;
+
+        osg::ref_ptr<osg::Vec3Array> positions = new osg::Vec3Array(totalVertices);
+        osg::ref_ptr<osg::Vec3Array> normals = hasNormals ? new osg::Vec3Array(totalVertices) : NULL;
+        osg::ref_ptr<osg::Vec4Array> tangents = hasTangents ? new osg::Vec4Array(totalVertices) : NULL;
+        osg::ref_ptr<osg::Vec2Array> uvs = hasUVs ? new osg::Vec2Array(totalVertices) : NULL;
+        osg::ref_ptr<osg::Vec4ubArray> colors = hasColors ? new osg::Vec4ubArray(totalVertices) : NULL;
+        dst.jointIndices.assign(totalVertices * 4, 0);
+        dst.jointWeights.assign(totalVertices * 4, 0.0f);
+
+        size_t vOffset = 0;
+        for (size_t p = 0; p < mesh.parts.size(); ++p)
+        {
+            const OzzMesh::Part& part = mesh.parts[p];
+            size_t vCount = part.vertex_count(); int inf = part.influences_count();
+            for (size_t v = 0; v < vCount; ++v)
+            {
+                size_t vi = vOffset + v;
+                (*positions)[vi] = osg::Vec3(part.positions[v * 3 + 0],
+                                             part.positions[v * 3 + 1], part.positions[v * 3 + 2]);
+                if (normals.valid())
+                    (*normals)[vi] = osg::Vec3(part.normals[v * 3 + 0],
+                                               part.normals[v * 3 + 1], part.normals[v * 3 + 2]);
+                if (tangents.valid())
+                    (*tangents)[vi] = osg::Vec4(part.tangents[v * 4 + 0], part.tangents[v * 4 + 1],
+                                                part.tangents[v * 4 + 2], part.tangents[v * 4 + 3]);
+                if (uvs.valid())
+                    (*uvs)[vi] = osg::Vec2(part.uvs[v * 2 + 0], part.uvs[v * 2 + 1]);
+                if (colors.valid())
+                    (*colors)[vi] = osg::Vec4ub(part.colors[v * 4 + 0], part.colors[v * 4 + 1],
+                                                part.colors[v * 4 + 2], part.colors[v * 4 + 3]);
+
+                uint16_t ids[4] = { 0, 0, 0, 0 }; float weights[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                if (inf > 0)
+                {
+                    int count = osg::minimum(inf, 4);
+                    float sum = 0.0f;
+                    for (int k = 0; k < count; ++k)
+                    {
+                        ids[k] = part.joint_indices[v * inf + k];
+                        if (k < inf - 1) { weights[k] = part.joint_weights[v * (inf - 1) + k]; sum += weights[k]; }
+                    }
+                    weights[count - 1] = osg::maximum(0.0f, 1.0f - sum);
+                }
+                else
+                    weights[0] = 1.0f;
+                for (int k = 0; k < 4; ++k)
+                {
+                    dst.jointIndices[vi * 4 + k] = ids[k];
+                    dst.jointWeights[vi * 4 + k] = weights[k];
+                }
+            }
+            vOffset += vCount;
+        }
+        dst.positions = positions; dst.normals = normals;
+        dst.tangents = tangents; dst.uvs = uvs; dst.colors = colors;
+
+        if (!mesh.triangle_indices.empty())
+        {
+            dst.indices = new osg::DrawElementsUInt(GL_TRIANGLES);
+            dst.indices->reserve(mesh.triangle_indices.size());
+            for (size_t i = 0; i < mesh.triangle_indices.size(); ++i)
+                dst.indices->push_back((unsigned int)mesh.triangle_indices[i]);
+        }
+
+        dst.inverseBindPoses.assign(numJoints, osg::Matrix::identity());
+        for (size_t k = 0; k < mesh.joint_remaps.size() && k < mesh.inverse_bind_poses.size(); ++k)
+        {
+            int joint = mesh.joint_remaps[k];
+            if (joint >= 0 && joint < numJoints)
+                dst.inverseBindPoses[joint] = OzzAnimation::convertMatrix(mesh.inverse_bind_poses[k]);
+        }
+    }
+    return true;
 }
 
 bool PlayerAnimation::initialize(const std::vector<JointBinding>& joints,
@@ -1136,6 +1312,8 @@ bool PlayerAnimation::initialize(const std::vector<JointBinding>& joints,
     {
         OSG_WARN << "[PlayerAnimation] Empty skeleton binding." << std::endl; return false;
     }
+    _jointBindings = joints; _meshBindings = meshes;
+    _skeletonFile.clear(); _meshFile.clear();
 
     // Build skeleton directly from the index based binding
     ozz::animation::CreateSkeletonVisitor csv;
@@ -1271,6 +1449,8 @@ bool PlayerAnimation::initialize(osg::Node& skeletonRoot, osg::Node& meshRoot,
     ozz::animation::CreateMeshVisitor cmv(csv.getSkeletonNodes(), jointDataMap);
     meshRoot.accept(cmv); ozz->_meshes = cmv.getMeshes(ozz->_meshNames);
     _meshStateSetList = cmv.getStateSets(); _blendshapes = cmv.getBS();
+    _skeletonFile.clear(); _meshFile.clear();
+    exportJointBindings(); exportMeshBindings();
     return initializeInternal();
 }
 
@@ -1288,6 +1468,8 @@ bool PlayerAnimation::initialize(const std::vector<osg::Transform*>& nodes,
     ozz::animation::CreateMeshVisitor cmv(csv.getSkeletonNodes(), jointDataMap);
     cmv.initialize(meshList); ozz->_meshes = cmv.getMeshes(ozz->_meshNames);
     _meshStateSetList = cmv.getStateSets(); _blendshapes = cmv.getBS();
+    _skeletonFile.clear(); _meshFile.clear();
+    exportJointBindings(); exportMeshBindings();
     return initializeInternal();
 }
 
@@ -1296,6 +1478,8 @@ bool PlayerAnimation::initialize(const std::string& skeleton, const std::string&
     OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
     if (!ozz->loadSkeleton(skeleton.c_str(), &(ozz->_skeleton))) return false;
     if (!ozz->loadMesh(mesh.c_str(), &(ozz->_meshes))) return false;
+    _skeletonFile = skeleton; _meshFile = mesh;
+    _jointBindings.clear(); _meshBindings.clear();
     return initializeInternal();
 }
 
@@ -1310,6 +1494,7 @@ bool PlayerAnimation::loadAnimation(const std::string& key, const std::string& a
     OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
     OzzAnimation::AnimationSampler& sampler = ozz->_animations[key];
     if (!ozz->loadAnimation(animation.c_str(), &(sampler.animation))) return false;
+    _animationFiles[key] = animation; _animationDataList.erase(key);
     return loadAnimationInternal(key);
 }
 
@@ -1324,6 +1509,42 @@ bool PlayerAnimation::loadAnimation(const std::string& key, const std::vector<os
     if (sampler.buffer != NULL)  // release the buffer of a previous animation with same key
         ozz::memory::default_allocator()->Deallocate(sampler.buffer);
     sampler.buffer = ac.allocatedBuffer;  // ownership moved to the sampler
+
+    // Keep the track data indexed by joint, so the animation can be saved without scene nodes
+    std::vector<AnimationData> dataList(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i)
+    {
+        std::map<osg::Transform*, AnimationData>::const_iterator itr = animDataMap.find(nodes[i]);
+        if (itr != animDataMap.end()) dataList[i] = itr->second;
+    }
+    _animationDataList[key] = dataList; _animationFiles.erase(key);
+    return loadAnimationInternal(key);
+}
+
+bool PlayerAnimation::loadAnimation(const std::string& key, const std::vector<AnimationData>& dataList)
+{
+    OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
+    if (ozz == NULL || _jointBindings.empty()) return false;
+
+    // Rebuild the animation from joint indices: temporary transforms only provide rest poses
+    std::vector<osg::ref_ptr<osg::MatrixTransform>> holders;
+    std::vector<osg::Transform*> nodes;
+    std::map<osg::Transform*, AnimationData> animDataMap;
+    holders.reserve(_jointBindings.size()); nodes.reserve(_jointBindings.size());
+    for (size_t i = 0; i < _jointBindings.size(); ++i)
+    {
+        osg::ref_ptr<osg::MatrixTransform> node = new osg::MatrixTransform(_jointBindings[i].toMatrix());
+        holders.push_back(node); nodes.push_back(node.get());
+        if (i < dataList.size()) animDataMap[node.get()] = dataList[i];
+    }
+
+    OzzAnimation::AnimationSampler& sampler = ozz->_animations[key];
+    ozz::animation::AnimationConverter ac;
+    ac.build(sampler, nodes, animDataMap); sampler.looping = true;
+    if (sampler.buffer != NULL)
+        ozz::memory::default_allocator()->Deallocate(sampler.buffer);
+    sampler.buffer = ac.allocatedBuffer;
+    _animationDataList[key] = dataList; _animationFiles.erase(key);
     return loadAnimationInternal(key);
 }
 
@@ -1348,6 +1569,7 @@ void PlayerAnimation::unloadAnimation(const std::string& key)
     OzzAnimation* ozz = static_cast<OzzAnimation*>(_internal.get());
     std::map<std::string, OzzAnimation::AnimationSampler>::iterator itr = ozz->_animations.find(key);
     if (itr != ozz->_animations.end()) ozz->_animations.erase(itr);
+    _animationFiles.erase(key); _animationDataList.erase(key);
 }
 
 std::vector<PlayerAnimation::ThisAndParent> PlayerAnimation::getSkeletonIndices(int from) const

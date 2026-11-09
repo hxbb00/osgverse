@@ -33,10 +33,11 @@
 #include <future>
 #include <thread>
 
+#include <wrappers/Export.h>
 #ifdef OSG_LIBRARY_STATIC
 USE_OSG_PLUGINS()
 USE_VERSE_PLUGINS()
-USE_SERIALIZER_WRAPPER(DracoGeometry)
+USE_VERSE_WRAPPERS()
 #endif
 
 #define EARTH_INTERSECTION_MASK 0xf0000000

@@ -3,7 +3,16 @@ SET(LIBRARY_INCLUDE_FILES
     Export.h
 )
 SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
-    DracoWrapper.cpp
+    modeling/GaussianGeometry.cpp modeling/DynamicPointLine.cpp modeling/DynamicPolyline.cpp
+    modeling/DynamicPolygon.cpp modeling/IndirectCommandDrawElements.cpp
+    pipeline/CSGNode.cpp pipeline/LightDrawable.cpp pipeline/SkyBox.cpp
+    pipeline/MultiEffectGeode.cpp pipeline/MultiEffectGroup.cpp
+    pipeline/ScriptableProgram.cpp pipeline/SymbolManager.cpp pipeline/VolumetricCloud.cpp
+    pipeline/LightCullCallback.cpp pipeline/ShaderStorageBufferObject.cpp
+    animation/PlayerAnimation.cpp animation/TweenAnimation.cpp animation/BlendShapeAnimation.cpp
+    animation/ParticleCloud.cpp animation/ParticleSystemU3D.cpp
+    readerwriter/DracoGeometry.cpp readerwriter/Feature.cpp readerwriter/FeatureCollection.cpp
+    readerwriter/TileGeometryHandler.cpp readerwriter/TileCallback.cpp
 )
 
 IF(OSG_MAJOR_VERSION GREATER 2 AND OSG_MINOR_VERSION GREATER 4)
@@ -11,7 +20,7 @@ IF(OSG_MAJOR_VERSION GREATER 2 AND OSG_MINOR_VERSION GREATER 4)
         WrapperMethods.cpp Geometry_FixedWrapper.cpp)
 ENDIF()
 
-INCLUDE_DIRECTORIES(. ../script)
+INCLUDE_DIRECTORIES(. .. ../script modeling pipeline animation readerwriter)
 ADD_DEFINITIONS(-DVERSE_WRAPPERS_LIBRARY)
 IF(DRACO_FOUND)
     ADD_DEFINITIONS(-DVERSE_USE_DRACO)

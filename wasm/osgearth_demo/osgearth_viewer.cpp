@@ -7,6 +7,7 @@
 #include <readerwriter/Utilities.h>
 #include "osgearth_viewer.h"
 
+#include <wrappers/Export.h>
 USE_OSG_PLUGINS()
 USE_VERSE_PLUGINS()
 USE_OSGPLUGIN(tiff)
@@ -14,7 +15,7 @@ USE_OSGPLUGIN(earth)
 USE_OSGPLUGIN(osgearth_xyz)
 USE_OSGPLUGIN(osgearth_tms)
 USE_OSGPLUGIN(osgearth_engine_mp)
-USE_SERIALIZER_WRAPPER(DracoGeometry)
+USE_VERSE_WRAPPERS()
 USE_GRAPICSWINDOW_IMPLEMENTATION(SDL)
 
 osg::ref_ptr<Application> g_app = new Application;

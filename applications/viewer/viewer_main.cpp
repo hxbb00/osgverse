@@ -29,7 +29,7 @@
 #ifdef OSG_LIBRARY_STATIC
 USE_OSG_PLUGINS()
 USE_VERSE_PLUGINS()
-USE_SERIALIZER_WRAPPER(DracoGeometry)
+USE_VERSE_WRAPPERS()
 #endif
 
 class SetPipelineHandler : public osgGA::GUIEventHandler

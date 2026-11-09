@@ -55,7 +55,8 @@ SkyBox::SkyBox(Pipeline* p)
 }
 
 SkyBox::SkyBox(const SkyBox& copy, const osg::CopyOp& copyop)
-    : osg::Transform(copy, copyop), _skymap(copy._skymap)
+    : osg::Transform(copy, copyop), _skymap(copy._skymap), _stateset(copy._stateset),
+      _vertex(copy._vertex), _fragment(copy._fragment)
 {
 }
 

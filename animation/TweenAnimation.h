@@ -14,6 +14,8 @@ namespace osgVerse
     {
     public:
         TweenAnimation();
+        TweenAnimation(const TweenAnimation& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, TweenAnimation)
         virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
 
         enum PlayingMode
@@ -36,6 +38,7 @@ namespace osgVerse
         bool addAnimation(const std::string& name, osg::AnimationPath* path);
         bool removeAnimation(const std::string& name);
         bool setProperty(const std::string& name, float offset, float multiplier = 1.0f);
+        bool setAnimationMode(const std::string& name, PlayingMode mode);
 
         bool addControlPoint(const std::string& name, double time,
                              const osg::AnimationPath::ControlPoint& cp, bool relativeToEnd = false);

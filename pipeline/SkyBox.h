@@ -16,6 +16,7 @@ namespace osgVerse
     public:
         SkyBox(Pipeline* p = NULL);
         SkyBox(const SkyBox& copy, const osg::CopyOp& copyop=osg::CopyOp::SHALLOW_COPY);
+        META_Node(osgVerse, SkyBox)
         static osg::Camera* createSkyCamera(int renderOrder = 10000);
 
         void setEnvironmentMap(const std::string& path, const std::string& ext, bool rightHanded = false);
@@ -23,6 +24,12 @@ namespace osgVerse
         void setEnvironmentMap(osg::Texture* tex, bool keepYAxisUp = false);
 
         void setSkyShaders(osg::Shader* vs, osg::Shader* fs);
+        void setVertexShader(osg::Shader* s) { _vertex = s; }
+        void setFragmentShader(osg::Shader* s) { _fragment = s; }
+        osg::Shader* getVertexShader() { return _vertex.get(); }
+        const osg::Shader* getVertexShader() const { return _vertex.get(); }
+        osg::Shader* getFragmentShader() { return _fragment.get(); }
+        const osg::Shader* getFragmentShader() const { return _fragment.get(); }
         void setSkyColor(const osg::Vec4ub& color);
         osg::Texture* getCurrentSkyTexture() const { return _skymap.get(); }
     

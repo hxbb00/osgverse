@@ -6,10 +6,11 @@
 #include <pipeline/Predefines.h>
 #include "earth_viewer.h"
 
+#include <wrappers/Export.h>
 USE_OSG_PLUGINS()
 USE_VERSE_PLUGINS()
 USE_OSGPLUGIN(verse_tiff)
-USE_SERIALIZER_WRAPPER(DracoGeometry)
+USE_VERSE_WRAPPERS()
 USE_GRAPICSWINDOW_IMPLEMENTATION(SDL)
 
 osgVerse::EarthAtmosphereOcean g_earthRenderingUtils;

@@ -293,6 +293,24 @@ VolumetricCloud::VolumetricCloud(Pipeline* p)
     setCullCallback(new CloudCullCallback(this));
 }
 
+VolumetricCloud::VolumetricCloud(const VolumetricCloud& copy, const osg::CopyOp& copyop)
+:   osg::Group(copy, copyop), _pipeline(copy._pipeline), _layers(copy._layers),
+    _settings(copy._settings), _weatherMap(copy._weatherMap), _weatherVolume(copy._weatherVolume),
+    _shapeVolume(copy._shapeVolume), _detailVolume(copy._detailVolume),
+    _cloudBuffer(copy._cloudBuffer), _cloudCamera(copy._cloudCamera),
+    _raymarchProgram(copy._raymarchProgram), _raymarchAtmoProgram(copy._raymarchAtmoProgram),
+    _compositeProgram(copy._compositeProgram), _atmoTransmittance(copy._atmoTransmittance),
+    _atmoIrradiance(copy._atmoIrradiance), _atmoInscatter(copy._atmoInscatter), _atmoGlare(copy._atmoGlare),
+    _earthOrigin(copy._earthOrigin), _uniforms(copy._uniforms), _sunDirection(copy._sunDirection),
+    _sunColor(copy._sunColor), _ambientColor(copy._ambientColor), _planetCenter(copy._planetCenter),
+    _planetRadius(copy._planetRadius), _planetMode(copy._planetMode), _time(copy._time), _frame(0),
+    _initialized(false), _temporalJitter(copy._temporalJitter), _timeFrozen(copy._timeFrozen),
+    _width(copy._width), _height(copy._height), _cloudWidth(copy._cloudWidth),
+    _cloudHeight(copy._cloudHeight)
+{
+    setCullCallback(new CloudCullCallback(this));
+}
+
 void VolumetricCloud::setSunDirection(const osg::Vec3& dir)
 {
     _sunDirection = dir;

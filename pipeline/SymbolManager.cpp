@@ -94,6 +94,22 @@ SymbolManager::SymbolManager()
     _midDistanceScale = new osg::Uniform("Scale", osg::Vec3(3.0f, 1.0f, 1.0f / 10.0f));
 }
 
+SymbolManager::SymbolManager(const SymbolManager& copy, const osg::CopyOp& copyop)
+:   osg::NodeCallback(copy, copyop), _symbols(copy._symbols),
+    _instanceGeom(copy._instanceGeom), _instanceBoard(copy._instanceBoard),
+    _posTexture(copy._posTexture), _dirTexture(copy._dirTexture), _colorTexture(copy._colorTexture),
+    _posTexture2(copy._posTexture2), _dirTexture2(copy._dirTexture2), _colorTexture2(copy._colorTexture2),
+    _iconTexture(copy._iconTexture), _bgIconTexture(copy._bgIconTexture), _textTexture(copy._textTexture),
+    _midDistanceOffset(copy._midDistanceOffset), _midDistanceScale(copy._midDistanceScale),
+    _farDistanceProgram(copy._farDistanceProgram), _midDistanceProgram(copy._midDistanceProgram),
+    _drawGridCallback(copy._drawGridCallback), _drawer(copy._drawer), _camera(copy._camera),
+    _lodIconScaleFactor(copy._lodIconScaleFactor), _idCounter(copy._idCounter),
+    _firstRun(copy._firstRun), _showIconsInMidDistance(copy._showIconsInMidDistance),
+    _fontFile(copy._fontFile)
+{
+    for (int i = 0; i < 3; ++i) _lodDistances[i] = copy._lodDistances[i];
+}
+
 void SymbolManager::operator()(osg::Node* node, osg::NodeVisitor* nv)
 {
     osg::Group* group = node->asGroup();

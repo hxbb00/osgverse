@@ -37,6 +37,9 @@ namespace osgVerse
     {
     public:
         MultiEffectGeode() {}
+        MultiEffectGeode(const MultiEffectGeode& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY)
+            : osg::Geode(copy, copyop), _container(copy._container) {}
+        META_Node(osgVerse, MultiEffectGeode)
         virtual void traverse(osg::NodeVisitor& nv);
 
         void setEffect(MultiEffectContainer* e) { _container = e; }
@@ -52,6 +55,9 @@ namespace osgVerse
     {
     public:
         MultiEffectGroup() {}
+        MultiEffectGroup(const MultiEffectGroup& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY)
+            : osg::Group(copy, copyop), _container(copy._container) {}
+        META_Node(osgVerse, MultiEffectGroup)
         virtual void traverse(osg::NodeVisitor& nv);
 
         void setEffect(MultiEffectContainer* e) { _container = e; }

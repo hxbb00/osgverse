@@ -23,8 +23,9 @@
 #include <readerwriter/TextureSizeAdvisor.h>
 #include <readerwriter/DatabasePager.h>
 #include <readerwriter/DracoProcessor.h>
+#include <wrappers/Export.h>
 #ifdef OSG_LIBRARY_STATIC
-USE_SERIALIZER_WRAPPER(DracoGeometry)
+USE_VERSE_WRAPPERS()
 #endif
 
 #ifndef _DEBUG

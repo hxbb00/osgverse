@@ -57,6 +57,7 @@ public:
     enum RenderMethod { INSTANCING, INSTANCING_TEXTURE, INSTANCING_TEX2D, GEOMETRY_SHADER };
     GaussianGeometry(RenderMethod m = INSTANCING);
     GaussianGeometry(const GaussianGeometry& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+    META_Object(osgVerse, GaussianGeometry)
 
 #if OSG_MIN_VERSION_REQUIRED(3, 3, 2)
     virtual osg::BoundingSphere computeBound() const;
@@ -75,7 +76,9 @@ public:
 
     bool finalize(int vOffset = 0, int vCount = 0);  // only run this after setting all attributes
     RenderMethod getRenderMethod() const { return _method; }
+    void setRenderMethod(RenderMethod m) { _method = m; }
     int getNumSplats() const { return _numSplats; }
+    void setNumSplats(int n) { _numSplats = n; }
 
     void setShDegrees(int d) { _degrees = d; checkShaderFlag(); }
     int getShDegrees() const { return _degrees; }

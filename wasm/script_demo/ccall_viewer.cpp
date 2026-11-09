@@ -4,9 +4,10 @@
 #include <readerwriter/Utilities.h>
 #include "ccall_viewer.h"
 
+#include <wrappers/Export.h>
 USE_OSG_PLUGINS()
 USE_VERSE_PLUGINS()
-USE_SERIALIZER_WRAPPER(DracoGeometry)
+USE_VERSE_WRAPPERS()
 USE_GRAPICSWINDOW_IMPLEMENTATION(SDL)
 
 osg::ref_ptr<Application> g_app = new Application;

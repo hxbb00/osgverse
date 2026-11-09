@@ -6,6 +6,12 @@ BlendShapeAnimation::BlendShapeAnimation()
 {
 }
 
+BlendShapeAnimation::BlendShapeAnimation(const BlendShapeAnimation& copy, const osg::CopyOp& copyop)
+:   osg::Drawable::UpdateCallback(copy, copyop), _blendshapes(copy._blendshapes),
+    _blendshapeMap(copy._blendshapeMap)
+{
+}
+
 void BlendShapeAnimation::apply(const std::vector<std::string>& names,
                                 const std::vector<double>& weights)
 {

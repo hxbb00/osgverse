@@ -57,6 +57,14 @@ namespace osgVerse
         osg::Vec4Array* getVelocities() { return _velocities.get(); }
         osg::Vec4Array* getColors() { return _colors.get(); }
         osg::Vec4Array* getAttributes() { return _attributes.get(); }
+        const osg::Vec4Array* getPositions() const { return _positions.get(); }
+        const osg::Vec4Array* getVelocities() const { return _velocities.get(); }
+        const osg::Vec4Array* getColors() const { return _colors.get(); }
+        const osg::Vec4Array* getAttributes() const { return _attributes.get(); }
+        void setPositions(osg::Vec4Array* a) { _positions = a; }
+        void setVelocities(osg::Vec4Array* a) { _velocities = a; }
+        void setColors(osg::Vec4Array* a) { _colors = a; }
+        void setAttributes(osg::Vec4Array* a) { _attributes = a; }
         unsigned int size() const { return _positions->size(); }
 
     protected:
@@ -72,6 +80,7 @@ namespace osgVerse
         enum UpdateMethod { CPU_TEXTURE_LUT, CPU_VERTEX_ATTRIB, GPU_GEOMETRY };
         ParticleSystemU3D(UpdateMethod up = CPU_VERTEX_ATTRIB);
         ParticleSystemU3D(const ParticleSystemU3D& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, ParticleSystemU3D)
         virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
 
         void setPointCloud(ParticleCloud* cloud, bool immutable)
@@ -79,12 +88,15 @@ namespace osgVerse
             _pointCloud = cloud; _immutable = immutable;
             _maxParticles = (double)cloud->size(); _dirty = true;
         }
+        ParticleCloud* getPointCloud() { return _pointCloud.get(); }
+        const ParticleCloud* getPointCloud() const { return _pointCloud.get(); }
 
         void play() { _started = true; if (_geometry.valid()) _geometry->dirtyBound(); }
         void stop() { _started = false; }
         bool isPlaying() const { return _started; }
         bool isImmutable() const { return _immutable; }
         UpdateMethod getUpdateMethod() const { return _updateMethod; }
+        void setUpdateMethod(UpdateMethod m) { _updateMethod = m; _dirty = true; }
 
         // Link this particle system to a geode to make it work
         void linkTo(osg::Geode* geode, bool applyStates, osg::Shader* vert = NULL,
@@ -133,12 +145,14 @@ namespace osgVerse
 
         osg::Geometry* getInternalGeometry() { return _geometry.get(); }
         osg::Geometry* getGeometry() { return _geometry2.get(); }
+        const osg::Geometry* getGeometry() const { return _geometry2.get(); }
         osg::Texture2D* getTexture() { return _texture.get(); }
+        const osg::Texture2D* getTexture() const { return _texture.get(); }
         const osg::Vec3& getStartDirection() const { return _startDirection; }
         const osg::Vec2& getStartLifeRange() const { return _startLifeRange; }
         const osg::Vec2& getStartSizeRange() const { return _startSizeRange; }
-        const osg::Quat& getStartAttitude0() { return _startAttitudeRange[0]; }
-        const osg::Quat& getStartAttitude1() { return _startAttitudeRange[1]; }
+        const osg::Quat& getStartAttitude0() const { return _startAttitudeRange[0]; }
+        const osg::Quat& getStartAttitude1() const { return _startAttitudeRange[1]; }
         const osg::Vec2& getStartSpeedRange() const { return _startSpeedRange; }
         double getMaxParticles() const { return _maxParticles; }
         double getStartDelay() const { return _startDelay; }
@@ -159,6 +173,7 @@ namespace osgVerse
         void setEmissionTarget(osg::Node* node) { _emissionTarget = node; }
 
         std::map<float, osg::Vec4>& getEmissionBursts() { return _emissionBursts; }
+        const std::map<float, osg::Vec4>& getEmissionBursts() const { return _emissionBursts; }
         const osg::Vec3& getEmissionShapeCenter() const { return _emissionShapeCenter; }
         const osg::Vec3& getEmissionShapeEulers() const { return _emissionShapeEulers; }
         const osg::Vec4& getEmissionShapeValues() const { return _emissionShapeValues; }
@@ -172,6 +187,7 @@ namespace osgVerse
         void setCollisionValues(const osg::Vec4& v) { _collisionValues = v; }
 
         std::vector<osg::Plane>& getCollisionPlanes() { return _collisionPlanes; }
+        const std::vector<osg::Plane>& getCollisionPlanes() const { return _collisionPlanes; }
         const osg::Vec4& getCollisionValues() const { return _collisionValues; }
 
         /// Texture sheet animation properties
@@ -201,6 +217,14 @@ namespace osgVerse
         std::map<float, osg::Vec3>& getForcePerTime() { return _forceOffsets; }
         std::map<float, float>& getScalePerTime() { return _scalePerTime; }
         std::map<float, float>& getScalePerSpeed() { return _scalePerSpeed; }
+        const std::map<float, osg::Vec4>& getColorPerTime() const { return _colorPerTime; }
+        const std::map<float, osg::Vec4>& getColorPerSpeed() const { return _colorPerSpeed; }
+        const std::map<float, osg::Vec3>& getEulersPerTime() const { return _eulersPerTime; }
+        const std::map<float, osg::Vec3>& getEulersPerSpeed() const { return _eulersPerSpeed; }
+        const std::map<float, osg::Vec3>& getVelocityPerTime() const { return _velocityOffsets; }
+        const std::map<float, osg::Vec3>& getForcePerTime() const { return _forceOffsets; }
+        const std::map<float, float>& getScalePerTime() const { return _scalePerTime; }
+        const std::map<float, float>& getScalePerSpeed() const { return _scalePerSpeed; }
 
     protected:
         virtual ~ParticleSystemU3D();
