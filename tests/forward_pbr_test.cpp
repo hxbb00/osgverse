@@ -181,8 +181,17 @@ int main(int argc, char** argv)
         nisEnabled = false;
     }
 #else
-    // Compute shaders used by NIS require a GL 4.3+ context
-    if (nisEnabled) osg::DisplaySettings::instance()->setGLContextVersion("4.3");
+    // Compute shaders used by NIS require a GL 4.3+ context. The GL2 build still uses
+    // fixed-function states, which are only valid in a compatibility profile: requesting a 4.x
+    // context without a profile mask may return a core context and flood the log with GL errors
+    if (nisEnabled)
+    {
+        osg::DisplaySettings* ds = osg::DisplaySettings::instance();
+        ds->setGLContextVersion("4.3");
+#if !defined(OSG_GL3_AVAILABLE)
+        ds->setGLContextProfileMask(0x00000002);  // GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB
+#endif
+    }
 #endif
 
     // Only pass real local files to osgDB::readNodeFiles(): it treats every non-option token as

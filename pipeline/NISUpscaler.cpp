@@ -42,6 +42,16 @@
 #define GL_TEXTURE_FETCH_BARRIER_BIT 0x00000008
 #endif
 
+// NIS relies on GL 4.3 compute shaders: desktop OpenGL contexts (core or compatibility profile)
+// provide them, while the GLES/WebGL builds of osgVerse do not. The actual GL version is checked
+// at runtime as well, so a desktop build without a 4.3+ context reports an error and does nothing
+// instead of silently producing a broken upscaling chain
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
+#  define VERSE_NIS_COMPUTE_SUPPORTED 0
+#else
+#  define VERSE_NIS_COMPUTE_SUPPORTED 1
+#endif
+
 namespace osgVerse
 {
     // ========================================================================
@@ -159,6 +169,12 @@ void main()
     bool NISUpscaler::initialize(int inputWidth, int inputHeight, int outputWidth, int outputHeight,
                                  float sharpness, HDRMode hdr, const std::string& computeGLSL)
     {
+#if !VERSE_NIS_COMPUTE_SUPPORTED
+        OSG_WARN << "[NISUpscaler] NIS needs GL 4.3+ compute shaders, which are not available in "
+                 << "GLES/WebGL builds; " << inputWidth << "x" << inputHeight << " -> "
+                 << outputWidth << "x" << outputHeight << " is not initialized" << std::endl;
+        return false;
+#else
         if (inputWidth <= 0 || inputHeight <= 0 || outputWidth <= 0 || outputHeight <= 0)
         {
             OSG_WARN << "[NISUpscaler] Invalid dimensions: input=" << inputWidth << "x" << inputHeight
@@ -197,6 +213,7 @@ void main()
                    << ": " << inputWidth << "x" << inputHeight
                    << " -> " << outputWidth << "x" << outputHeight << std::endl;
         _initialized = true; return true;
+#endif
     }
 
     bool NISUpscaler::updateConfig(float sharpness, HDRMode hdr)
@@ -531,6 +548,12 @@ void main()
         int outputWidth, int outputHeight, float sharpness, HDRMode hdr, Mode mode)
     {
         NISUpscalingView chain;
+#if !VERSE_NIS_COMPUTE_SUPPORTED
+        OSG_WARN << "[NISUpscaler] NIS upscaling needs GL 4.3+ compute shaders, which are not "
+                 << "available in GLES/WebGL builds; no upscaling chain is created and the view is "
+                 << "left unchanged" << std::endl;
+        return chain;
+#else
         if (view == NULL || view->getCamera() == NULL)
         {
             OSG_WARN << "[NISUpscaler] No view to build the upscaling chain" << std::endl;
@@ -636,5 +659,6 @@ void main()
                    << winH << ", " << chain.upscaler->getModeName() << ", sharpness "
                    << sharpness << ")" << std::endl;
         return chain;
+#endif
     }
 }

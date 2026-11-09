@@ -202,6 +202,11 @@ namespace osgVerse
          * osg::DisplaySettings::instance()->setGLContextVersion("4.3") before the window is
          * created. Returns an invalid chain (see NISUpscalingView::valid()) on failure, in which
          * case the view has not been modified.
+         *
+         * Note: compute shaders need a desktop OpenGL 4.3+ context, so the GLES/WebGL builds of
+         * osgVerse only emit an OSG_WARN and fail (callers should then render directly). A GL2
+         * build can still use it by creating a 4.3+ compatibility-profile context: request
+         * setGLContextVersion("4.3") and a non-zero setGLContextProfileMask(2) on DisplaySettings.
          */
         static NISUpscalingView createUpscalingView(osgViewer::View* view, osg::Node* scene,
             int inputWidth, int inputHeight, int outputWidth, int outputHeight,
