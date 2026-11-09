@@ -10,7 +10,10 @@
 #endif
 #include <osg/Texture2D>
 #include <osg/Geometry>
+#include <osg/BoundingBox>
 #include <set>
+#include <cstdint>
+#include <vector>
 
 namespace osgVerse
 {
@@ -187,6 +190,69 @@ protected:
     osg::ref_ptr<osg::Referenced> _fence;
     mutable unsigned int _lastFrame;
     bool _useFrameFence;
+};
+
+// =============================================================================
+// LCC2 .btree BVH format support
+// =============================================================================
+static constexpr uint32_t BTREE_NODE_SIZE = 32;
+
+/** Single BVH node (32 bytes, no dynamic allocation) */
+struct BtreeNode
+{
+    float minX = 0.0f, minY = 0.0f, minZ = 0.0f;
+    float maxX = 0.0f, maxY = 0.0f, maxZ = 0.0f;
+    uint32_t field6 = 0, field7 = 0;
+
+    bool isLeaf() const { return ((field7 >> 16) & 0xFFFF) == 0xFFFF; }
+    uint32_t triangleOffset() const { return field6; }  // leaf only
+    uint16_t triangleCount() const { return (uint16_t)(field7 & 0xFFFF); }  // leaf only
+    uint32_t rightChildByteOffset() const { return field6 * 4; }  // internal only
+    uint32_t splitAxis() const { return field7; }  // internal only (0=X, 1=Y, 2=Z)
+
+    osg::BoundingBoxf getBounds() const
+    { return osg::BoundingBoxf(osg::Vec3f(minX, minY, minZ), osg::Vec3f(maxX, maxY, maxZ)); }
+};
+
+/** Parse a single node from raw btree data at the given byte offset */
+inline BtreeNode parseBtreeNode(const uint8_t* data, uint32_t byteOffset)
+{
+    BtreeNode node;
+    const float* fp = (const float*)(data + byteOffset);
+    const uint32_t* u32p = (const uint32_t*)(data + byteOffset);
+    node.minX = fp[0]; node.minY = fp[1]; node.minZ = fp[2];
+    node.maxX = fp[3]; node.maxY = fp[4]; node.maxZ = fp[5];
+    node.field6 = u32p[6]; node.field7 = u32p[7];
+    return node;
+}
+
+/** BVH btree data attached as user data to LCC2 gaussian nodes */
+class BvhUserData : public osg::Object
+{
+public:
+    BvhUserData() : osg::Object() {}
+    BvhUserData(const BvhUserData& copy, const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY)
+    : osg::Object(copy, copyop), _rawData(copy._rawData) {}
+    META_Object(osgVerse, BvhUserData);
+
+    void setRawData(const std::vector<uint8_t>& data) { _rawData = data; }
+    const std::vector<uint8_t>& getRawData() const { return _rawData; }
+    bool valid() const { return !_rawData.empty() && (_rawData.size() % BTREE_NODE_SIZE == 0); }
+    uint32_t getNodeCount() const { return valid() ? (uint32_t)_rawData.size() / BTREE_NODE_SIZE : 0; }
+    uint32_t getDataSize() const { return (uint32_t)_rawData.size(); }
+
+    // Access a node at a given byte offset (no bounds check in release)
+    BtreeNode getNode(uint32_t byteOffset) const
+    {
+        if (!valid() || byteOffset + BTREE_NODE_SIZE > _rawData.size()) return BtreeNode();
+        return parseBtreeNode(_rawData.data(), byteOffset);
+    }
+
+    // Convenience: get root node (always at byte offset 0)
+    BtreeNode getRoot() const { return getNode(0); }
+
+protected:
+    std::vector<uint8_t> _rawData;
 };
 
 }

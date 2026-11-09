@@ -53,12 +53,20 @@ namespace osgVerse
     /** Node/drawable callback for compatiblity */
 #if OSG_VERSION_GREATER_THAN(3, 2, 3)
     class ComponentCallback : public osg::Callback
-#else
-    class ComponentCallback
-#endif
     {
     public:
-#if OSG_VERSION_GREATER_THAN(3, 2, 3)
+        ComponentCallback() : _dirty(false) {}
+        ComponentCallback(const ComponentCallback& c, const osg::CopyOp& op = osg::CopyOp::SHALLOW_COPY)
+        : osg::Callback(c, op), _dirty(false)
+        {
+            for (size_t i = 0; i < c._components.size(); ++i)
+            {
+                Component* comp = dynamic_cast<Component*>(c._components[i]->clone(op));
+                if (comp != NULL) { comp->_parent = this; _components.push_back(comp); }
+            }
+        }
+        META_Object(osgVerse, ComponentCallback);
+
         virtual bool run(osg::Object* object, osg::Object* data)
         {
             size_t index = 0;
@@ -68,6 +76,10 @@ namespace osgVerse
             runNestedComponents(object, data, index, false);
             return ok;
         }
+#else
+    class ComponentCallback
+    {
+    public:
 #endif
 
         void resortComponents()

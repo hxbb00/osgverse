@@ -36,11 +36,20 @@
     USE_SERIALIZER_WRAPPER(ScriptableProgram) \
     USE_SERIALIZER_WRAPPER(SymbolManager) \
     USE_SERIALIZER_WRAPPER(VolumetricCloud) \
+    USE_SERIALIZER_WRAPPER(Drawer2D) \
+    USE_SERIALIZER_WRAPPER(StringObject) \
+    USE_SERIALIZER_WRAPPER(UserCallback) \
+    USE_SERIALIZER_WRAPPER(CameraDrawCallback) \
+    USE_SERIALIZER_WRAPPER(CameraBaseDrawCallback) \
+    USE_SERIALIZER_WRAPPER(ComponentCallback) \
     USE_SERIALIZER_WRAPPER(PlayerAnimation) \
     USE_SERIALIZER_WRAPPER(TweenAnimation) \
     USE_SERIALIZER_WRAPPER(BlendShapeAnimation) \
     USE_SERIALIZER_WRAPPER(ParticleCloud) \
     USE_SERIALIZER_WRAPPER(ParticleSystemU3D) \
+    USE_SERIALIZER_WRAPPER(PhysicsEngine) \
+    USE_SERIALIZER_WRAPPER(PhysicsUpdateCallback) \
+    USE_SERIALIZER_WRAPPER(BvhUserData) \
     USE_SERIALIZER_WRAPPER(Feature) \
     USE_SERIALIZER_WRAPPER(FeatureCollection) \
     USE_SERIALIZER_WRAPPER(TileGeometryHandler) \

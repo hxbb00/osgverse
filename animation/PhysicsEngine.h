@@ -180,6 +180,7 @@ namespace osgVerse
         const std::map<std::string, osg::ref_ptr<CollisionShapeBase>>& getShapes() const { return _shapes; }
         const std::map<std::string, osg::ref_ptr<RigidBodyBase>>& getBodies() const { return _bodies; }
         const std::set<std::string>& getDisabledBodies() const { return _disabledBodies; }
+        void setDisabledBodies(const std::set<std::string>& names) { _disabledBodies = names; }
 
         // Collision and raycast functions
         struct QueryFilter

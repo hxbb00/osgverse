@@ -5,12 +5,16 @@ SET(LIBRARY_INCLUDE_FILES
 SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     modeling/GaussianGeometry.cpp modeling/DynamicPointLine.cpp modeling/DynamicPolyline.cpp
     modeling/DynamicPolygon.cpp modeling/IndirectCommandDrawElements.cpp
+    modeling/BvhUserData.cpp
     pipeline/CSGNode.cpp pipeline/LightDrawable.cpp pipeline/SkyBox.cpp
     pipeline/MultiEffectGeode.cpp pipeline/MultiEffectGroup.cpp
     pipeline/ScriptableProgram.cpp pipeline/SymbolManager.cpp pipeline/VolumetricCloud.cpp
     pipeline/LightCullCallback.cpp pipeline/ShaderStorageBufferObject.cpp
+    pipeline/Global.cpp pipeline/Drawer2D.cpp
+    pipeline/CameraBaseDrawCallback.cpp
     animation/PlayerAnimation.cpp animation/TweenAnimation.cpp animation/BlendShapeAnimation.cpp
     animation/ParticleCloud.cpp animation/ParticleSystemU3D.cpp
+    animation/PhysicsEngine.cpp animation/PhysicsUpdateCallback.cpp
     readerwriter/DracoGeometry.cpp readerwriter/Feature.cpp readerwriter/FeatureCollection.cpp
     readerwriter/TileGeometryHandler.cpp readerwriter/TileCallback.cpp
 )

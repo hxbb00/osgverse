@@ -47,6 +47,7 @@ namespace osgVerse
         Drawer2D();
         Drawer2D(const Drawer2D& img, const osg::CopyOp& op = osg::CopyOp::SHALLOW_COPY);
         Drawer2D(const osg::Image& img, const osg::CopyOp& op = osg::CopyOp::SHALLOW_COPY);
+        META_Object(osgVerse, Drawer2D);
 
         /** Initialize the image as usual, and start as a drawer here */
         bool start(bool useCurrentPixels, int helpThreads = 0);

@@ -84,22 +84,46 @@ static bool writeGaussianGeometry(osgDB::OutputStream& os, const GaussianGeometr
 
     GaussianGeometry& g = const_cast<GaussianGeometry&>(geom);
     int num = geom.getNumSplats();
+
+    // All arrays must stay alive until the whole function returns: osgDB::OutputStream
+    // identifies arrays by their pointer, and a freed temporary may be reused for the
+    // next getter result, making the stream reference the previous (wrong) array.
+    std::vector<osg::ref_ptr<osg::Array> > arrays;
+
     osg::ref_ptr<osg::Vec4Array> pos = new osg::Vec4Array(num);
     osg::Vec4* posData = g.getPosition4();
     if (posData != NULL) memcpy(&(*pos)[0], posData, num * sizeof(osg::Vec4));
+    arrays.push_back(pos.get());
     writeArray(os, "Position", pos.get());
-    writeArray(os, "Scale", g.getScale().get());
-    writeArray(os, "Rotation", g.getRotation().get());
-    writeArray(os, "Alpha", g.getAlpha().get());
+
+    osg::ref_ptr<osg::Vec3Array> scale = g.getScale();
+    osg::ref_ptr<osg::Vec4Array> rotation = g.getRotation();
+    osg::ref_ptr<osg::FloatArray> alpha = g.getAlpha();
+    if (rotation.valid())
+    {   // getRotation() returns (w, x, y, z) to fit GaussForge, while setScaleAndRotation()
+        // expects (x, y, z, w): reorder here so the serialized data stays symmetric
+        for (size_t i = 0; i < rotation->size(); ++i)
+        {
+            const osg::Vec4& q = (*rotation)[i];
+            (*rotation)[i] = osg::Vec4(q.y(), q.z(), q.w(), q.x());
+        }
+    }
+    arrays.push_back(scale.get()); arrays.push_back(rotation.get()); arrays.push_back(alpha.get());
+    writeArray(os, "Scale", scale.get());
+    writeArray(os, "Rotation", rotation.get());
+    writeArray(os, "Alpha", alpha.get());
 
     for (int i = 0; i < 4; ++i)
     {
-        std::string prefix = "ShRed" + std::to_string(i);
-        writeArray(os, prefix.c_str(), g.getShRed(i).get());
-        prefix = "ShGreen" + std::to_string(i);
-        writeArray(os, prefix.c_str(), g.getShGreen(i).get());
-        prefix = "ShBlue" + std::to_string(i);
-        writeArray(os, prefix.c_str(), g.getShBlue(i).get());
+        osg::ref_ptr<osg::Vec4Array> shRed = g.getShRed(i);
+        osg::ref_ptr<osg::Vec4Array> shGreen = g.getShGreen(i);
+        osg::ref_ptr<osg::Vec4Array> shBlue = g.getShBlue(i);
+        arrays.push_back(shRed.get());
+        arrays.push_back(shGreen.get());
+        arrays.push_back(shBlue.get());
+        writeArray(os, ("ShRed" + std::to_string(i)).c_str(), shRed.get());
+        writeArray(os, ("ShGreen" + std::to_string(i)).c_str(), shGreen.get());
+        writeArray(os, ("ShBlue" + std::to_string(i)).c_str(), shBlue.get());
     }
     return true;
 }

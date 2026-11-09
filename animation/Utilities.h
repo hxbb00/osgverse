@@ -5,6 +5,7 @@
 #include <osg/Texture2D>
 #include <osg/Shape>
 #include <osg/Geometry>
+#include <osg/Callback>
 #include <thread>
 #include <functional>
 #include "PhysicsEngine.h"
@@ -16,11 +17,21 @@ namespace osgVerse
     class PhysicsUpdateCallback : public osg::NodeCallback
     {
     public:
+        PhysicsUpdateCallback() {}
         PhysicsUpdateCallback(PhysicsEngine* e, const std::string& n);
+        PhysicsUpdateCallback(const PhysicsUpdateCallback& copy,
+                              const osg::CopyOp& copyop = osg::CopyOp::SHALLOW_COPY)
+        :   osg::NodeCallback(copy, copyop), _engine(copy._engine), _bodyName(copy._bodyName) {}
+        META_Object(osgVerse, PhysicsUpdateCallback);
         virtual void operator()(osg::Node* node, osg::NodeVisitor* nv);
 
+        void setEngine(PhysicsEngine* e) { _engine = e; }
+        const PhysicsEngine* getEngine() const { return _engine.get(); }
+        void setBodyName(const std::string& n) { _bodyName = n; }
+        const std::string& getBodyName() const { return _bodyName; }
+
     protected:
-        osg::observer_ptr<PhysicsEngine> _engine;
+        osg::ref_ptr<PhysicsEngine> _engine;  // also keeps a deserialized engine alive
         std::string _bodyName;
     };
 
