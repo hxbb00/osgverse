@@ -67,15 +67,25 @@ namespace
     void parallel_for(Index first, Index last, Func func, size_t num_threads = 0)
     {
         if (first >= last) return;
-        if (num_threads == 0) num_threads = std::thread::hardware_concurrency();
-        const size_t n = static_cast<size_t>(last - first);
-        const size_t chunk_size = (n + num_threads - 1) / num_threads;
 
-        ThreadPool pool(num_threads);
+        // osgVerse fix: the original implementation waited for "num_threads" tasks, but the
+        // loop below only enqueues ceil(n / chunk_size) tasks, which is smaller than
+        // num_threads whenever n is not a multiple of it (e.g. 12 items on a 16-thread CPU).
+        // It therefore deadlocked for almost all small/medium meshes. Clamp the thread count
+        // to the item count and wait for the number of tasks actually enqueued.
+        const size_t n = static_cast<size_t>(last - first);
+        if (num_threads == 0) num_threads = std::thread::hardware_concurrency();
+        if (num_threads == 0) num_threads = 1;
+        if (num_threads > n) num_threads = n;
+
+        const size_t chunk_size = (n + num_threads - 1) / num_threads;
+        const size_t num_tasks = (n + chunk_size - 1) / chunk_size;
+
+        ThreadPool pool(num_tasks);
         std::atomic<size_t> completed{ 0 };
         std::mutex mutex;
         std::condition_variable cv;
-        for (size_t t = 0; t < num_threads; ++t)
+        for (size_t t = 0; t < num_tasks; ++t)
         {
             Index chunk_begin = first + static_cast<Index>(t * chunk_size);
             Index chunk_end = std::min(chunk_begin + static_cast<Index>(chunk_size), last);
@@ -83,7 +93,7 @@ namespace
 
             pool.enqueue([=, &completed, &mutex, &cv]() {
                 for (Index i = chunk_begin; i < chunk_end; ++i) func(i);
-                if (++completed == num_threads)
+                if (++completed == num_tasks)
                 {
                     std::lock_guard<std::mutex> lock(mutex);
                     cv.notify_one();
@@ -92,7 +102,7 @@ namespace
         }
 
         std::unique_lock<std::mutex> lock(mutex);
-        cv.wait(lock, [&]() { return completed == num_threads; });
+        cv.wait(lock, [&]() { return completed == num_tasks; });
     }
 
     class TaskGroup

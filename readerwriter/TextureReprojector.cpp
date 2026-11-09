@@ -294,11 +294,16 @@ bool TextureReprojector::simplifyMesh(std::vector<osg::Vec3>& vertices,
     return true;
 }
 
-osg::Geometry* TextureReprojector::reproject(osg::Node* node)
+void TextureReprojector::resetState()
 {
     _result = TextureMapping::MeshTextureMappingResult();
     _images.clear();
     _texture = NULL;
+}
+
+osg::Geometry* TextureReprojector::reproject(osg::Node* node)
+{
+    resetState();
     if (node == NULL) return NULL;
 
     // 1) Collect the model as a world-space triangle soup, and simplify it if required.
@@ -308,8 +313,64 @@ osg::Geometry* TextureReprojector::reproject(osg::Node* node)
     std::vector<unsigned int> triangles;
     if (!collectMesh(node, vertices, triangles)) return NULL;
     simplifyMesh(vertices, triangles);
+    return reprojectInternal(node, vertices, triangles);
+}
 
-    // 2) Capture the ORIGINAL model from cameras orbiting its bounding sphere
+osg::Geometry* TextureReprojector::reproject(osg::Node* source, osg::Node* target)
+{
+    resetState();
+    if (source == NULL || target == NULL) return NULL;
+
+    std::vector<osg::Vec3> vertices;
+    std::vector<unsigned int> triangles;
+    if (!collectMesh(target, vertices, triangles)) return NULL;
+    simplifyMesh(vertices, triangles);
+    return reprojectInternal(source, vertices, triangles);
+}
+
+osg::Geometry* TextureReprojector::reproject(osg::Node* source, osg::Geometry* target)
+{
+    resetState();
+    if (source == NULL || target == NULL) return NULL;
+
+    std::vector<osg::Vec3> vertices;
+    std::vector<unsigned int> triangles;
+    if (!collectGeometry(target, vertices, triangles)) return NULL;
+    simplifyMesh(vertices, triangles);
+    return reprojectInternal(source, vertices, triangles);
+}
+
+bool TextureReprojector::collectGeometry(osg::Geometry* geom, std::vector<osg::Vec3>& vertices,
+                                         std::vector<unsigned int>& triangles)
+{
+    if (geom == NULL)
+    {
+        OSG_WARN << "[TextureReprojector] The target geometry is null" << std::endl;
+        return false;
+    }
+
+    MeshCollector collector;
+    collector.setWeldingVertices(true);
+    collector.setOnlyVertexAndIndices(true);
+    geom->accept(collector);
+
+    vertices = collector.getVertices();
+    triangles = collector.getTriangles();
+    if (vertices.empty() || triangles.empty())
+    {
+        OSG_WARN << "[TextureReprojector] The target geometry has no triangle data" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+osg::Geometry* TextureReprojector::reprojectInternal(osg::Node* captureNode,
+                                                     std::vector<osg::Vec3>& vertices,
+                                                     std::vector<unsigned int>& triangles)
+{
+    if (captureNode == NULL || vertices.empty() || triangles.empty()) return NULL;
+
+    // 2) Capture the ORIGINAL model from cameras orbiting the target's bounding sphere
     osg::BoundingBox bounds;
     for (size_t i = 0; i < vertices.size(); ++i) bounds.expandBy(vertices[i]);
     float radius = bounds.radius();
@@ -320,12 +381,12 @@ osg::Geometry* TextureReprojector::reproject(osg::Node* node)
     CaptureModelVisitor captureVisitor;
     if (_stripShaderPrograms)
     {
-        node->accept(captureVisitor);
+        captureNode->accept(captureVisitor);
         OSG_NOTICE << "[TextureReprojector] Removed " << captureVisitor._saved.size()
                    << " shader program(s) and prepared " << captureVisitor._colorGeometries.size()
                    << " uncolored geometry(ies) for capturing" << std::endl;
     }
-    if (!renderer.setup(node, _width, _height))
+    if (!renderer.setup(captureNode, _width, _height))
     { captureVisitor.restore(); return NULL; }
 
     float aspect = (float)_width / (float)_height;

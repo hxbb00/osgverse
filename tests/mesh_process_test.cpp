@@ -1,7 +1,9 @@
 #include <osg/io_utils>
 #include <osg/PolygonMode>
+#include <osg/LineWidth>
 #include <osg/MatrixTransform>
 #include <osg/Geometry>
+#include <osg/ShapeDrawable>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 #include <osgGA/TrackballManipulator>
@@ -10,10 +12,12 @@
 #include <osgViewer/Viewer>
 #include <osgViewer/ViewerEventHandlers>
 #include <modeling/DynamicGeometry.h>
+#include <modeling/MeshBoolean.h>
 #include <modeling/MeshTopology.h>
 #include <modeling/GeometryMapper.h>
 #include <modeling/Utilities.h>
 #include <modeling/Math.h>
+#include <pipeline/Pipeline.h>
 #include <pipeline/Utilities.h>
 #include <iostream>
 #include <sstream>
@@ -25,6 +29,96 @@
 #include <backward.hpp>  // for better debug info
 namespace backward { backward::SignalHandling sh; }
 #endif
+
+static osg::Program* createUnlitProgram()
+{
+    const char* vsCode = {
+        "VERSE_VS_OUT vec4 color;\n"
+        "void main() {\n"
+        "    color = osg_Color;\n"
+        "    gl_Position = VERSE_MATRIX_MVP * osg_Vertex;\n"
+        "}\n"
+    };
+    const char* fsCode = {
+        "VERSE_FS_IN vec4 color;\n"
+        "VERSE_FS_OUT vec4 fragData;\n"
+        "void main() {\n"
+        "    fragData = color;\n"
+        "    VERSE_FS_FINAL(fragData);\n"
+        "}\n"
+    };
+
+    int cxtVer = 0, glslVer = 0;
+#if defined(OSG_GL3_AVAILABLE)
+    cxtVer = 330; glslVer = 330;  // use core-profile attribute/uniform names
+#elif defined(OSG_GLES3_AVAILABLE)
+    cxtVer = 300; glslVer = 300;
+#else
+    osgVerse::guessOpenGLVersions(cxtVer, glslVer);
+#endif
+    osg::ref_ptr<osg::Shader> vs = new osg::Shader(osg::Shader::VERTEX, vsCode);
+    osg::ref_ptr<osg::Shader> fs = new osg::Shader(osg::Shader::FRAGMENT, fsCode);
+    osgVerse::Pipeline::createShaderDefinitions(vs.get(), cxtVer, glslVer);
+    osgVerse::Pipeline::createShaderDefinitions(fs.get(), cxtVer, glslVer);
+
+    osg::ref_ptr<osg::Program> program = new osg::Program;
+    program->addShader(vs.get()); program->addShader(fs.get());
+    return program.release();
+}
+
+static osg::Node* createBooleanDemo(osgVerse::MeshBoolean::Operation op)
+{
+    // A large box with a sphere subtracted from its top face; the resulting crater is much
+    // more visible than a small box/box difference. Tessellation hints follow csg_node_test:
+    // only positions are needed by the boolean kernel.
+    osg::ref_ptr<osg::TessellationHints> hints = new osg::TessellationHints;
+    hints->setDetailRatio(1.0f);
+    hints->setCreateNormals(false);
+    hints->setCreateTextureCoords(false);
+
+    osg::ref_ptr<osg::Geode> geodeA = new osg::Geode;
+    geodeA->addDrawable(new osg::ShapeDrawable(
+        new osg::Box(osg::Vec3(0.0f, 0.0f, 0.0f), 8.0f, 8.0f, 6.0f), hints.get()));
+    osg::ref_ptr<osg::Geode> geodeB = new osg::Geode;
+    geodeB->addDrawable(new osg::ShapeDrawable(
+        new osg::Sphere(osg::Vec3(0.0f, 0.0f, 4.5f), 3.0f), hints.get()));
+
+    osgVerse::MeshBoolean boolean(op);
+    osg::ref_ptr<osg::Geometry> result = boolean.compute(geodeA.get(), geodeB.get());
+    if (!result.valid())
+    {
+        OSG_WARN << "[MeshBoolean] Demo failed: " << boolean.getLastError() << std::endl;
+        return NULL;
+    }
+
+    // Give the result a visible color; MeshBoolean outputs white so that pipelines which
+    // multiply texture by vertex color do not render it black
+    osg::Vec4Array* colors = dynamic_cast<osg::Vec4Array*>(result->getColorArray());
+    if (colors != NULL)
+        for (osg::Vec4Array::iterator it = colors->begin(); it != colors->end(); ++it)
+            *it = osg::Vec4(1.0f, 0.35f, 0.1f, 1.0f);
+
+    // Add a dark wireframe overlay sharing the same arrays, so the spherical cut and the new
+    // intersection edges are readable even with flat/unlit shading
+    osg::ref_ptr<osg::Geometry> wire = new osg::Geometry(*result, osg::CopyOp::SHALLOW_COPY);
+    wire->setStateSet(new osg::StateSet);
+    osg::ref_ptr<osg::Vec4Array> wireColors = new osg::Vec4Array;
+    wireColors->assign(result->getVertexArray()->getNumElements(), osg::Vec4(0.05f, 0.05f, 0.05f, 1.0f));
+    wire->setColorArray(wireColors.get(), osg::Array::BIND_PER_VERTEX);
+    osg::StateSet* wireSS = wire->getOrCreateStateSet();
+    wireSS->setAttributeAndModes(new osg::PolygonMode(osg::PolygonMode::FRONT_AND_BACK,
+                                                      osg::PolygonMode::LINE));
+    wireSS->setAttribute(new osg::LineWidth(1.5f));
+
+    std::cout << "MeshBoolean: " << result->getVertexArray()->getNumElements() << "V, "
+              << result->getNumPrimitiveSets() << " primitive set(s)" << std::endl;
+
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+    geode->addDrawable(result.get());
+    geode->addDrawable(wire.get());
+    geode->getOrCreateStateSet()->setAttributeAndModes(createUnlitProgram());
+    return geode.release();
+}
 
 int main(int argc, char** argv)
 {
@@ -208,6 +302,18 @@ int main(int argc, char** argv)
         root->addChild(mt1.get());
     }
 #endif
+
+    // Test mesh boolean (InteractiveMeshBool): large box - sphere
+    {
+        osg::ref_ptr<osg::Node> booleanNode = createBooleanDemo(osgVerse::MeshBoolean::Difference);
+        if (booleanNode.valid())
+        {
+            osg::ref_ptr<osg::MatrixTransform> mt2 = new osg::MatrixTransform;
+            mt2->setMatrix(osg::Matrix::translate(-20.0f, 0.0f, 0.0f));
+            mt2->addChild(booleanNode.get());
+            root->addChild(mt2.get());
+        }
+    }
 
     /*osg::Image* image = new osg::Image;
     image->allocateImage(1024, 512, 1, GL_RGBA, GL_UNSIGNED_BYTE);

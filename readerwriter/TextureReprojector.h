@@ -85,6 +85,14 @@ namespace osgVerse
             the output vertices. */
         osg::Geometry* reproject(osg::Node* node);
 
+        /** Capture orbit views of `source` (which may be a group containing several models),
+            and bake them onto the geometry of `target`. This is useful after a boolean
+            operation: the source keeps the original textured operands, while `target` is the
+            new boolean result whose UVs no longer match the source textures. The target node
+            or geometry must contain world-space triangles. */
+        osg::Geometry* reproject(osg::Node* source, osg::Node* target);
+        osg::Geometry* reproject(osg::Node* source, osg::Geometry* target);
+
         /** Texture atlas created by the last reproject() call */
         osg::Texture2D* getTexture() const { return _texture.get(); }
 
@@ -98,8 +106,14 @@ namespace osgVerse
         unsigned int getNumViews() const { return (unsigned int)_images.size(); }
 
     protected:
+        void resetState();
         bool collectMesh(osg::Node* node, std::vector<osg::Vec3>& vertices,
                          std::vector<unsigned int>& triangles);
+        bool collectGeometry(osg::Geometry* geom, std::vector<osg::Vec3>& vertices,
+                             std::vector<unsigned int>& triangles);
+        osg::Geometry* reprojectInternal(osg::Node* captureNode,
+                                         std::vector<osg::Vec3>& vertices,
+                                         std::vector<unsigned int>& triangles);
         bool simplifyMesh(std::vector<osg::Vec3>& vertices, std::vector<unsigned int>& triangles);
         osg::Geometry* createGeometry(const std::vector<osg::Vec3>& vertices,
                                       const std::vector<unsigned int>& triangles);

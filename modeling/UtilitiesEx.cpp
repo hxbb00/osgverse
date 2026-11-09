@@ -14,7 +14,6 @@
 #ifdef VERSE_WITH_CINOLIB
 #   include <cinolib/meshes/trimesh.h>
 #   include <cinolib/find_intersections.h>
-#   include "3rdparty/InteractiveMeshBool/booleans.h"
 #endif
 #include "3rdparty/tinyspline/tinyspline.h"
 #include "MeshTopology.h"

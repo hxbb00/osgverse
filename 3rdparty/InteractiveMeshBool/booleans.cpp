@@ -47,9 +47,13 @@ inline void customBooleanPipeline(std::vector<genericPoint*>& arr_verts, std::ve
                                   const BoolOp &op, std::vector<double> &bool_coords, std::vector<uint> &bool_tris,
                                   std::vector< std::bitset<NBIT>> &bool_labels)
 {
-    FastTrimesh tm(arr_verts, arr_out_tris, true);
+    // osgVerse: run the kernel single-threaded. The upstream parallel path shares the point
+    // arena and auxiliary structures between worker threads without full synchronisation,
+    // which makes it crash on moderately complex meshes. MeshBoolean is normally called on
+    // one model at a time, so determinism is more valuable than in-kernel threading here.
+    FastTrimesh tm(arr_verts, arr_out_tris, false);
 
-    computeAllPatches(tm, labels, patches, true);
+    computeAllPatches(tm, labels, patches, false);
 
     // the informations about duplicated triangles (removed in arrangements) are restored in the original structures
     addDuplicateTrisInfoInStructures(dupl_triangles, arr_in_tris, arr_in_labels, octree);
@@ -97,7 +101,7 @@ inline void booleanPipeline(const std::vector<double> &in_coords, const std::vec
     cinolib::Octree octree; // built with arr_in_tris and arr_in_labels
 
     customArrangementPipeline(in_coords, in_tris, in_labels, arr_in_tris, arr_in_labels, arena, arr_verts,
-                              arr_out_tris, labels, octree, dupl_triangles, true);
+                              arr_out_tris, labels, octree, dupl_triangles, false);
 
     customBooleanPipeline(arr_verts, arr_in_tris, arr_out_tris, arr_in_labels, dupl_triangles, labels,
                           patches, octree, op, bool_coords, bool_tris, bool_labels);

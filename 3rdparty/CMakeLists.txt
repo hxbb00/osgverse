@@ -525,17 +525,26 @@ SET(QUADRIFLOW_SOURCE_FILES
     quadriflow/manifold/Parser.h quadriflow/manifold/Parser.cc
 )
 
+# InteractiveMeshBool is a header-style library: its .cpp files must all be included in one
+# translation unit (see InteractiveMeshBool.cpp). Do not add the individual .cpp files here.
 SET(INTERACTIVEMESHBOOL_SOURCE_FILES
-    InteractiveMeshBool/aux_structure.cpp InteractiveMeshBool/aux_structure.h
-    InteractiveMeshBool/fast_trimesh.cpp InteractiveMeshBool/fast_trimesh.h
-    InteractiveMeshBool/intersection_classification.cpp InteractiveMeshBool/intersection_classification.h
-    InteractiveMeshBool/processing.cpp InteractiveMeshBool/processing.h
-    InteractiveMeshBool/solve_intersections.cpp InteractiveMeshBool/solve_intersections.h
-    InteractiveMeshBool/triangle_soup.cpp InteractiveMeshBool/triangle_soup.h
-    InteractiveMeshBool/triangulation.cpp InteractiveMeshBool/triangulation.h
-    InteractiveMeshBool/booleans.cpp InteractiveMeshBool/booleans.h
-    InteractiveMeshBool/foctree.cpp InteractiveMeshBool/foctree.h
+    InteractiveMeshBool/InteractiveMeshBool.cpp InteractiveMeshBool/InteractiveMeshBool.h
+    InteractiveMeshBool/aux_structure.h InteractiveMeshBool/fast_trimesh.h
+    InteractiveMeshBool/intersection_classification.h InteractiveMeshBool/processing.h
+    InteractiveMeshBool/solve_intersections.h InteractiveMeshBool/triangle_soup.h
+    InteractiveMeshBool/triangulation.h InteractiveMeshBool/booleans.h
+    InteractiveMeshBool/foctree.h
 )
+# The exact geometric predicates in InteractiveMeshBool depend on non-contracted
+# floating-point arithmetic. Building it with -mfma (part of VERSE_SIMD_FEATURES on x86)
+# makes it crash on ordinary box/box booleans, so disable FP contraction for this file.
+IF(MSVC)
+    SET_SOURCE_FILES_PROPERTIES(InteractiveMeshBool/InteractiveMeshBool.cpp
+                                PROPERTIES COMPILE_FLAGS "/fp:strict")
+ELSE()
+    SET_SOURCE_FILES_PROPERTIES(InteractiveMeshBool/InteractiveMeshBool.cpp
+                                PROPERTIES COMPILE_FLAGS "-ffp-contract=off -fno-fast-math")
+ENDIF()
 
 SET(DEPTHANYTHING3_SOURCE_FILES
     depthanything3/model_loader.cpp depthanything3/backend.cpp depthanything3/image_io.cpp
