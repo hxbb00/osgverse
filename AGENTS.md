@@ -25,7 +25,6 @@
 - **Qt5/Qt6** (Optional): Qt-based applications
 - **FFmpeg** (Optional): Video decoding/encoding
 - **Draco** (Optional): Mesh compression
-- **libIGL** (Optional): Geometry processing
 - **ZLMediaKit** (Optional): Media streaming
 
 ### Embedded 3rdparty Libraries (3rdparty/)
@@ -146,7 +145,7 @@ osgVerse/
 | Module | Dependencies | Optional External |
 |--------|-------------|-------------------|
 | osgVerseDependency | - | - |
-| osgVerseModeling | Dependency | libIGL |
+| osgVerseModeling | Dependency | cinolib |
 | osgVersePipeline | Dependency, Modeling | CUDA |
 | osgVerseScript | Dependency, Pipeline | - |
 | osgVerseAI | Dependency, Modeling | - |

@@ -9,7 +9,6 @@
 | GGML             | Depended | > 0.13    | AI                 | MIT          | https://github.com/ggml-org/ggml |
 | libDraco         | Depended | > 1.5     | ReaderWriter       | Apache2      | https://github.com/google/draco |
 | libCEF           | Depended | > 127.3   | Animation          | BSD          | https://github.com/chromiumembedded/cef |
-| libIGL           | Depended | > 2.5     | Modeling           | MPL2         | https://github.com/libigl/libigl |
 | libosmium        | Depended | > 2.11    | verse_osm          | Boost        | https://github.com/osmcode/libosmium |
 | libWebP          | Depended | > 1.2     | verse_webp         | BSD3         | https://github.com/webmproject/libwebp |
 | mimalloc         | Depended | > 2.17    | All                | MIT          | https://github.com/microsoft/mimalloc |
@@ -87,7 +86,6 @@
 | polylabel        | Embedded | 2.0.1     | Modeling           | ISC          | https://github.com/mapbox/polylabel |
 | protozero        | EMbedded | 1.7.1     | verse_mvt          | BSD2         | https://github.com/mapbox/protozero |
 | pybind11         | Embedded | 2.13.6    | Script             | BSD          | https://github.com/pybind/pybind11 |
-| QuadriFlow       | Embedded | 1.0       | Modeling (libIGL)  | BSD3 (+)     | https://github.com/hjwdzh/QuadriFlow |
 | rapidjson        | Embedded |           | -                  | MIT (+)      | https://github.com/Tencent/rapidjson |
 | rapidxml         | Embedded |           | -                  | Boost / MIT  | https://rapidxml.sourceforge.net/ |
 | rasterizer       | Embedded |           | Pipeline           | -            | https://github.com/rawrunprotected/rasterizer |
@@ -130,7 +128,6 @@
 | GGML             | Manually Compile from source and enable CUDA/MUSA |
 | libDraco         | (Win) vcpkg install draco (Linux) apt-get install libdraco-dev |
 | libCEF           | Download from https://cef-builds.spotifycdn.com/index.html (for C++14, select version 90.x; for C++17, select 110.x) |
-| libIGL           | Headers only. Download from https://github.com/libigl/libigl/releases |
 | libosmium        | (Linux) apt-get install libosmium2-dev |
 | libwebp          | (Win) vcpkg install libwebp (Linux) apt-get install libwebp-dev |
 | mimalloc         | (Linux) apt-get install libmimalloc-dev |

@@ -516,15 +516,6 @@ SET(OPENCHISEL_SOURCE_FILES
     open_chisel/Chisel.cpp open_chisel/Chisel.h
 )
 
-SET(QUADRIFLOW_SOURCE_FILES
-    quadriflow/manifold/types.h quadriflow/manifold/GridIndex.h
-    quadriflow/manifold/Intersection.h quadriflow/manifold/Intersection.cc
-    quadriflow/manifold/Manifold.h quadriflow/manifold/Manifold.cc
-    quadriflow/manifold/MeshProjector.h quadriflow/manifold/MeshProjector.cc
-    quadriflow/manifold/Octree.h quadriflow/manifold/Octree.cc
-    quadriflow/manifold/Parser.h quadriflow/manifold/Parser.cc
-)
-
 # InteractiveMeshBool is a header-style library: its .cpp files must all be included in one
 # translation unit (see InteractiveMeshBool.cpp). Do not add the individual .cpp files here.
 SET(INTERACTIVEMESHBOOL_SOURCE_FILES
@@ -604,7 +595,6 @@ SOURCE_GROUP("OpenChisel Files" FILES ${OPENCHISEL_SOURCE_FILES})
 SOURCE_GROUP("OzzAnimation Files" FILES ${OZZ_SOURCE_FILES})
 SOURCE_GROUP("PinYin-IME Files" FILES ${PINYIN_SOURCE_FILES})
 SOURCE_GROUP("PMP Files" FILES ${PMP_MCUT_SOURCE_FILES})
-SOURCE_GROUP("QuadriFlow Files" FILES ${QUADRIFLOW_SOURCE_FILES})
 SOURCE_GROUP("Rasterizer Files" FILES ${RASTERIZER_SOURCE_FILES})
 SOURCE_GROUP("RecastNavigation Files" FILES ${RECAST_SOURCE_FILES})
 SOURCE_GROUP("RLottie Files" FILES ${RLOTTIE_SOURCE_FILES})
@@ -645,11 +635,6 @@ ENDIF()
 IF(VERSE_SUPPORT_CPP17)
     SET(LIBRARY_FILES ${LIBRARY_FILES} ${BYTETRACK_SOURCE_FILES} ${MLT_SOURCE_FILES})
 ENDIF(VERSE_SUPPORT_CPP17)
-
-IF(LIBIGL_FOUND)
-    SET(LIBRARY_FILES ${LIBRARY_FILES} ${QUADRIFLOW_SOURCE_FILES})
-    INCLUDE_DIRECTORIES(${LIBIGL_INCLUDE_DIR})
-ENDIF(LIBIGL_FOUND)
 
 IF(CINOLIB_FOUND)
     SET(LIBRARY_FILES ${LIBRARY_FILES} ${INTERACTIVEMESHBOOL_SOURCE_FILES})
@@ -772,7 +757,7 @@ ELSEIF(VERSE_USE_EXTERNAL_GLES3)
 ENDIF()
 
 INCLUDE_DIRECTORIES(libhv libhv/all libhv/mbedtls imgui flatgeobuf stb ozz leveldb ktx ktx/basisu/zstd ktx/dfdutils
-                    metis/gklib quadriflow recastnavigation/Detour rlottie rlottie/vector nanobind smplxpp spz
+                    metis/gklib recastnavigation/Detour rlottie rlottie/vector nanobind smplxpp spz
                     Discregrid GaussForge "${CMAKE_BINARY_DIR}/3rdparty/leveldb" ${THIRDPARTY_INCLUDE_DIRS})
 NEW_LIBRARY(${LIB_NAME} STATIC)
 TARGET_LINK_LIBRARIES(${LIB_NAME} ${THIRDPARTY_LIBRARIES})

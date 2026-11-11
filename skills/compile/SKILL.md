@@ -56,7 +56,6 @@ osgVerse可以使用的依赖库如下列表所示，除了OpenSceneGraph，其�
 - FFmpeg: Linux端执行`apt-get install libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev libswscale-dev`
 - libDraco: Linux端执行`apt-get install libdraco-dev`
 - libCEF: 可以从网站 https://cef-builds.spotifycdn.com/index.html 下载预编译库
-- libIGL: 可以从网站 https://github.com/libigl/libigl/releases 下载预编译库
 - libosmium: Linux端执行`apt-get install libosmium2-dev`
 - libwebp: Linux端执行`apt-get install libwebp-dev`
 - mimalloc: Linux端执行`apt-get install libmimalloc-dev`

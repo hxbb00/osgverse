@@ -611,7 +611,6 @@ FIND_DEPENDENCE(DRACO "draco/draco_features.h" "libdraco.so;libdraco.a;draco.lib
 FIND_DEPENDENCE(FFMPEG "libavcodec/avcodec.h" "libavcodec.so;avcodec.lib" "")
 FIND_DEPENDENCE(GGML "ggml.h" "libggml.so;ggml.lib" "")
 FIND_DEPENDENCE(LIBCEF "include/cef_browser.h" "libcef.so;libcef.a;libcef.lib" "libcef")
-FIND_DEPENDENCE(LIBIGL "igl/igl_inline.h" "" "")
 FIND_DEPENDENCE(MIMALLOC "mimalloc.h" "libmimalloc.so;mimalloc.lib" "mimalloc")
 FIND_DEPENDENCE_EX(TIFF "tiff.h" "libtiff.so;libtiff.a;libtiff.lib" "" TRUE)
 IF(NOT USE_WASM_OPTIONS)
