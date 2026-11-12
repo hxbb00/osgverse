@@ -1,5 +1,6 @@
 #include <osg/io_utils>
 #include <osg/GL>
+#include <osg/Depth>
 #include <osg/MatrixTransform>
 #include <osgDB/ReadFile>
 #include <osgDB/FileNameUtils>
@@ -11,6 +12,7 @@
 #include <osgText/Text>
 
 #include <pipeline/Global.h>
+#include <pipeline/NodeSelector.h>
 #include <pipeline/PerfProfiler.h>
 #include <pipeline/PerfAnalyzer.h>
 #include <pipeline/Utilities.h>
@@ -37,16 +39,21 @@ USE_VERSE_PLUGINS()
 USE_GRAPICSWINDOW_IMPLEMENTATION(SDL)
 USE_GRAPICSWINDOW_IMPLEMENTATION(GLFW)
 
-// perf_profile_test: load one or more models from the command line and report, for the model
-// currently selected with the left/right arrow keys, its GPU cost, submitted work and resource
-// footprint, together with the problems PerfAnalyzer derives from those numbers.
+// perf_profile_test: load one or more models (or every model inside one or more directories) and
+// report, for the model currently selected with the keyboard, its GPU cost, submitted work and
+// resource footprint, together with the problems PerfAnalyzer derives from those numbers.
 //
-//   osgVerse_Test_Perf_Profile modelA.osgb [modelB.osgb ...] [--overlap] [--no-hud] [--log]
+//   osgVerse_Test_Perf_Profile <model|directory> [model|directory ...]
+//                              [--max N] [--no-hud] [--log]
 //
-// --overlap stacks all models at the same place instead of laying them out in a row, which is
-// useful to compare how several assets behave when they are rendered together.
+// The models keep their own positions in the scene: nothing is moved or normalized, they are only
+// wrapped by an identity transform for naming and profiling. --max limits how many models are
+// loaded from the directories (0 = all).
+// The selected model is highlighted with a yellow bounding box (osgVerse::NodeSelector).
 // --no-hud profiles without the canvas (to check the cost of the profiler itself) and --log
 // echoes the same report to stdout.
+// The HUD only shows a window of the model list: left/right/up/down switch the selected model,
+// PgUp/PgDn jump 10 entries and Home/End select the first/last one.
 
 namespace
 {
@@ -55,6 +62,8 @@ namespace
         std::string file, name;
         osg::observer_ptr<osg::MatrixTransform> root;
     };
+
+    enum { MAX_LIST_ROWS = 8 };   // rows of the model list shown on the HUD
 
     std::string formatCount(double v)
     {
@@ -71,23 +80,97 @@ namespace
         char buf[64]; sprintf(buf, "%.1f", double(bytes) / (1024.0 * 1024.0)); return std::string(buf);
     }
 
+    // Formats supported by the OSG / osgVerse readers: a directory argument is expanded to all
+    // its first-level entries with one of these extensions (sub-directories are not visited)
+    bool isModelFile(const std::string& file)
+    {
+        static const char* s_extensions[] = { "osgb", "osg", "osgt", "osgx", "ive", "gltf", "glb",
+                                              "b3dm", "fbx", "obj", "ply", "dae", "stl",
+                                              "verse_gltf", "verse_tiles", "verse_3dgs" };
+        std::string ext = osgDB::getLowerCaseFileExtension(file);
+        for (size_t i = 0; i < sizeof(s_extensions) / sizeof(s_extensions[0]); ++i)
+            if (ext == s_extensions[i]) return true;
+        return false;
+    }
+
+    void collectModels(const std::string& path, std::vector<std::string>& out)
+    {
+        if (!osgDB::fileExists(path)) return;
+        if (osgDB::fileType(path) != osgDB::DIRECTORY)
+        {
+            if (isModelFile(path)) out.push_back(path);
+            return;
+        }
+
+        osgDB::DirectoryContents files = osgDB::getSortedDirectoryContents(path);
+        for (size_t i = 0; i < files.size(); ++i)
+        {
+            if (files[i] == "." || files[i] == "..") continue;
+            std::string full = osgDB::concatPaths(path, files[i]);
+            if (osgDB::fileType(full) != osgDB::REGULAR_FILE) continue;
+            if (isModelFile(full)) out.push_back(full);
+        }
+    }
+
+    std::string shortenName(const std::string& name, size_t maxChars = 22)
+    {
+        if (name.size() <= maxChars) return name;
+        return name.substr(0, maxChars - 3) + "...";
+    }
+
+    // Chinese label of a PerfAnalyzer finding, so that the HUD reads naturally for local users
+    std::string findingLabel(const std::string& code)
+    {
+        if (code == "GEOMETRY_PRESSURE") return "几何/顶点压力";
+        if (code == "VERTEX_DUPLICATION") return "顶点重复（索引复用不足）";
+        if (code == "TINY_TRIANGLES") return "三角形过小";
+        if (code == "FRAGMENT_PRESSURE") return "片元着色/纹理压力";
+        if (code == "OVERDRAW") return "Overdraw 过高";
+        if (code == "WASTED_SHADING") return "无效片元（深度剔除/丢弃）";
+        if (code == "FILL_RATE") return "填充率/带宽受限";
+        if (code == "FIXED_COST") return "固定开销为主（计数低但耗时高）";
+        if (code == "DRAW_OVERHEAD") return "每次绘制开销偏高";
+        if (code == "BATCHING") return "批处理不足";
+        if (code == "SPIKE") return "耗时相对历史突增";
+        if (code == "RESOURCE_PRESSURE") return "资源占用偏高";
+        if (code == "FULLY_OCCLUDED") return "完全被遮挡";
+        return code;
+    }
+
     class PerfHudHandler : public osgGA::GUIEventHandler
     {
     public:
         PerfHudHandler(osgVerse::HeadUpDisplayCanvas* hud, osgVerse::PerfProfiler* perf,
-                       std::vector<ModelInfo>* models, int* selected, bool logText)
+                       std::vector<ModelInfo>* models, int* selected, bool logText,
+                       osgVerse::NodeSelector* selector)
             : _hud(hud), _perf(perf), _models(models), _selected(selected), _logText(logText),
-              _fps(0.0), _frameMs(0.0), _lastTime(0.0), _lastUpdate(0.0), _firstFrame(true) {}
+              _selector(selector), _lastSelected(-1), _fps(0.0), _frameMs(0.0), _lastTime(0.0),
+              _lastUpdate(0.0), _firstFrame(true) {}
 
         virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter&)
         {
             if (ea.getEventType() == osgGA::GUIEventAdapter::KEYDOWN)
             {
                 int count = (int)_models->size();
-                if (count > 0 && ea.getKey() == osgGA::GUIEventAdapter::KEY_Left)
-                    *_selected = (*_selected + count - 1) % count, updateText();
-                else if (count > 0 && ea.getKey() == osgGA::GUIEventAdapter::KEY_Right)
-                    *_selected = (*_selected + 1) % count, updateText();
+                if (count < 1) return false;
+
+                int step = 0, target = *_selected;
+                switch (ea.getKey())
+                {
+                case osgGA::GUIEventAdapter::KEY_Left:
+                case osgGA::GUIEventAdapter::KEY_Up: step = -1; break;
+                case osgGA::GUIEventAdapter::KEY_Right:
+                case osgGA::GUIEventAdapter::KEY_Down: step = 1; break;
+                case osgGA::GUIEventAdapter::KEY_Page_Up: step = -10; break;
+                case osgGA::GUIEventAdapter::KEY_Page_Down: step = 10; break;
+                case osgGA::GUIEventAdapter::KEY_Home: target = 0; break;
+                case osgGA::GUIEventAdapter::KEY_End: target = count - 1; break;
+                default: return false;
+                }
+                if (step != 0) target = (*_selected + step % count + count) % count;
+                target = std::max(0, std::min(target, count - 1));
+                if (target != *_selected) { *_selected = target; updateText(); }
+                return true;
             }
             else if (ea.getEventType() == osgGA::GUIEventAdapter::FRAME)
             {
@@ -110,42 +193,45 @@ namespace
         void updateText()
         {
             if (_models->empty()) return;
+            const int count = (int)_models->size();
+            const int selected = std::max(0, std::min(*_selected, count - 1));
+            updateSelection(selected);
 
             std::ostringstream out;
             out << std::fixed << std::setprecision(1)
-                << "FPS " << _fps << "   (" << _frameMs << " ms)      model "
-                << (*_selected + 1) << "/" << _models->size() << "\n"
+                << "帧率 " << _fps << " FPS (" << _frameMs << " ms)     模型 "
+                << (selected + 1) << "/" << count << "\n"
                 << "------------------------------------------------------------\n";
 
-            ModelInfo& cur = (*_models)[*_selected];
+            const ModelInfo& cur = (*_models)[selected];
             const osgVerse::PerfProfiler::Result* r = _perf->getResult(cur.name);
-            out << cur.name << "\n";
+            out << shortenName(cur.name, 40) << "\n";
             if (r)
             {
                 const osgVerse::PerfProfiler::Sample& s = r->total;
-                out << "  gpu      " << std::setprecision(3) << s.gpuMs << " ms\n"
-                    << "  draw     " << formatCount(double(s.drawCalls)) << " calls / "
-                    << formatCount(double(s.drawables)) << " drawables\n"
-                    << "  prim     " << formatCount(double(s.primitives)) << "   vs "
-                    << formatCount(double(s.vsInvocations)) << "   fs "
+                out << "  GPU      " << std::setprecision(3) << s.gpuMs << " ms\n"
+                    << "  绘制调用 " << formatCount(double(s.drawCalls)) << " 次 / "
+                    << formatCount(double(s.drawables)) << " 个对象\n"
+                    << "  图元     " << formatCount(double(s.primitives)) << "   顶点 "
+                    << formatCount(double(s.vsInvocations)) << "   片元 "
                     << formatCount(double(s.fsInvocations)) << "\n"
-                    << "  samples  " << formatCount(double(s.samplesPassed));
+                    << "  通过样本 " << formatCount(double(s.samplesPassed));
                 if (s.pixels > 0)
-                    out << "   overdraw " << std::setprecision(2)
-                        << double(s.fsInvocations) / double(s.pixels) << "x   coverage "
+                    out << "   Overdraw " << std::setprecision(2)
+                        << double(s.fsInvocations) / double(s.pixels) << "x   覆盖 "
                         << double(s.samplesPassed) / double(s.pixels) << "x";
-                out << "\n  geometry " << formatMB(s.geometryBytes) << " MB ("
-                    << s.geometries << ")\n"
-                    << "  textures " << formatMB(s.textureBytes) << " MB (" << s.textures
-                    << ", exclusive " << formatMB(s.texExclusiveBytes) << " MB)\n"
-                    << "  buffers  " << formatMB(s.bufferBytes) << " MB\n";
+                out << "\n  几何     " << formatMB(s.geometryBytes) << " MB ("
+                    << s.geometries << " 个)\n"
+                    << "  纹理     " << formatMB(s.textureBytes) << " MB (" << s.textures
+                    << " 个，独占 " << formatMB(s.texExclusiveBytes) << " MB)\n"
+                    << "  缓冲     " << formatMB(s.bufferBytes) << " MB\n";
             }
             else
-                out << "  (waiting for samples)\n";
+                out << "  （等待采样数据）\n";
 
             // Problems derived from the raw counters
             out << "------------------------------------------------------------\n"
-                << "problems:\n";
+                << "可能的问题：\n";
             std::vector<osgVerse::PerfAnalyzer::Report> reports =
                 osgVerse::PerfAnalyzer::analyze(*_perf);
             const osgVerse::PerfAnalyzer::Report* mine = NULL;
@@ -156,46 +242,63 @@ namespace
                 for (size_t i = 0; i < mine->findings.size(); ++i)
                 {
                     const osgVerse::PerfAnalyzer::Finding& f = mine->findings[i];
-                    out << "  - " << f.code << " (" << std::setprecision(2) << f.score << ") "
-                        << f.title << "\n";
+                    out << "  - " << findingLabel(f.code) << " [ " << f.code << " "
+                        << std::setprecision(2) << f.score << " ]\n";
                 }
             }
             else
-                out << "  none (no dominant pressure)\n";
+                out << "  - 无明显压力（各项指标均不高）\n";
 
-            // Compact table of all models, so several assets can be compared at a glance
-            out << "------------------------------------------------------------\n"
-                << "all models            gpu(ms)  draws   geom(MB)  tex(MB)\n";
-            for (size_t i = 0; i < _models->size(); ++i)
+            // Only a window of the model list is shown: a directory may hold hundreds of files
+            out << "------------------------------------------------------------\n";
+            int rows = std::min(count, (int)MAX_LIST_ROWS), first = 0;
+            if (count > rows)
+            {
+                first = selected - rows / 2;
+                first = std::max(0, std::min(first, count - rows));
+            }
+            out << "全部模型 (" << (first + 1) << "-" << (first + rows) << " / " << count << ")\n";
+            for (int i = first; i < first + rows; ++i)
             {
                 const osgVerse::PerfProfiler::Result* ri = _perf->getResult((*_models)[i].name);
-                std::string n = (*_models)[i].name;
-                if (n.size() > 20) n = n.substr(0, 20);
-                out << (int(i) == *_selected ? "> " : "  ") << std::left << std::setw(21) << n;
+                out << (i == selected ? "> " : "  ") << shortenName((*_models)[i].name);
                 if (ri)
                 {
                     const osgVerse::PerfProfiler::Sample& si = ri->total;
-                    out << std::right << std::setw(7) << std::setprecision(2) << si.gpuMs
-                        << std::setw(7) << formatCount(double(si.drawCalls))
-                        << std::setw(10) << formatMB(si.geometryBytes)
-                        << std::setw(9) << formatMB(si.textureBytes) << "\n";
+                    out << "  " << std::setprecision(2) << si.gpuMs << "ms  "
+                        << formatCount(double(si.drawCalls)) << "次  "
+                        << formatMB(si.geometryBytes) << "MB";
                 }
-                else out << "      -\n";
+                else out << "  -";
+                out << "\n";
             }
-            out << "\nleft / right arrow keys switch the profiled model\n";
+            out << "\n左右/上下键切换模型，PgUp/PgDn 跳 10 个，Home/End 首尾\n";
 
             if (_logText) std::cout << out.str() << std::flush;
             if (!_hud) return;
             std::map<std::string, osg::ref_ptr<osgText::Text>>::iterator it = _hud->texts.find("perf");
-            if (it != _hud->texts.end() && it->second.valid()) it->second->setText(out.str());
+            if (it != _hud->texts.end() && it->second.valid())
+                it->second->setText(out.str(), osgText::String::ENCODING_UTF8);
         }
 
     protected:
+        // Highlight the profiled model with the yellow bound box of the NodeSelector
+        void updateSelection(int selected)
+        {
+            if (!_selector || selected == _lastSelected) return;
+            _lastSelected = selected;
+            _selector->clearAllSelectedNodes();
+            const osg::observer_ptr<osg::MatrixTransform>& root = (*_models)[selected].root;
+            if (root.valid()) _selector->addSelectedNode(root.get());
+        }
+
         osgVerse::HeadUpDisplayCanvas* _hud;
         osgVerse::PerfProfiler* _perf;
         std::vector<ModelInfo>* _models;
         int* _selected;
         bool _logText;
+        osgVerse::NodeSelector* _selector;
+        int _lastSelected;
         double _fps, _frameMs, _lastTime, _lastUpdate;
         bool _firstFrame;
     };
@@ -252,21 +355,23 @@ int main(int argc, char** argv)
     osg::setNotifyHandler(new osgVerse::ConsoleHandler);
     osgVerse::updateOsgBinaryWrappers();
 
-    bool overlap = arguments.read("--overlap");
     int screenNo = 0; arguments.read("--screen", screenNo);
+    int maxFiles = 0; arguments.read("--max", maxFiles);
 
-    // Positional arguments that really exist are treated as models; option values are skipped
+    // Positional arguments are models, or directories expanded to all the models inside them;
+    // option values that are no existing path are simply ignored
     std::vector<std::string> files;
     for (int i = 1; i < arguments.argc(); ++i)
     {
         const char* arg = arguments[i];
         if (!arg || !arg[0] || arg[0] == '-') continue;
-        if (osgDB::fileExists(arg)) files.push_back(arg);
+        collectModels(arg, files);
     }
+    if (maxFiles > 0 && (int)files.size() > maxFiles) files.resize(maxFiles);
     if (files.empty())
     {
-        OSG_WARN << "[perf_profile_test] Usage: osgVerse_Test_Perf_Profile <model1> [model2 ...] "
-                 << "[--overlap] [--no-hud] [--log]\n";
+        OSG_WARN << "[perf_profile_test] Usage: osgVerse_Test_Perf_Profile <model|directory> "
+                 << "[model|directory ...] [--max N] [--no-hud] [--log]\n";
         return 1;
     }
 
@@ -276,7 +381,6 @@ int main(int argc, char** argv)
 
     std::vector<ModelInfo> models;
     osg::BoundingSphere modelsBound;   // union of the loaded models, used for the default view
-    double cursor = 0.0;
     for (size_t i = 0; i < files.size(); ++i)
     {
         osg::ref_ptr<osg::Node> node = osgDB::readNodeFile(files[i]);
@@ -287,13 +391,9 @@ int main(int argc, char** argv)
         node->getOrCreateStateSet()->setAttribute(osgVerse::createDefaultProgram("baseTexture"));
         node->getOrCreateStateSet()->addUniform(new osg::Uniform("baseTexture", (int)0));
 #endif
-        osg::BoundingSphere bs = node->getBound();
+        // The models are loaded exactly where they are: the transform keeps only a stable name
+        // and a node to watch, it never moves the geometry
         osg::ref_ptr<osg::MatrixTransform> mt = new osg::MatrixTransform;
-        if (!overlap)
-        {
-            mt->setMatrix(osg::Matrix::translate(cursor, 0.0, 0.0));
-            cursor += std::max(bs.radius() * 2.2, 1.0);
-        }
         mt->addChild(node.get());
 
         std::string name = osgDB::getStrippedName(files[i]);
@@ -330,8 +430,22 @@ int main(int argc, char** argv)
         root->addChild(createHud(hud, hudWidth, hudHeight));
     }
 
+    // Yellow bounding box around the model being profiled. It is drawn after the scene with the
+    // depth test disabled, so it stays visible even when the model is big or fully occluding
+    osg::ref_ptr<osgVerse::NodeSelector> selector = new osgVerse::NodeSelector;
+    selector->setMainCamera(viewer.getCamera());
+    selector->setBoundColor(osg::Vec4(1.0f, 1.0f, 0.0f, 1.0f));
+    osg::Group* selectorRoot = selector->getAuxiliaryRoot();
+    osg::StateSet* selectorSs = selectorRoot->getOrCreateStateSet();
+    selectorSs->setAttributeAndModes(new osg::Depth(osg::Depth::ALWAYS, 0.0, 1.0, false));
+    selectorSs->setRenderBinDetails(1000000, "RenderBin");  // after every profiled bin (~1000+)
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
+    selectorSs->setAttribute(osgVerse::createDefaultProgram(""));  // vertex color on GL3 / ES
+#endif
+    root->addChild(selectorRoot);
+
     int selected = 0;
-    PerfHudHandler* handler = new PerfHudHandler(&hud, perf, &models, &selected, logText);
+    PerfHudHandler* handler = new PerfHudHandler(&hud, perf, &models, &selected, logText, selector.get());
     viewer.addEventHandler(handler);
     perf->watchCamera(viewer.getCamera(), "MainCamera", osgVerse::PerfProfiler::COUNTERS);
 
