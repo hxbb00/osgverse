@@ -4,7 +4,7 @@ SET(LIBRARY_INCLUDE_FILES
     HistoryBufferCallback.h ResourceManager.h LightDrawable.h SkyBox.h NodeSelector.h MultiEffectNode.h
     ExternalTexture2D.h SymbolManager.h Drawer2D.h IncrementalCompiler.h IntersectionManager.h Rasterizer.h
     ShaderLibrary.h RenderCallbackXR.h NISUpscaler.h Allocator.h VolumetricCloud.h CSGNode.h
-    Utilities.h Global.h
+    Utilities.h Global.h PerfProfiler.h
 )
 SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     Pipeline.cpp PipelineStandard.cpp PipelineLoader.cpp DeferredCallback.cpp UserInputModule.cpp
@@ -12,6 +12,7 @@ SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     SkyBox.cpp NodeSelector.cpp MultiEffectNode.cpp SymbolManager.cpp Drawer2D.cpp IncrementalCompiler.cpp
     IntersectionManager.cpp Rasterizer.cpp ShaderLibrary.cpp RenderCallbackXR.cpp ExternalTexture2D.cpp
     NISUpscaler.cpp Utilities.cpp UtilitiesEx.cpp VolumetricCloud.cpp CSGNode.cpp CSGNodeRenderer.cpp
+    PerfProfiler.cpp
 )
 
 IF(MSVC AND NOT VERSE_USE_EXTERNAL_GLES)

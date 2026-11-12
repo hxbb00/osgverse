@@ -17,6 +17,7 @@
 #include <pipeline/UserInputModule.h>
 #include <pipeline/HistoryBufferCallback.h>
 #include <pipeline/RenderCallbackXR.h>
+#include <pipeline/PerfProfiler.h>
 #include <pipeline/Utilities.h>
 #include <readerwriter/Utilities.h>
 #include <iostream>
@@ -47,6 +48,25 @@ protected:
         else return osgViewer::Viewer::createRenderer(camera);
     }
 };
+
+// Prints the PerfProfiler table every N frames when --perf is given
+class PerfPrintHandler : public osgGA::GUIEventHandler
+{
+public:
+    PerfPrintHandler(osgVerse::PerfProfiler* p) : _perf(p), _count(0) {}
+
+    virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter&)
+    {
+        if (ea.getEventType() != osgGA::GUIEventAdapter::FRAME) return false;
+        if ((++_count % 60) == 0) OSG_NOTICE << _perf->toString();
+        return false;
+    }
+
+protected:
+    osg::ref_ptr<osgVerse::PerfProfiler> _perf;
+    int _count;
+};
+
 
 // osgVerse defines some built-in shader variables for compatibility use:
 // - matrics: VERSE_MATRIX_MVP, VERSE_MATRIX_MV, VERSE_MATRIX_P, VERSE_MATRIX_N
@@ -281,6 +301,19 @@ int main(int argc, char** argv)
 
         // 7. Add gbuffer stage to depth bliting list
         pipeline->requireDepthBlit(gbuffer, true);
+    }
+
+    // Optional: per-pass (camera) and per-node (subgraph) rendering statistics.
+    // Only core OSG hooks are used, so the same class also works with a plain forward viewer.
+    if (arguments.read("--perf"))
+    {
+        osgVerse::PerfProfiler* perf = osgVerse::PerfProfiler::instance();
+        osgVerse::Pipeline::Stage* gbufferStage = pipeline->getStage("GBuffer");
+        osgVerse::Pipeline::Stage* testStagePtr = pipeline->getStage("TestStage");
+        if (gbufferStage) perf->watchCamera(gbufferStage->camera.get(), "GBuffer");
+        if (testStagePtr) perf->watchCamera(testStagePtr->camera.get(), "TestStage");
+        perf->watchNode(sceneRoot.get(), "Scene", osgVerse::PerfProfiler::ALL, root.get());
+        viewer.addEventHandler(new PerfPrintHandler(perf));
     }
 
     // Start the viewer
