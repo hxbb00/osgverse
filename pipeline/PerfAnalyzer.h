@@ -96,6 +96,27 @@ namespace osgVerse
             std::vector<Finding> findings;  // sorted by score, descending
         };
 
+        /** Problems that only become visible when the whole frame is looked at instead of a single
+            scope:
+              - VRAM_PRESSURE:     the driver reports the GPU memory is (nearly) exhausted, so
+                                   resources get paged in and out every frame
+              - UNACCOUNTED_TIME:  the frame takes much longer than the sum of the profiled GPU
+                                   times, so the time is spent outside the render passes (uploads,
+                                   paging, shader compilation, driver synchronization)
+              - GPU_OUTLIER:       one scope is far slower than the other watched scopes, which is
+                                   the usual symptom of resource paging for that scope only
+        */
+        struct GlobalReport
+        {
+            GlobalReport();
+
+            double frameMs, totalGpuMs;    // frameMs < 0 means "not provided"
+            unsigned long long geometryBytes, textureBytes;   // sum of node scopes (may double count)
+            PerfProfiler::GpuMemoryInfo gpuMemory;
+            std::string verdict;
+            std::vector<Finding> findings;  // sorted by score, descending
+        };
+
         static Metrics computeMetrics(const PerfProfiler::Result& result,
                                       const std::vector<PerfProfiler::Sample>& history,
                                       double totalGpuMs);
@@ -104,7 +125,12 @@ namespace osgVerse
         static std::vector<Report> analyze(const PerfProfiler& profiler,
                                            const Thresholds& th = Thresholds());
 
+        /** Analyze the frame as a whole, using the measured frame time (negative = unknown). */
+        static GlobalReport analyzeGlobal(const PerfProfiler& profiler, double frameMs = -1.0,
+                                          const Thresholds& th = Thresholds());
+
         static void print(std::ostream& out, const std::vector<Report>& reports, bool details = true);
+        static void print(std::ostream& out, const GlobalReport& report, bool details = true);
         static std::string toString(const PerfProfiler& profiler, bool details = true,
                                     const Thresholds& th = Thresholds());
     };

@@ -59,6 +59,114 @@ namespace osgVerse
           queryValid(false), hasSamples(false)
     {}
 
+    PerfAnalyzer::GlobalReport::GlobalReport()
+        : frameMs(-1.0), totalGpuMs(0.0), geometryBytes(0), textureBytes(0) {}
+
+    PerfAnalyzer::GlobalReport PerfAnalyzer::analyzeGlobal(
+        const PerfProfiler& profiler, double frameMs, const Thresholds& th)
+    {
+        GlobalReport report;
+        report.frameMs = frameMs;
+
+        // 1) Sum up the watched scopes. Node scopes are used for the sums: a camera scope covers
+        //    the same draws again, and counting both would report more GPU time than the frame
+        std::vector<std::string> names = profiler.getScopeNames();
+        std::vector<double> peerTimes, cameraTimes;
+        std::string slowName; double slowMs = 0.0, nodeGpuMs = 0.0;
+        for (size_t i = 0; i < names.size(); ++i)
+        {
+            const PerfProfiler::Result* r = profiler.getResult(names[i]);
+            if (!r) continue;
+            const PerfProfiler::Sample& s = r->total;
+            if (r->cameraScope) { cameraTimes.push_back(s.gpuMs); continue; }
+
+            nodeGpuMs += s.gpuMs;
+            report.geometryBytes += s.geometryBytes;
+            report.textureBytes += s.textureBytes;
+            peerTimes.push_back(s.gpuMs);
+            if (s.gpuMs > slowMs) { slowMs = s.gpuMs; slowName = r->name; }
+        }
+        if (!peerTimes.empty())
+            report.totalGpuMs = nodeGpuMs;
+        else
+            for (size_t i = 0; i < cameraTimes.size(); ++i) report.totalGpuMs += cameraTimes[i];
+        report.gpuMemory = profiler.getGpuMemoryInfo();
+
+        // 2) GPU memory pressure: no per-scope counter can show it, only the driver knows
+        if (report.gpuMemory.supported && report.gpuMemory.totalBytes > 0)
+        {
+            const double totalMB = double(report.gpuMemory.totalBytes) / (1024.0 * 1024.0);
+            const double availMB = double(report.gpuMemory.availableBytes) / (1024.0 * 1024.0);
+            const double usedRatio = double(report.gpuMemory.getUsedBytes()) /
+                                     double(report.gpuMemory.totalBytes);
+            if (usedRatio > 0.9 || availMB < 256.0)
+            {
+                Finding f;
+                f.code = "VRAM_PRESSURE";
+                f.title = "GPU memory nearly exhausted: resources are paged in and out";
+                f.detail = "VRAM " + formatNumber("%.0f", usedRatio * 100.0) + "% used, " +
+                           formatNumber("%.0f", availMB) + " MB free of " +
+                           formatNumber("%.0f", totalMB) + " MB; watched resources (shared ones "
+                           "counted twice) geometry " +
+                           formatNumber("%.0f", double(report.geometryBytes) / (1024.0 * 1024.0)) +
+                           " MB, textures " +
+                           formatNumber("%.0f", double(report.textureBytes) / (1024.0 * 1024.0)) +
+                           " MB";
+                f.score = std::min(1.0, 0.6 + ramp(usedRatio, 0.9, 1.0) * 0.4);
+                report.findings.push_back(f);
+            }
+        }
+
+        // 3) Frame time vs the sum of the profiled GPU times: the missing part is paging, uploads,
+        //    shader compilation or driver synchronization, none of which is a render pass. A scope
+        //    sum of 0 counts too: under GPU back-pressure the timer queries may not resolve at all
+        if (frameMs > 33.0)
+        {
+            const double accounted = (report.totalGpuMs > 0.0) ? report.totalGpuMs / frameMs : 0.0;
+            if (accounted < 0.5)
+            {
+                Finding f;
+                f.code = "UNACCOUNTED_TIME";
+                f.title = "most of the frame time is outside the profiled render passes";
+                f.detail = "frame " + formatNumber("%.1f", frameMs) + " ms while the watched scopes "
+                           "sum to " + formatNumber("%.2f", report.totalGpuMs) + " ms (" +
+                           formatNumber("%.0f", accounted * 100.0) + "%); the rest is resource "
+                           "paging/uploads, shader compilation, driver synchronization or an "
+                           "unprofiled pass";
+                if (report.totalGpuMs <= 0.0)
+                    f.detail += "; the GPU timer queries did not resolve either, which is another "
+                                "symptom of GPU back-pressure";
+                f.score = std::min(1.0, 0.5 + (0.5 - accounted));
+                report.findings.push_back(f);
+            }
+        }
+
+        // 4) A single scope dominating the cost while its peers are cheap is the paging signature
+        const double outlierRatio = std::max(4.0, th.peerRatio * 4.0);
+        if (slowMs > 1.0 && peerTimes.size() > 2)
+        {
+            const double med = median(peerTimes);
+            if (med > 0.0 && slowMs / med > outlierRatio)
+            {
+                Finding f;
+                f.code = "GPU_OUTLIER";
+                f.title = "one scope is much slower than the other watched scopes";
+                f.detail = slowName + " needs " + formatNumber("%.2f", slowMs) +
+                           " ms vs peer median " + formatNumber("%.3f", med) + " ms (" +
+                           formatNumber("%.0f", slowMs / med) + "x); together with a full GPU "
+                           "memory this means the resources of this scope are re-uploaded";
+                f.score = std::min(1.0, 0.4 + ramp(slowMs / med, outlierRatio, outlierRatio * 4.0) * 0.5);
+                report.findings.push_back(f);
+            }
+        }
+
+        std::sort(report.findings.begin(), report.findings.end(),
+                  [](const Finding& a, const Finding& b) { return a.score > b.score; });
+        report.verdict = report.findings.empty() ? "balanced (frame time matches the profiled work)"
+                                                 : report.findings[0].title;
+        return report;
+    }
+
     PerfAnalyzer::Metrics PerfAnalyzer::computeMetrics(
         const PerfProfiler::Result& result, const std::vector<PerfProfiler::Sample>& history,
         double totalGpuMs)
@@ -337,14 +445,21 @@ namespace osgVerse
             }
             // ---- resource pressure ---------------------------------------------------------------
             {
-                double total = 0.0;
+                // Only node scopes own the resources they draw: a camera scope would add the same
+                // bytes again, and a single scope is trivially 100% of the watched resources, so
+                // the "share" branch needs at least two node scopes to mean anything
+                double total = 0.0; int scopes = 0;
                 for (size_t k = 0; k < reports.size(); ++k)
+                {
+                    if (reports[k].cameraScope) continue;
                     total += reports[k].metrics.geometryMB + reports[k].metrics.textureMB;
+                    ++scopes;
+                }
                 double mine = m.geometryMB + m.textureMB;
                 double share = total > 0 ? mine / total : 0.0;
                 double score = std::max(ramp(m.textureMB, th.bigTextureMB, th.bigTextureMB * 2.0),
                                         ramp(m.geometryMB, th.bigGeometryMB, th.bigGeometryMB * 2.0));
-                if (score < 0.2 && reports.size() > 1) score = ramp(share, th.resourceShare) * 0.5;
+                if (score < 0.2 && scopes > 1) score = ramp(share, th.resourceShare) * 0.5;
                 score = std::min(score, 0.65);   // memory is a constraint, not a stall
                 if (score > 0.2 && mine > 0.0)
                 {
@@ -410,6 +525,31 @@ namespace osgVerse
                     out << "          - " << f.code << " (" << formatNumber("%.2f", f.score)
                         << ") " << f.title << "\n            " << f.detail << "\n";
                 }
+            }
+        }
+    }
+
+    void PerfAnalyzer::print(std::ostream& out, const GlobalReport& report, bool details)
+    {
+        out << "[Analyze] whole frame: ";
+        if (report.frameMs > 0.0) out << "frame " << formatNumber("%.2f", report.frameMs) << " ms, ";
+        out << "scopes sum " << formatNumber("%.2f", report.totalGpuMs) << " ms, geometry "
+            << formatNumber("%.0f", double(report.geometryBytes) / (1024.0 * 1024.0)) << " MB, textures "
+            << formatNumber("%.0f", double(report.textureBytes) / (1024.0 * 1024.0)) << " MB";
+        if (report.gpuMemory.supported)
+            out << ", VRAM " << formatNumber("%.0f", double(report.gpuMemory.getUsedBytes()) / (1024.0 * 1024.0))
+                << "/" << formatNumber("%.0f", double(report.gpuMemory.totalBytes) / (1024.0 * 1024.0)) << " MB";
+        else
+            out << ", VRAM n/a";
+        out << "\n          verdict: " << report.verdict << "\n";
+
+        if (details)
+        {
+            for (size_t k = 0; k < report.findings.size(); ++k)
+            {
+                const Finding& f = report.findings[k];
+                out << "          - " << f.code << " (" << formatNumber("%.2f", f.score)
+                    << ") " << f.title << "\n            " << f.detail << "\n";
             }
         }
     }

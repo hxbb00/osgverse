@@ -95,6 +95,7 @@ namespace osgVerse
             unsigned long long primitives, vsInvocations, fsInvocations, samplesPassed;
             unsigned long long geometryBytes, textureBytes, texExclusiveBytes, bufferBytes;
             unsigned int geometries, textures, texturesExclusive;
+            unsigned int texturesUnknown;     // textures without CPU-side image data (size unknown)
         };
 
         typedef std::map<std::string, Sample> PassSamples;
@@ -135,8 +136,23 @@ namespace osgVerse
         void setHistorySize(int frames);
         std::vector<Sample> getHistory(const std::string& name) const;
 
+        /** Driver-reported GPU memory (currently only GL_NVX_gpu_memory_info). It is sampled a few
+            times per second while scopes are collected; all values stay 0 when the driver does not
+            expose it. */
+        struct GpuMemoryInfo
+        {
+            bool supported;
+            unsigned long long totalBytes, availableBytes;
+            GpuMemoryInfo() : supported(false), totalBytes(0), availableBytes(0) {}
+            unsigned long long getUsedBytes() const
+            { return (totalBytes > availableBytes) ? totalBytes - availableBytes : 0; }
+        };
+
         /** Names of all watched scopes, in attach order. */
         std::vector<std::string> getScopeNames() const;
+
+        /** Latest GPU memory sample; 'supported' is false when the driver does not report it. */
+        GpuMemoryInfo getGpuMemoryInfo() const;
 
         /** Latest result of a scope, or NULL if the name is unknown. */
         const Result* getResult(const std::string& name) const;

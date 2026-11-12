@@ -55,6 +55,12 @@ namespace osgVerse
             GL_PRIMITIVES_SUBMITTED_ARB, GL_VERTEX_SHADER_INVOCATIONS_ARB,
             GL_FRAGMENT_SHADER_INVOCATIONS_ARB, GL_SAMPLES_PASSED
         };
+
+        // NVX_gpu_memory_info: values are returned in kilobytes
+#   ifndef GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX
+#       define GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX 0x9048
+#       define GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX 0x9049
+#   endif
 #endif
 
         std::string formatMegabytes(unsigned long long bytes)
@@ -93,11 +99,12 @@ namespace osgVerse
         struct ResourceCache
         {
             unsigned long long geometryBytes, textureBytes, bufferBytes, exclusiveBytes;
-            unsigned int geometries, textures, exclusiveTextures;
+            unsigned int geometries, textures, exclusiveTextures, unknownTextures;
             int frame;
 
             ResourceCache() : geometryBytes(0), textureBytes(0), bufferBytes(0), exclusiveBytes(0),
-                              geometries(0), textures(0), exclusiveTextures(0), frame(-100000) {}
+                              geometries(0), textures(0), exclusiveTextures(0), unknownTextures(0),
+                              frame(-100000) {}
         };
 
         struct Scope : public osg::Referenced
@@ -143,13 +150,14 @@ namespace osgVerse
         std::map<std::string, FrameAccum> accums;
         std::map<int, Scope*> bins;
         std::map<const osg::Node*, int> exclusiveFrames;   // root -> last exclusive-texture scan
+        PerfProfiler::GpuMemoryInfo gpuMemory; int gpuMemoryFrame;
         std::vector<osg::ref_ptr<Scope> > scopes;
         bool enabled;
         int nextBinNumber;
         int resourceInterval, historySize;
 
         PerfProfilerImpl() : enabled(true), nextBinNumber(1000), resourceInterval(60),
-                             historySize(120) {}
+                             historySize(120), gpuMemoryFrame(-100000) {}
 
         Scope* findScope(const std::string& name)
         {
@@ -217,6 +225,27 @@ namespace osgVerse
             osg::GLExtensions* ext = state->get<osg::GLExtensions>();
             int frame = state->getFrameStamp() ? (int)state->getFrameStamp()->getFrameNumber() : -1;
             poll(contextID, frame, ext);
+
+#if VERSE_PERF_QUERIES
+            // Sample the GPU memory a few times per second: the driver may page resources in and
+            // out once it is exhausted, which no per-scope counter can show
+            if (frame >= 0 && frame - gpuMemoryFrame >= 15)
+            {
+                gpuMemoryFrame = frame;
+                if (osg::isGLExtensionSupported(contextID, "GL_NVX_gpu_memory_info"))
+                {
+                    GLint totalMem = 0, availableMem = 0;
+                    glGetIntegerv(GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX, &totalMem);
+                    glGetIntegerv(GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX, &availableMem);
+                    if (totalMem > 0)
+                    {
+                        gpuMemory.supported = true;
+                        gpuMemory.totalBytes = (unsigned long long)totalMem * 1024;
+                        gpuMemory.availableBytes = (unsigned long long)std::max(availableMem, 0) * 1024;
+                    }
+                }
+            }
+#endif
 
             Entry* e = new Entry;
             e->scope = s; e->contextID = contextID; e->pass = passName;
@@ -353,21 +382,8 @@ namespace osgVerse
 #if VERSE_PERF_QUERIES
             if (ext)
             {
-                if (e->useTime && e->tsBegin && e->tsEnd)
-                {
-                    std::vector<unsigned int> ids; ids.push_back(e->tsBegin); ids.push_back(e->tsEnd);
-                    GLuint avail = 0;
-                    ext->glGetQueryObjectuiv(e->tsEnd, GL_QUERY_RESULT_AVAILABLE, &avail);
-                    if (avail)
-                    {
-                        GLuint64 begin = 0, end = 0;
-                        ext->glGetQueryObjectui64v(e->tsBegin, GL_QUERY_RESULT, &begin);
-                        ext->glGetQueryObjectui64v(e->tsEnd, GL_QUERY_RESULT, &end);
-                        if (end >= begin) sample.gpuMs = double(end - begin) * 1e-6;
-                    }
-                    deleteQueries(ext, ids);
-                }
-
+                // The counter readbacks below block until their queries are done, so read them
+                // first: afterwards the timestamp pair is guaranteed to be available too
                 unsigned long long* values[MAX_TARGETS] = {
                     &sample.primitives, &sample.vsInvocations,
                     &sample.fsInvocations, &sample.samplesPassed };
@@ -381,6 +397,28 @@ namespace osgVerse
                         (*values[t]) += value;
                     }
                     deleteQueries(ext, e->segments[t]);
+                }
+
+                if (e->useTime && e->tsBegin && e->tsEnd)
+                {
+                    std::vector<unsigned int> ids; ids.push_back(e->tsBegin); ids.push_back(e->tsEnd);
+                    GLuint avail = 0;
+                    ext->glGetQueryObjectuiv(e->tsEnd, GL_QUERY_RESULT_AVAILABLE, &avail);
+                    if (avail)
+                    {
+                        GLuint64 begin = 0, end = 0;
+                        ext->glGetQueryObjectui64v(e->tsBegin, GL_QUERY_RESULT, &begin);
+                        ext->glGetQueryObjectui64v(e->tsEnd, GL_QUERY_RESULT, &end);
+                        if (end >= begin) sample.gpuMs = double(end - begin) * 1e-6;
+                    }
+                    else
+                    {
+                        // Still running (only possible when no counter query forced a wait): keep
+                        // the last known value instead of publishing 0 ms, which would look like
+                        // "this scope costs nothing"
+                        sample.gpuMs = e->scope->last.gpuMs;
+                    }
+                    deleteQueries(ext, ids);
                 }
             }
 #endif
@@ -440,11 +478,15 @@ namespace osgVerse
             std::set<const osg::Texture*> textureSeen;
             std::vector<const osg::StateSet*> stack;
             unsigned long long geometryBytes, textureBytes, bufferBytes;
-            unsigned int geometries;
+            unsigned int geometries, texturesUnknown;
 
-            ResourceGather() : geometryBytes(0), textureBytes(0), bufferBytes(0), geometries(0) {}
+            ResourceGather() : geometryBytes(0), textureBytes(0), bufferBytes(0), geometries(0),
+                               texturesUnknown(0) {}
 
-            static unsigned long long textureSize(const osg::Texture* tex)
+            // CPU-side size of all images of one texture. 'known' stays false when no image carries
+            // data any more (a texture generated at runtime, or one whose images were released
+            // after the upload): its GPU footprint can not be derived from the scene graph then
+            static unsigned long long textureSize(const osg::Texture* tex, bool* known = NULL)
             {
                 unsigned long long bytes = 0;
                 for (unsigned int i = 0; i < tex->getNumImages(); ++i)
@@ -452,6 +494,7 @@ namespace osgVerse
                     const osg::Image* img = tex->getImage(i);
                     if (img) bytes += img->getTotalDataSize();
                 }
+                if (known) *known = (bytes > 0);
                 return bytes;
             }
 
@@ -470,11 +513,21 @@ namespace osgVerse
                     const osg::StateSet* ss = stack[i - 1];
                     for (unsigned int u = 0; u < ss->getNumTextureAttributeLists(); ++u)
                     {
-                        if (!usedUnits.insert(u).second) continue;
                         const osg::StateAttribute* sa =
                             ss->getTextureAttribute(u, osg::StateAttribute::TEXTURE);
                         const osg::Texture* tex = dynamic_cast<const osg::Texture*>(sa);
-                        if (tex && textureSeen.insert(tex).second) textureBytes += textureSize(tex);
+
+                        // A TexEnv / TexMat on this unit does NOT replace the texture inherited
+                        // from an outer StateSet, so the unit is only resolved by a real texture
+                        if (!tex) continue;
+                        if (!usedUnits.insert(u).second) continue;
+
+                        if (textureSeen.insert(tex).second)
+                        {
+                            bool known = false;
+                            textureBytes += textureSize(tex, &known);
+                            if (!known) ++texturesUnknown;
+                        }
                     }
                     const osg::StateSet::AttributeList& attrs = ss->getAttributeList();
                     for (osg::StateSet::AttributeList::const_iterator it = attrs.begin();
@@ -561,11 +614,14 @@ namespace osgVerse
                     const osg::StateSet* ss = stack[i - 1];
                     for (unsigned int u = 0; u < ss->getNumTextureAttributeLists(); ++u)
                     {
-                        if (!usedUnits.insert(u).second) continue;
                         const osg::StateAttribute* sa =
                             ss->getTextureAttribute(u, osg::StateAttribute::TEXTURE);
                         const osg::Texture* tex = dynamic_cast<const osg::Texture*>(sa);
+
+                        // Same rule as ResourceGather: only a texture attribute resolves a unit
                         if (!tex) continue;
+                        if (!usedUnits.insert(u).second) continue;
+
                         Usage& info = usage[tex]; ++info.total;
                         if (current) ++info.perScope[current];
                     }
@@ -657,6 +713,7 @@ namespace osgVerse
             s->resources.bufferBytes = gather.bufferBytes;
             s->resources.geometries = gather.geometries;
             s->resources.textures = (unsigned int)gather.textureSeen.size();
+            s->resources.unknownTextures = gather.texturesUnknown;
             refreshExclusive(s->root.get(), frame);
         }
 
@@ -669,6 +726,7 @@ namespace osgVerse
             sample.geometries = s->resources.geometries;
             sample.textures = s->resources.textures;
             sample.texturesExclusive = s->resources.exclusiveTextures;
+            sample.texturesUnknown = s->resources.unknownTextures;
         }
 
         // ------------------------------------------------------------- OSG hooks
@@ -952,7 +1010,7 @@ namespace osgVerse
         frameNumber = -1; gpuMs = cpuMs = 0.0; drawCalls = drawables = instances = pixels = 0;
         primitives = vsInvocations = fsInvocations = samplesPassed = 0;
         geometryBytes = textureBytes = texExclusiveBytes = bufferBytes = 0;
-        geometries = textures = texturesExclusive = 0;
+        geometries = textures = texturesExclusive = texturesUnknown = 0;
     }
 
     PerfProfiler* PerfProfiler::instance()
@@ -1019,6 +1077,11 @@ namespace osgVerse
         std::vector<std::string> names;
         for (size_t i = 0; i < _impl->scopes.size(); ++i) names.push_back(_impl->scopes[i]->name);
         return names;
+    }
+
+    PerfProfiler::GpuMemoryInfo PerfProfiler::getGpuMemoryInfo() const
+    {
+        return _impl->gpuMemory;
     }
 
     const PerfProfiler::Result* PerfProfiler::getResult(const std::string& name) const

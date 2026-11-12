@@ -44,13 +44,14 @@ USE_GRAPICSWINDOW_IMPLEMENTATION(GLFW)
 // resource footprint, together with the problems PerfAnalyzer derives from those numbers.
 //
 //   osgVerse_Test_Perf_Profile <model|directory> [model|directory ...]
-//                              [--max N] [--no-hud] [--log]
+//                              [--max N] [--no-hud] [--no-perf] [--log]
 //
 // The models keep their own positions in the scene: nothing is moved or normalized, they are only
 // wrapped by an identity transform for naming and profiling. --max limits how many models are
 // loaded from the directories (0 = all).
 // The selected model is highlighted with a yellow bounding box (osgVerse::NodeSelector).
-// --no-hud profiles without the canvas (to check the cost of the profiler itself) and --log
+// --no-hud profiles without the canvas (to check the cost of the profiler itself), --no-perf
+// turns the collection off completely (to check the whole tool against a plain viewer) and --log
 // echoes the same report to stdout.
 // The HUD only shows a window of the model list: left/right/up/down switch the selected model,
 // PgUp/PgDn jump 10 entries and Home/End select the first/last one.
@@ -118,23 +119,75 @@ namespace
         return name.substr(0, maxChars - 3) + "...";
     }
 
-    // Chinese label of a PerfAnalyzer finding, so that the HUD reads naturally for local users
+    // Chinese label of a PerfAnalyzer finding, so that the HUD reads naturally for local users.
+    // Each label states WHAT was measured, so that the advice below it makes sense on its own
     std::string findingLabel(const std::string& code)
     {
-        if (code == "GEOMETRY_PRESSURE") return "几何/顶点压力";
-        if (code == "VERTEX_DUPLICATION") return "顶点重复（索引复用不足）";
-        if (code == "TINY_TRIANGLES") return "三角形过小";
-        if (code == "FRAGMENT_PRESSURE") return "片元着色/纹理压力";
-        if (code == "OVERDRAW") return "Overdraw 过高";
-        if (code == "WASTED_SHADING") return "无效片元（深度剔除/丢弃）";
-        if (code == "FILL_RATE") return "填充率/带宽受限";
-        if (code == "FIXED_COST") return "固定开销为主（计数低但耗时高）";
-        if (code == "DRAW_OVERHEAD") return "每次绘制开销偏高";
-        if (code == "BATCHING") return "批处理不足";
-        if (code == "SPIKE") return "耗时相对历史突增";
-        if (code == "RESOURCE_PRESSURE") return "资源占用偏高";
-        if (code == "FULLY_OCCLUDED") return "完全被遮挡";
+        if (code == "GEOMETRY_PRESSURE") return "几何/顶点压力：图元和顶点很多，耗时用于顶点处理";
+        if (code == "VERTEX_DUPLICATION") return "顶点重复：顶点没有共用索引，顶点数远多于图元";
+        if (code == "TINY_TRIANGLES") return "三角形过小：大量三角形只覆盖很少像素";
+        if (code == "FRAGMENT_PRESSURE") return "片元压力：片元着色和纹理采样占了主要时间";
+        if (code == "OVERDRAW") return "Overdraw 过高：同一像素被反复着色";
+        if (code == "WASTED_SHADING") return "无效片元：着色完成却被深度测试丢弃";
+        if (code == "FILL_RATE") return "填充率受限：深度测试、混合和写帧缓冲开销大";
+        if (code == "FIXED_COST") return "固定开销为主：绘制量很小但 GPU 时间照样被消耗";
+        if (code == "DRAW_OVERHEAD") return "每次绘制开销偏高：状态切换和提交占主要时间";
+        if (code == "BATCHING") return "批处理不足：单个对象图元太少，draw call 偏多";
+        if (code == "SPIKE") return "耗时突增：本帧比最近几帧明显变慢";
+        if (code == "RESOURCE_PRESSURE") return "资源占用偏高：几何或纹理显存占用大";
+        if (code == "FULLY_OCCLUDED") return "完全被遮挡：片元都执行了但没有通过深度测试";
+        if (code == "VRAM_PRESSURE") return "显存不足：资源被逐帧换入换出，帧率会突然坍塌";
+        if (code == "UNACCOUNTED_TIME") return "帧时间不在这几个渲染通道里：换页/上传/同步拖慢了";
+        if (code == "GPU_OUTLIER") return "个别对象耗时远超同类：它的资源可能在反复上传";
         return code;
+    }
+
+    // What can be done about it, printed under the label
+    std::string findingAdvice(const std::string& code)
+    {
+        if (code == "GEOMETRY_PRESSURE")
+            return "降低顶点数（减面/LOD）、合并静态几何，并检查是否所有顶点都真的可见";
+        if (code == "VERTEX_DUPLICATION")
+            return "导出时合并重合顶点（weld）并使用索引三角形，避免按三角形展开";
+        if (code == "TINY_TRIANGLES")
+            return "为远处对象做 LOD/减面，或合并细碎三角形；检查模型是否被过度细分";
+        if (code == "FRAGMENT_PRESSURE")
+            return "减少纹理采样次数与分辨率、简化片元着色器，必要时降低渲染分辨率";
+        if (code == "OVERDRAW")
+            return "不透明物从前向后绘制、剔除被完全遮挡的对象，减少半透明与粒子叠层";
+        if (code == "WASTED_SHADING")
+            return "先画大的遮挡物（pre-z）或按深度排序，避免被遮挡的片元先跑一遍着色器";
+        if (code == "FILL_RATE")
+            return "减少全屏叠层和大面积半透明，降低分辨率或 MSAA 采样数";
+        if (code == "FIXED_COST")
+            return "确认是否有每帧上传/编译/同步；合并状态切换，减少小批次提交";
+        if (code == "DRAW_OVERHEAD")
+            return "按材质排序并合批，减少状态切换和 uniform 更新次数";
+        if (code == "BATCHING")
+            return "合并相邻同材质网格或改用实例化绘制（osg::GeometryInstancing），减少 draw call";
+        if (code == "SPIKE")
+            return "多半是一次性资源上传或着色器编译；多次采样确认，必要时提前预热";
+        if (code == "RESOURCE_PRESSURE")
+            return "把纹理转成 KTX2/BC7 或降低分辨率，合并重复几何，避免同一资源多份拷贝";
+        if (code == "FULLY_OCCLUDED")
+            return "这类对象可直接剔除（遮挡查询/预处理），或放进远处 LOD 级别";
+        if (code == "VRAM_PRESSURE")
+            return "减少同时载入的模型（--max N）、压缩或降分辨率纹理、关闭阴影/降低阴影分辨率";
+        if (code == "UNACCOUNTED_TIME")
+            return "先看显存是否已满（满了就是换页）；否则检查每帧上传、着色器编译和驱动同步";
+        if (code == "GPU_OUTLIER")
+            return "检查该对象的纹理/几何是否每帧被修改（dirty）导致重复上传，或单独降低其精度";
+        return "结合上面的计数确认瓶颈方向";
+    }
+
+    // One finding = one conclusion line plus one "what to do" line. The raw numbers are already
+    // visible in the counters above, so they are not repeated here
+    void appendFinding(std::ostringstream& out, const char* marker,
+                       const osgVerse::PerfAnalyzer::Finding& f)
+    {
+        out << marker << findingLabel(f.code) << " [ " << f.code << " "
+            << std::setprecision(2) << f.score << " ]\n"
+            << "    建议：" << findingAdvice(f.code) << "\n";
     }
 
     class PerfHudHandler : public osgGA::GUIEventHandler
@@ -223,15 +276,33 @@ namespace
                 out << "\n  几何     " << formatMB(s.geometryBytes) << " MB ("
                     << s.geometries << " 个)\n"
                     << "  纹理     " << formatMB(s.textureBytes) << " MB (" << s.textures
-                    << " 个，独占 " << formatMB(s.texExclusiveBytes) << " MB)\n"
+                    << " 个，独占 " << formatMB(s.texExclusiveBytes) << " MB";
+                if (s.texturesUnknown > 0)
+                    out << "，其中 " << s.texturesUnknown << " 个无 CPU 数据";
+                out << ")\n"
                     << "  缓冲     " << formatMB(s.bufferBytes) << " MB\n";
             }
             else
                 out << "  （等待采样数据）\n";
 
+            // Whole-frame view: total watched resources, driver-reported GPU memory and the problems
+            // which only appear when everything is rendered together
+            osgVerse::PerfAnalyzer::GlobalReport global =
+                osgVerse::PerfAnalyzer::analyzeGlobal(*_perf, _frameMs);
+            out << "------------------------------------------------------------\n"
+                << "资源合计 几何 " << formatMB(global.geometryBytes) << " MB   纹理 "
+                << formatMB(global.textureBytes) << " MB   对象 GPU 合计 "
+                << std::setprecision(2) << global.totalGpuMs << " ms\n";
+            if (global.gpuMemory.supported)
+                out << "显存     " << formatMB(global.gpuMemory.getUsedBytes()) << " / "
+                    << formatMB(global.gpuMemory.totalBytes) << " MB (可用 "
+                    << formatMB(global.gpuMemory.availableBytes) << " MB)\n";
+
             // Problems derived from the raw counters
             out << "------------------------------------------------------------\n"
                 << "可能的问题：\n";
+            for (size_t i = 0; i < global.findings.size(); ++i)
+                appendFinding(out, "  * ", global.findings[i]);
             std::vector<osgVerse::PerfAnalyzer::Report> reports =
                 osgVerse::PerfAnalyzer::analyze(*_perf);
             const osgVerse::PerfAnalyzer::Report* mine = NULL;
@@ -240,14 +311,10 @@ namespace
             if (mine && !mine->findings.empty())
             {
                 for (size_t i = 0; i < mine->findings.size(); ++i)
-                {
-                    const osgVerse::PerfAnalyzer::Finding& f = mine->findings[i];
-                    out << "  - " << findingLabel(f.code) << " [ " << f.code << " "
-                        << std::setprecision(2) << f.score << " ]\n";
-                }
+                    appendFinding(out, "  - ", mine->findings[i]);
             }
             else
-                out << "  - 无明显压力（各项指标均不高）\n";
+                out << "  - 该模型无明显压力（各项指标均不高）\n";
 
             // Only a window of the model list is shown: a directory may hold hundreds of files
             out << "------------------------------------------------------------\n";
@@ -371,7 +438,7 @@ int main(int argc, char** argv)
     if (files.empty())
     {
         OSG_WARN << "[perf_profile_test] Usage: osgVerse_Test_Perf_Profile <model|directory> "
-                 << "[model|directory ...] [--max N] [--no-hud] [--log]\n";
+                 << "[model|directory ...] [--max N] [--no-hud] [--no-perf] [--log]\n";
         return 1;
     }
 
@@ -385,6 +452,7 @@ int main(int argc, char** argv)
     {
         osg::ref_ptr<osg::Node> node = osgDB::readNodeFile(files[i]);
         if (!node) { OSG_WARN << "[perf_profile_test] Failed to load " << files[i] << std::endl; continue; }
+        else { OSG_NOTICE << "File " << (i + 1) << ": " << files[i] << std::endl; }
 
 #if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
         // The models carry no shaders: give them a simple textured forward program on GL3 / ES
@@ -448,6 +516,7 @@ int main(int argc, char** argv)
     PerfHudHandler* handler = new PerfHudHandler(&hud, perf, &models, &selected, logText, selector.get());
     viewer.addEventHandler(handler);
     perf->watchCamera(viewer.getCamera(), "MainCamera", osgVerse::PerfProfiler::COUNTERS);
+    if (arguments.read("--no-perf")) perf->setEnabled(false);   // A/B: the cost of the profiler
 
     // Optional automation for scripted testing: render N frames, capture and quit
     osgVerse::configureViewerForAgent(arguments, &viewer);
