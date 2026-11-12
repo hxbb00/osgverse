@@ -371,6 +371,33 @@ namespace osgVerse
     */
     extern osg::Vec2 computeTotalAreas(osg::Geometry* drawable, int texUnit = 0);
 
+    /** Test if a point is inside a triangle mesh, using winding numbers. The triangle soup
+        is given by 'vertices' and 'indices' (3 indices per triangle), and the computed
+        winding number is optionally returned by [windingNumber]. Unlike ray casting this
+        tolerates open and non-watertight meshes.
+        cinolib is required; otherwise it returns false with a notice.
+    */
+    extern bool isPointInsideMesh(const std::vector<osg::Vec3>& vertices,
+                                  const std::vector<unsigned int>& indices,
+                                  const osg::Vec3& point, int* windingNumber = NULL);
+
+    /** Test if a point is inside a mesh, collecting triangle data from an osg::Geometry */
+    extern bool isPointInsideMesh(osg::Geometry* geom, const osg::Vec3& point,
+                                  int* windingNumber = NULL);
+
+    /** Extract sharp feature lines (creases) as polylines. They can be used as
+        centerlines / navigation skeletons, or as the basis of building simplification.
+        [creaseAngle] is the dihedral angle in degrees above which an edge is a feature.
+        cinolib is required; otherwise it returns false with a notice.
+    */
+    extern bool extractFeatureLines(osg::Geometry& geom, float creaseAngle,
+                                    std::vector<PointList3D>& lines);
+
+    /** Create a line geometry (GL_LINES) from extracted feature lines */
+    extern osg::Geometry* createFeatureLineGeometry(
+        const std::vector<PointList3D>& lines,
+        const osg::Vec4& color = osg::Vec4(1.0f, 1.0f, 0.0f, 1.0f));
+
 }
 
 #endif

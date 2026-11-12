@@ -14,6 +14,8 @@
 #ifdef VERSE_WITH_CINOLIB
 #   include <cinolib/meshes/trimesh.h>
 #   include <cinolib/find_intersections.h>
+#   include <cinolib/winding_number.h>
+#   include <cinolib/feature_network.h>
 #endif
 #include "3rdparty/tinyspline/tinyspline.h"
 #include "MeshTopology.h"
@@ -58,6 +60,14 @@ namespace
                 m.poly_vert(pid, 0), m.poly_vert(pid, 1), m.poly_vert(pid, 2), O);
         }
         return (vol < 0.);  // if faces are CCW volume is negative
+    }
+
+    cinolib::vec3d getPolyNormal(const cinolib::Trimesh<>& m, unsigned int pid)
+    {
+        cinolib::vec3d p0 = m.poly_vert(pid, 0), p1 = m.poly_vert(pid, 1),
+                       p2 = m.poly_vert(pid, 2);
+        cinolib::vec3d n = (p1 - p0).cross(p2 - p0); double len = n.norm();
+        if (len > 1.0e-12) n /= len; return n;
     }
 #endif
 }
@@ -1255,6 +1265,129 @@ namespace osgVerse
                 { de->push_back(edges[i].first); de->push_back(edges[i].second); }
             return createGeometry(va.get(), NULL, color, de.get());
         }
+    }
+
+    bool isPointInsideMesh(const std::vector<osg::Vec3>& vertices,
+                           const std::vector<unsigned int>& indices,
+                           const osg::Vec3& point, int* windingNumber)
+    {
+        if (windingNumber) *windingNumber = 0;
+        if (vertices.empty() || indices.size() < 3) return false;
+
+#ifdef VERSE_WITH_CINOLIB
+        std::vector<cinolib::vec3d> verts(vertices.size());
+        for (size_t i = 0; i < vertices.size(); ++i)
+        {
+            const osg::Vec3& v = vertices[i];
+            verts[i] = cinolib::vec3d(v[0], v[1], v[2]);
+        }
+
+        int wn = cinolib::winding_number(verts, indices,
+                                         cinolib::vec3d(point[0], point[1], point[2]));
+        if (windingNumber) *windingNumber = wn;
+        return (wn != 0);
+#else
+        OSG_NOTICE << "[osgVerse] isPointInsideMesh(): not implemented, cinolib is not found"
+                   << std::endl;
+        return false;
+#endif
+    }
+
+    bool isPointInsideMesh(osg::Geometry* geom, const osg::Vec3& point, int* windingNumber)
+    {
+#ifdef VERSE_WITH_CINOLIB
+        if (!geom) return false;
+        MeshCollector collector;
+        collector.setWeldingVertices(true);
+        collector.setOnlyVertexAndIndices(true);
+        collector.apply(*geom);
+        return isPointInsideMesh(collector.getVertices(), collector.getTriangles(),
+                                 point, windingNumber);
+#else
+        (void)geom; (void)point; (void)windingNumber;
+        OSG_NOTICE << "[osgVerse] isPointInsideMesh(): not implemented, cinolib is not found"
+                   << std::endl;
+        return false;
+#endif
+    }
+
+    bool extractFeatureLines(osg::Geometry& geom, float creaseAngle,
+                             std::vector<PointList3D>& lines)
+    {
+        lines.clear();
+#ifdef VERSE_WITH_CINOLIB
+        MeshCollector collector;
+        collector.setWeldingVertices(true);
+        collector.setOnlyVertexAndIndices(true);
+        collector.apply(geom);
+        const std::vector<osg::Vec3>& verts = collector.getVertices();
+        const std::vector<unsigned int>& tris = collector.getTriangles();
+        if (verts.size() < 4 || tris.size() < 3) return false;
+
+        std::vector<double> coords(verts.size() * 3);
+        for (size_t i = 0; i < verts.size(); ++i)
+        {
+            const osg::Vec3& v = verts[i];
+            coords[i * 3 + 0] = v[0]; coords[i * 3 + 1] = v[1]; coords[i * 3 + 2] = v[2];
+        }
+
+        cinolib::Trimesh<> mesh(coords, tris);
+        for (unsigned int eid = 0; eid < mesh.num_edges(); ++eid)
+        {
+            if (mesh.edge_is_boundary(eid)) continue;
+            const std::vector<unsigned int>& polys = mesh.adj_e2p(eid);
+            if (polys.size() != 2) continue;
+
+            double angle = getPolyNormal(mesh, polys[0]).angle_deg(getPolyNormal(mesh, polys[1]));
+            if (angle >= (double)creaseAngle) mesh.edge_data(eid).flags[cinolib::CREASE] = true;
+        }
+
+        cinolib::FeatureNetworkOptions options;
+        options.split_lines_at_high_curvature_points = true;
+        options.ang_thresh_deg = creaseAngle;
+        std::vector<std::vector<unsigned int>> network;
+        cinolib::feature_network(mesh, network, options);
+
+        lines.reserve(network.size());
+        for (size_t i = 0; i < network.size(); ++i)
+        {
+            const std::vector<unsigned int>& line = network[i];
+            PointList3D pts(line.size());
+            for (size_t j = 0; j < line.size(); ++j)
+            {
+                const cinolib::vec3d& p = mesh.vert(line[j]);
+                pts[j] = osg::Vec3d(p[0], p[1], p[2]);
+            }
+            lines.push_back(pts);
+        }
+        return !lines.empty();
+#else
+        (void)geom; (void)creaseAngle;
+        OSG_NOTICE << "[osgVerse] extractFeatureLines(): not implemented, cinolib is not found"
+                   << std::endl;
+        return false;
+#endif
+    }
+
+    osg::Geometry* createFeatureLineGeometry(const std::vector<PointList3D>& lines,
+                                             const osg::Vec4& color)
+    {
+        osg::ref_ptr<osg::Vec3Array> va = new osg::Vec3Array;
+        for (size_t i = 0; i < lines.size(); ++i)
+        {
+            const PointList3D& line = lines[i];
+            for (size_t j = 0; j + 1 < line.size(); ++j)
+            {
+                va->push_back(osg::Vec3((float)line[j][0], (float)line[j][1],
+                                        (float)line[j][2]));
+                va->push_back(osg::Vec3((float)line[j + 1][0], (float)line[j + 1][1],
+                                        (float)line[j + 1][2]));
+            }
+        }
+
+        if (va->empty()) return NULL;
+        osg::ref_ptr<osg::DrawArrays> da = new osg::DrawArrays(GL_LINES, 0, va->size());
+        return createGeometry(va.get(), NULL, color, da.get(), false, true, false);
     }
 
 }
