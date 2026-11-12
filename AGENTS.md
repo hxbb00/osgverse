@@ -293,6 +293,7 @@ Tests are in `tests/` directory and categorized as:
 - `osgVerse_Test_Forward_Pbr` - Forward PBR rendering
 - `osgVerse_Test_ImGui` - ImGui integration
 - `osgVerse_Test_Earth` - Earth/atmosphere/ocean
+- `osgVerse_Test_Perf_Profile` - Per-model GPU/counter/resource profiling with HUD
 - `osgVerse_Test_Physics_Basic` - Physics simulation (requires Bullet)
 - And many more...
 

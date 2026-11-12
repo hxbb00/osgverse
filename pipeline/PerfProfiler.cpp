@@ -18,6 +18,7 @@
 #include <osgUtil/Statistics>
 #include <algorithm>
 #include <cstdio>
+#include <deque>
 #include <set>
 #include <sstream>
 
@@ -74,14 +75,15 @@ namespace osgVerse
         {
             Scope* scope; unsigned int contextID; std::string pass; int frame;
             osg::Timer_t cpuStart; double cpuMs;
-            unsigned int drawCalls, drawables, instances;
+            unsigned int drawCalls, drawables, instances, pixels;
             bool useTime, useTarget[MAX_TARGETS];
             unsigned int tsBegin, tsEnd;
             std::vector<unsigned int> segments[MAX_TARGETS];
             Entry* parent;
 
             Entry() : scope(NULL), contextID(0), frame(-1), cpuStart(0), cpuMs(0.0),
-                      drawCalls(0), drawables(0), instances(0), useTime(false), tsBegin(0), tsEnd(0),
+                      drawCalls(0), drawables(0), instances(0), pixels(0),
+                      useTime(false), tsBegin(0), tsEnd(0),
                       parent(NULL)
             {
                 for (int i = 0; i < MAX_TARGETS; ++i) useTarget[i] = false;
@@ -110,6 +112,7 @@ namespace osgVerse
             osg::observer_ptr<osgUtil::RenderStage> renderStage;  // camera scope: cull result
             osg::ref_ptr<osg::Camera::DrawCallback> oldPreDraw, oldPostDraw;
             Sample last; PassSamples lastPasses;
+            std::deque<Sample> history;
             ResourceCache resources; Result cached;
 
             Scope() : flags(0), cameraScope(false), enabled(true), exclusiveSupported(false),
@@ -139,12 +142,14 @@ namespace osgVerse
         std::map<unsigned int, Context> contexts;
         std::map<std::string, FrameAccum> accums;
         std::map<int, Scope*> bins;
+        std::map<const osg::Node*, int> exclusiveFrames;   // root -> last exclusive-texture scan
         std::vector<osg::ref_ptr<Scope> > scopes;
         bool enabled;
         int nextBinNumber;
-        int resourceInterval;
+        int resourceInterval, historySize;
 
-        PerfProfilerImpl() : enabled(true), nextBinNumber(1000), resourceInterval(60) {}
+        PerfProfilerImpl() : enabled(true), nextBinNumber(1000), resourceInterval(60),
+                             historySize(120) {}
 
         Scope* findScope(const std::string& name)
         {
@@ -221,6 +226,9 @@ namespace osgVerse
                 (s->flags & F_PIPELINE_STATS) != 0 && isStatSupported(ext, contextID);
             e->useTarget[SAMPLES] = (s->flags & F_OCCLUSION) != 0 &&
                 isQuerySupported(ext) && ext->isOcclusionQuerySupported;
+            if (osg::Camera* cam = ri.getCurrentCamera())
+                if (const osg::Viewport* vp = cam->getViewport())
+                    e->pixels = (unsigned int)(vp->width() * vp->height());
 
             Context& ctx = contexts[contextID];
             e->parent = ctx.stack.empty() ? NULL : ctx.stack.back();
@@ -340,6 +348,7 @@ namespace osgVerse
             Sample sample; sample.frameNumber = e->frame;
             sample.cpuMs = e->cpuMs; sample.drawCalls = e->drawCalls;
             sample.drawables = e->drawables; sample.instances = e->instances;
+            sample.pixels = e->pixels;
 
 #if VERSE_PERF_QUERIES
             if (ext)
@@ -384,7 +393,12 @@ namespace osgVerse
             if (frame > acc.frame)
             {
                 if (acc.frame >= 0)   // the previous frame has been fully accumulated
-                { s->last = acc.total; s->lastPasses = acc.passes; }
+                {
+                    s->last = acc.total; s->lastPasses = acc.passes;
+                    applyResources(s, s->last);
+                    s->history.push_back(s->last);
+                    while ((int)s->history.size() > historySize) s->history.pop_front();
+                }
                 acc.frame = frame; acc.total.reset(); acc.total.frameNumber = frame;
                 acc.passes.clear();
             }
@@ -414,6 +428,7 @@ namespace osgVerse
             dst.gpuMs += src.gpuMs; dst.cpuMs += src.cpuMs;
             dst.drawCalls += src.drawCalls; dst.drawables += src.drawables;
             dst.instances += src.instances;
+            dst.pixels = std::max(dst.pixels, src.pixels);
             dst.primitives += src.primitives; dst.vsInvocations += src.vsInvocations;
             dst.fsInvocations += src.fsInvocations; dst.samplesPassed += src.samplesPassed;
         }
@@ -585,6 +600,45 @@ namespace osgVerse
             }
         };
 
+        // Exclusive textures are a property of all watched scopes sharing one root, so the
+        // reference counts are gathered once and shared, instead of traversing the whole scene
+        // again for every scope (which matters when dozens of models are watched together)
+        void refreshExclusive(osg::Node* root, int frame)
+        {
+            if (!root) return;
+            std::map<const osg::Node*, int>::iterator it = exclusiveFrames.find(root);
+            if (frame >= 0 && it != exclusiveFrames.end() && frame - it->second < resourceInterval)
+                return;
+
+            TextureUsageGather usage;
+            std::vector<Scope*> group;
+            for (size_t i = 0; i < scopes.size(); ++i)
+            {
+                Scope* s = scopes[i].get();
+                if (s->cameraScope || !s->exclusiveSupported || !s->node.valid()) continue;
+                if (s->root.get() != root) continue;
+                s->resources.exclusiveBytes = 0; s->resources.exclusiveTextures = 0;
+                usage.watched[s->node.get()] = s; group.push_back(s);
+            }
+            if (group.empty()) return;
+
+            usage.traverse(root);
+            for (std::map<const osg::Texture*, TextureUsageGather::Usage>::iterator
+                 it2 = usage.usage.begin(); it2 != usage.usage.end(); ++it2)
+            {
+                const TextureUsageGather::Usage& u = it2->second;
+                for (std::map<const Scope*, int>::const_iterator uIt = u.perScope.begin();
+                     uIt != u.perScope.end(); ++uIt)
+                {
+                    if (uIt->second != u.total) continue;   // used outside this scope too
+                    Scope* s = const_cast<Scope*>(uIt->first);
+                    s->resources.exclusiveBytes += ResourceGather::textureSize(it2->first);
+                    ++s->resources.exclusiveTextures;
+                }
+            }
+            exclusiveFrames[root] = (frame >= 0) ? frame : 0;
+        }
+
         void refreshResources(Scope* s, int frame)
         {
             if (!(s->flags & (F_GEOMETRY | F_TEXTURES | F_BUFFERS | F_TEX_EXCLUSIVE))) return;
@@ -593,8 +647,8 @@ namespace osgVerse
 
             s->resources.frame = frame;
             s->resources.geometryBytes = s->resources.textureBytes = 0;
-            s->resources.bufferBytes = s->resources.exclusiveBytes = 0;
-            s->resources.geometries = s->resources.textures = s->resources.exclusiveTextures = 0;
+            s->resources.bufferBytes = 0;
+            s->resources.geometries = s->resources.textures = 0;
             if (!s->node.valid()) return;
 
             ResourceGather gather; gather.traverse(s->node.get());
@@ -603,25 +657,7 @@ namespace osgVerse
             s->resources.bufferBytes = gather.bufferBytes;
             s->resources.geometries = gather.geometries;
             s->resources.textures = (unsigned int)gather.textureSeen.size();
-
-            if (!s->exclusiveSupported || !s->root.valid()) return;
-            TextureUsageGather usage;
-            for (size_t i = 0; i < scopes.size(); ++i)
-            {
-                Scope* other = scopes[i].get();
-                if (other->cameraScope || !other->node.valid() || other->root != s->root) continue;
-                usage.watched[other->node.get()] = other;
-            }
-            usage.traverse(s->root.get());
-            for (std::map<const osg::Texture*, TextureUsageGather::Usage>::iterator
-                 it = usage.usage.begin(); it != usage.usage.end(); ++it)
-            {
-                std::map<const Scope*, int>::iterator mine = it->second.perScope.find(s);
-                if (mine == it->second.perScope.end()) continue;
-                if (mine->second != it->second.total) continue;   // used outside this scope too
-                s->resources.exclusiveBytes += ResourceGather::textureSize(it->first);
-                ++s->resources.exclusiveTextures;
-            }
+            refreshExclusive(s->root.get(), frame);
         }
 
         static void applyResources(const Scope* s, Sample& sample)
@@ -652,7 +688,7 @@ namespace osgVerse
                 std::map<int, Scope*>::iterator it = impl->bins.find(getBinNum());
                 if (it != impl->bins.end()) scope = it->second;
 
-                unsigned int drawCalls = 0, instances = 0;
+                unsigned int drawCalls = 0, instances = 0, drawables = 0;
                 Entry* entry = NULL;
                 if (scope)
                 {
@@ -661,7 +697,22 @@ namespace osgVerse
                     if (_renderLeafList.empty()) copyLeavesFromStateGraphListToRenderLeafList();
                     for (size_t i = 0; i < _renderLeafList.size(); ++i)
                         impl->addDrawableCounts(_renderLeafList[i], drawCalls, instances);
+                    drawables = (unsigned int)_renderLeafList.size();
 
+                    // A StateSet inside the scope may ask for its own render bin, in which case the
+                    // corresponding leaves live in a nested bin instead of this list. They are still
+                    // covered by the scope's GL queries, so they have to be counted too; the render
+                    // graph statistics are the only way to reach them from here, and one leaf is
+                    // taken as one draw call.
+                    if (!_bins.empty())
+                    {
+                        osgUtil::Statistics stats; getStats(stats);
+                        if (stats.numDrawables > drawables)
+                        {
+                            unsigned int nested = (unsigned int)stats.numDrawables - drawables;
+                            drawCalls += nested; drawables += nested;
+                        }
+                    }
                     osg::State* state = ri.getState();
                     int frame = (state && state->getFrameStamp())
                               ? (int)state->getFrameStamp()->getFrameNumber() : -1;
@@ -671,7 +722,7 @@ namespace osgVerse
                     if (entry)
                     {
                         entry->drawCalls = drawCalls; entry->instances = instances;
-                        entry->drawables = (unsigned int)_renderLeafList.size();
+                        entry->drawables = drawables;
                     }
                 }
                 osgUtil::RenderBin::drawImplementation(ri, previous);
@@ -841,6 +892,14 @@ namespace osgVerse
 
         const Result* buildResult(Scope* s)
         {
+            // A scope which has not been drawn yet (culled away, or not realized so far) still
+            // holds resources: gather them once on demand, otherwise it would be reported as 0 MB
+            if (s->resources.frame < 0)
+            {
+                refreshResources(s, -1);
+                s->resources.frame = 0;   // first estimate done, the next one follows the interval
+            }
+
             s->cached.name = s->name; s->cached.flags = s->flags;
             s->cached.cameraScope = s->cameraScope;
             s->cached.exclusiveSupported = s->exclusiveSupported;
@@ -890,7 +949,7 @@ namespace osgVerse
 
     void PerfProfiler::Sample::reset()
     {
-        frameNumber = -1; gpuMs = cpuMs = 0.0; drawCalls = drawables = instances = 0;
+        frameNumber = -1; gpuMs = cpuMs = 0.0; drawCalls = drawables = instances = pixels = 0;
         primitives = vsInvocations = fsInvocations = samplesPassed = 0;
         geometryBytes = textureBytes = texExclusiveBytes = bufferBytes = 0;
         geometries = textures = texturesExclusive = 0;
@@ -944,6 +1003,23 @@ namespace osgVerse
     void PerfProfiler::setEnabled(bool enabled) { _impl->enabled = enabled; }
 
     void PerfProfiler::setResourceInterval(int frames) { _impl->resourceInterval = frames; }
+
+    void PerfProfiler::setHistorySize(int frames)
+    { _impl->historySize = frames > 1 ? frames : 1; }
+
+    std::vector<PerfProfiler::Sample> PerfProfiler::getHistory(const std::string& name) const
+    {
+        PerfProfilerImpl::Scope* s = _impl->findScope(name);
+        if (!s) return std::vector<Sample>();
+        return std::vector<Sample>(s->history.begin(), s->history.end());
+    }
+
+    std::vector<std::string> PerfProfiler::getScopeNames() const
+    {
+        std::vector<std::string> names;
+        for (size_t i = 0; i < _impl->scopes.size(); ++i) names.push_back(_impl->scopes[i]->name);
+        return names;
+    }
 
     const PerfProfiler::Result* PerfProfiler::getResult(const std::string& name) const
     {

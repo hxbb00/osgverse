@@ -18,6 +18,7 @@
 #include <pipeline/HistoryBufferCallback.h>
 #include <pipeline/RenderCallbackXR.h>
 #include <pipeline/PerfProfiler.h>
+#include <pipeline/PerfAnalyzer.h>
 #include <pipeline/Utilities.h>
 #include <readerwriter/Utilities.h>
 #include <iostream>
@@ -58,7 +59,11 @@ public:
     virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter&)
     {
         if (ea.getEventType() != osgGA::GUIEventAdapter::FRAME) return false;
-        if ((++_count % 60) == 0) OSG_NOTICE << _perf->toString();
+        if ((++_count % 60) == 0)
+        {   // raw numbers plus the derived pressure analysis
+            OSG_NOTICE << _perf->toString();
+            OSG_NOTICE << osgVerse::PerfAnalyzer::toString(*_perf);
+        }
         return false;
     }
 

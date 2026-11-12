@@ -29,7 +29,10 @@ namespace wrap_osgVerseStringObject
         return true;
     }
 
-    REGISTER_OBJECT_WRAPPER(StringObject,
+    // The name token only names the generated C symbols: it is prefixed so that it does not
+    // clash with osgEarth's own 'wrapper_serializer_StringObject' when both libraries are linked
+    // statically (WASM builds). The registered class name below is unchanged.
+    REGISTER_OBJECT_WRAPPER(OSGVERSE_StringObject,
                             new osgVerse::StringObject,
                             osgVerse::StringObject,
                             "osg::Object osgVerse::StringObject")

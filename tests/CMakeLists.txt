@@ -79,6 +79,7 @@ NEW_EXAMPLE(osgVerse_Test_Report_Graph report_graph_test.cpp)  # Scene graph str
 NEW_EXAMPLE(osgVerse_Test_Shader_Library shader_library_test.cpp)  # Shader library loading and platform-testing example
 NEW_EXAMPLE(osgVerse_Test_Shadow shadow_test.cpp)  # Shadow algorithm and efficiency testing example
 NEW_EXAMPLE(osgVerse_Test_Many_Lights many_lights_test.cpp)  # Many lights with clustered light culling example
+NEW_EXAMPLE(osgVerse_Test_Perf_Profile perf_profile_test.cpp)  # Per-model GPU/counter/resource profiling example with HUD
 
 IF(NOT VERSE_USE_OHOS)
     NEW_EXAMPLE(osgVerse_Test_Video video_test.cpp)  # Hardware video decoding/encoding example (NV Codec or libVA)

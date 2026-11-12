@@ -91,6 +91,7 @@ namespace osgVerse
             int frameNumber;                  // frame these numbers belong to (-1: none yet)
             double gpuMs, cpuMs;              // GPU / CPU (draw submission) time
             unsigned int drawCalls, drawables, instances;
+            unsigned int pixels;              // viewport pixels, for overdraw / coverage
             unsigned long long primitives, vsInvocations, fsInvocations, samplesPassed;
             unsigned long long geometryBytes, textureBytes, texExclusiveBytes, bufferBytes;
             unsigned int geometries, textures, texturesExclusive;
@@ -129,6 +130,13 @@ namespace osgVerse
 
         /** How many frames between two resource recalculations (default 60, 0 = every frame). */
         void setResourceInterval(int frames);
+
+        /** How many published frames are kept per scope for baselines / spike detection. */
+        void setHistorySize(int frames);
+        std::vector<Sample> getHistory(const std::string& name) const;
+
+        /** Names of all watched scopes, in attach order. */
+        std::vector<std::string> getScopeNames() const;
 
         /** Latest result of a scope, or NULL if the name is unknown. */
         const Result* getResult(const std::string& name) const;

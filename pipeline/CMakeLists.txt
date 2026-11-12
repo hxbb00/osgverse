@@ -4,15 +4,15 @@ SET(LIBRARY_INCLUDE_FILES
     HistoryBufferCallback.h ResourceManager.h LightDrawable.h SkyBox.h NodeSelector.h MultiEffectNode.h
     ExternalTexture2D.h SymbolManager.h Drawer2D.h IncrementalCompiler.h IntersectionManager.h Rasterizer.h
     ShaderLibrary.h RenderCallbackXR.h NISUpscaler.h Allocator.h VolumetricCloud.h CSGNode.h
-    Utilities.h Global.h PerfProfiler.h
+    Utilities.h Global.h PerfProfiler.h PerfAnalyzer.h
 )
 SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     Pipeline.cpp PipelineStandard.cpp PipelineLoader.cpp DeferredCallback.cpp UserInputModule.cpp
-    ShadowModule.cpp LightModule.cpp LightCluster.cpp LightDrawable.cpp HistoryBufferCallback.cpp ResourceManager.cpp
+    ShadowModule.cpp LightModule.cpp LightCluster.cpp LightDrawable.cpp HistoryBufferCallback.cpp
     SkyBox.cpp NodeSelector.cpp MultiEffectNode.cpp SymbolManager.cpp Drawer2D.cpp IncrementalCompiler.cpp
     IntersectionManager.cpp Rasterizer.cpp ShaderLibrary.cpp RenderCallbackXR.cpp ExternalTexture2D.cpp
-    NISUpscaler.cpp Utilities.cpp UtilitiesEx.cpp VolumetricCloud.cpp CSGNode.cpp CSGNodeRenderer.cpp
-    PerfProfiler.cpp
+    NISUpscaler.cpp VolumetricCloud.cpp CSGNode.cpp CSGNodeRenderer.cpp ResourceManager.cpp
+    Utilities.cpp UtilitiesEx.cpp PerfProfiler.cpp PerfAnalyzer.cpp
 )
 
 IF(MSVC AND NOT VERSE_USE_EXTERNAL_GLES)

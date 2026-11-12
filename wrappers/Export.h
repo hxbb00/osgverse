@@ -37,7 +37,7 @@
     USE_SERIALIZER_WRAPPER(SymbolManager) \
     USE_SERIALIZER_WRAPPER(VolumetricCloud) \
     USE_SERIALIZER_WRAPPER(Drawer2D) \
-    USE_SERIALIZER_WRAPPER(StringObject) \
+    USE_SERIALIZER_WRAPPER(OSGVERSE_StringObject) \
     USE_SERIALIZER_WRAPPER(UserCallback) \
     USE_SERIALIZER_WRAPPER(CameraDrawCallback) \
     USE_SERIALIZER_WRAPPER(CameraBaseDrawCallback) \
