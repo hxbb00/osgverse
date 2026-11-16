@@ -609,13 +609,12 @@ SOURCE_GROUP("Tweeny Files" FILES ${TWEENY_SOURCE_FILES})
 SET(LIB_NAME osgVerseDependency)
 SET(LIBRARY_FILES
 	tiny_obj_loader.h tiny_gltf.h picojson.h nanoflann.hpp exprtk.hpp mio.hpp any.hpp VHACD.h RTree.h
-    backward.hpp strtk.hpp ghc/filesystem.hpp rapidxml/rapidxml.hpp rapidjson/rapidjson.h parallel_radix_sort.h
+    backward.hpp ghc/filesystem.hpp rapidxml/rapidxml.hpp rapidjson/rapidjson.h parallel_radix_sort.h
     nanoid/nanoid.cpp nanoid/nanoid.h nanoid/crypto_random.cpp nanoid/crypto_random.h heatmap.c heatmap.h
     sqlite3.c sqlite3.h ufbx.c ufbx.h libdeflate.c libdeflate.h tinyexr.h dkm_parallel.hpp lsqcpp.hpp
     mikktspace.c mikktspace.h laplacian_deformation.cpp laplacian_deformation.hpp lightmapper.h miniaudio.h
 	xatlas.cpp xatlas.h mapbox/variant.hpp mapbox/geometry.hpp mapbox/polylabel.hpp mapbox/geojson.cpp minimp4.h
     GL/glew.c GL/glew.h xxYUV/rgb2yuv.cpp xxYUV/yuv2rgb.cpp xxYUV/cpu.cpp timeout.c timeout.h pmtiles.hpp
-    BSplineFitting/cubic_b_spline.cpp BSplineFitting/open_cubic_b_spline.cpp BSplineFitting/spline_curve_fitting.cpp
     clipper2/clipper.engine.cpp clipper2/clipper.offset.cpp clipper2/clipper.rectclip.cpp pybind11/pybind11.h
     parallel_hashmap/phmap.h bc7_rdo/rgbcx.h bc7_rdo/rgbcx.cpp flatgeobuf/packedrtree.cpp VRM.h
     ${APPROXMVBB_SOURCE_FILES} ${BLEND2D_SOURCE_FILES} ${BOX3D_SOURCE_FILES} ${DISCREGRID_SOURCE_FILES} ${FILTER_SOURCE_FILES}
@@ -766,7 +765,7 @@ IF(UNIX)
     TARGET_LINK_LIBRARIES(${LIB_NAME} dl)
 ENDIF(UNIX)
 
-SET(THIRDPARTY_INCLUDE_FILES any.hpp picojson.h strtk.hpp backward.hpp)
+SET(THIRDPARTY_INCLUDE_FILES any.hpp picojson.h backward.hpp)
 SET(IMGUI_INCLUDE_FILES imgui/imgui.h imgui/imconfig.h imgui/ImGuizmo.h)
 INSTALL(FILES ${THIRDPARTY_INCLUDE_FILES} DESTINATION ${INSTALL_INCDIR}/osgVerse COMPONENT libosgverse-dev)
 INSTALL(FILES ${IMGUI_INCLUDE_FILES} DESTINATION ${INSTALL_INCDIR}/osgVerse/imgui COMPONENT libosgverse-dev)

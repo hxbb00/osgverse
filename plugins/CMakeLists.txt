@@ -33,8 +33,10 @@ ADD_SUBDIRECTORY(osgdb_osm)
 ADD_SUBDIRECTORY(osgdb_shp)
 
 # images
+ADD_SUBDIRECTORY(osgdb_exr)
 ADD_SUBDIRECTORY(osgdb_image)
 ADD_SUBDIRECTORY(osgdb_ktx)
+ADD_SUBDIRECTORY(osgdb_lottie)
 ADD_SUBDIRECTORY(osgdb_netcdf)
 ADD_SUBDIRECTORY(osgdb_tiff)
 ADD_SUBDIRECTORY(osgdb_webp)

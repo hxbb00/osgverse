@@ -120,6 +120,63 @@ namespace osgVerse
     */
     extern osg::Image* generateTransferFunction(int type, int resolution = 64, int alpha = 255);
 
+    /** Generate a heatmap image from a list of points, for overlay or debug visualization.
+    *   points: x/y coordinates in [0, 1]; (0, 0) is the bottom-left corner of the image
+    *   radius: stamp radius of each point in pixels, <= 0 to use the library default stamp
+    *   type:   color scheme, same values as tinycolormap::ColormapType above
+    *   alpha:  alpha of heated pixels; pixels without any point stay fully transparent
+    */
+    extern osg::Image* generateHeatmapImage(const std::vector<osg::Vec2>& points,
+                                            int width, int height, int radius = 0,
+                                            int type = 1, int alpha = 255);
+
+    /** Simplified parameters of the lightmap baker */
+    struct LightmapParameters
+    {
+        int hemisphereSize;           // resolution of each hemisphere rendering, power of two
+        float zNear, zFar;            // min/max draw distance of the hemisphere rendering
+        osg::Vec4 clearColor;         // background (sky) color of the hemisphere rendering
+        int interpolationPasses;      // 0-8 hierarchical interpolation passes
+        float interpolationThreshold; // error below which a lightmap pixel is interpolated
+        float distanceModifier;       // height modifier of the rendered hemispheres
+        int width, height;            // output lightmap size
+
+        LightmapParameters();
+    };
+
+    /** Simplified wrapper of the lightmapper library (https://github.com/ands/lightmapper).
+        Call setGeometry() once, then begin()/end() in a loop and render the scene with the
+        returned camera until begin() returns false; createImage() gives the baked HDR lightmap.
+        It requires a current desktop GL3 context, as the library uses GLSL 150, VAO and FBO.
+    */
+    class LightmapBaker : public osg::Referenced
+    {
+    public:
+        LightmapBaker(const LightmapParameters& param = LightmapParameters());
+        bool isValid() const;
+
+        /** Set the triangle mesh to bake. normals can be NULL for flat surfaces, while a
+            lightmap UV set (usually the second texture coordinate) is always required. */
+        bool setGeometry(const osg::Vec3Array* positions, const osg::Vec3Array* normals,
+                         const osg::Vec2Array* lightmapUVs,
+                         const osg::DrawElements* indices = NULL);
+
+        /** Begin one hemisphere rendering pass. Render the scene with viewMatrix/projMatrix
+            into the current framebuffer after this returns true, then call end() */
+        bool begin(int viewport[4], osg::Matrixf& viewMatrix, osg::Matrixf& projMatrix);
+        void end();
+
+        /** Progress of the current baking, in [0, 1] */
+        float getProgress() const;
+
+        /** Create an HDR (GL_RGB32F) image of the baked lightmap */
+        osg::Image* createImage();
+
+    protected:
+        virtual ~LightmapBaker();
+        struct Impl; Impl* _impl;
+    };
+
     /** Guess GL context and GLSL versions */
     extern void guessOpenGLVersions(int& contextVersion, int& glslVersion);
 
@@ -555,6 +612,23 @@ namespace osgVerse
         /** Split a string into parts */
         static void split(const std::string& src, std::vector<std::string>& slist, char sep, bool ignoreEmpty = true);
 
+        /** Split a string into parts by any character in separators (quote aware) */
+        static void split(const std::string& src, std::vector<std::string>& slist,
+                          const std::string& separators, bool ignoreEmpty = true);
+
+        /** Check whether a string starts with the given prefix */
+        static bool startsWith(const std::string& str, const std::string& prefix,
+                               bool ignoreCase = false);
+
+        /** Check whether a string ends with the given suffix */
+        static bool endsWith(const std::string& str, const std::string& suffix,
+                             bool ignoreCase = false);
+
+        /** Match a string against a wildcard pattern: '*' matches any sequence,
+            '?' matches a single character. e.g. wildcardMatch("a.json", "*.json") == true */
+        static bool wildcardMatch(const std::string& str, const std::string& pattern,
+                                  bool ignoreCase = false);
+
         /** Trim leading and trailing spaces of a string */
         static std::string trim(const std::string& str);
 
@@ -641,6 +715,7 @@ namespace osgVerse
     USE_OSGPLUGIN(verse_mesh) \
     USE_OSGPLUGIN(verse_leveldb) \
     USE_OSGPLUGIN(verse_mbtiles) \
+    USE_OSGPLUGIN(verse_lottie) \
     USE_OSGPLUGIN(verse_tiles) \
     USE_OSGPLUGIN(verse_terrain) \
     USE_OSGPLUGIN(verse_tms) \
@@ -649,6 +724,8 @@ namespace osgVerse
     USE_OSGPLUGIN(verse_geojson) \
     USE_OSGPLUGIN(verse_image) \
     USE_OSGPLUGIN(verse_ktx) \
+    USE_OSGPLUGIN(verse_lottie) \
+    USE_OSGPLUGIN(verse_exr) \
     USE_OSGPLUGIN(verse_video) \
     USE_OSGPLUGIN(verse_web) \
     USE_OSGPLUGIN(pbrlayout)

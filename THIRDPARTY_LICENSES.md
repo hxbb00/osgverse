@@ -26,7 +26,6 @@
 | bc7_rdo          | Embedded |           | ReaderWriter       | MIT/Apache2  | https://github.com/richgel999/bc7enc_rdo |
 | blend2d          | Embedded | 0.11.4    | Pipeline           | Zlib         | https://github.com/blend2d/blend2d |
 | box3d            | Embedded | 20260706  | Animation          | MIT          | https://github.com/erincatto/box3d |
-| BSplineFitting   | Embedded |           | Modeling           | MIT          | https://github.com/QianZheng/BSplineFitting |
 | ByteTrack-cpp    | Embedded | 20260327  | AI                 | MIT          | https://github.com/Vertical-Beach/ByteTrack-cpp |
 | CDT              | Embedded | 1.4.0     | Modeling           | MPL2         | https://github.com/artem-ogre/CDT |
 | Clipper2         | Embedded | 1.3.0     | Modeling           | Boost        | https://github.com/collmot/Clipper2/tree/feat/cpp11-support |
@@ -90,7 +89,7 @@
 | rapidxml         | Embedded |           | -                  | Boost / MIT  | https://rapidxml.sourceforge.net/ |
 | rasterizer       | Embedded |           | Pipeline           | -            | https://github.com/rawrunprotected/rasterizer |
 | recastnavigation | Embedded |           | AI                 | Zlib         | https://github.com/recastnavigation/recastnavigation |
-| rLottie          | Embedded | 0.2       | -                  | MIT (+)      | https://github.com/Samsung/rlottie |
+| rLottie          | Embedded | 0.2       | verse_lottie, Pipeline | MIT (+)      | https://github.com/Samsung/rlottie |
 | RTree            | Embedded | 20260404  | Modeling           | MIT          | https://github.com/nushoin/RTree |
 | simdb            | Embedded |           | ReaderWriter       | Apache2      | https://github.com/LiveAsynchronousVisualizedArchitecture/simdb |
 | shapelib         | Embedded | 1.6.2     | verse_shp          | MIT          | https://github.com/OSGeo/shapelib |
@@ -99,13 +98,12 @@
 | spz              | Embedded |           | verse_3dgs         | MIT          | https://github.com/nianticlabs/spz |
 | sqlite3          | Embedded |           | verse_mbtiles      | Public       | https://www.sqlite.org/index.html |
 | stb              | Embedded |           | verse_image        | MIT / Public | https://github.com/nothings/stb |
-| strtk            | Embedded |           | -                  | MIT          | https://github.com/ArashPartow/strtk |
 | supercluster     | Embedded |           | -                  | ISC          | https://github.com/mapbox/supercluster.hpp |
 | timeout          | Embedded |           | -                  | -            | https://25thandclement.com/~william/projects/timeout.c.html |
 | tiny_gltf        | Embedded |           | verse_gltf         | MIT          | https://github.com/syoyo/tinygltf |
 | tiny_gltf_loader | Embedded |           | verse_gltf         | MIT          | https://github.com/syoyo/tinygltfloader |
 | tiny_obj_loader  | Embedded | 20260527  | verse_mesh         | MIT          | https://github.com/tinyobjloader/tinyobjloader |
-| tinyexr          | Embedded |           | -                  | BSD          | https://github.com/syoyo/tinyexr |
+| tinyexr          | Embedded |           | verse_exr          | BSD          | https://github.com/syoyo/tinyexr |
 | tinyfiledialogs  | Embedded | 3.18.2    | UI                 | Zlib         | https://sourceforge.net/projects/tinyfiledialogs |
 | tinyspline       | Embedded |           | Modeling           | MIT          | https://github.com/msteinbeck/tinyspline |
 | Trellis2++       | Embedded | 20260811  | AI (GGML)          | MIT          | https://github.com/localai-org/trellis2cpp |

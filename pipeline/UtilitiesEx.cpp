@@ -20,6 +20,7 @@
 #include <chrono>
 #include <locale>
 #include <codecvt>
+#include <cctype>
 #include <iostream>
 #include <iomanip>
 #include <array>
@@ -406,6 +407,72 @@ void StringAuxiliary::split(const std::string& src, std::vector<std::string>& sl
     }
     if (!ignoreEmpty || (src.size() - start) > 0)
         slist.push_back(src.substr(start, src.size() - start));
+}
+
+static bool charsEqual(char c0, char c1, bool ignoreCase)
+{
+    if (c0 == c1) return true;
+    if (!ignoreCase) return false;
+    return std::tolower((unsigned char)c0) == std::tolower((unsigned char)c1);
+}
+
+void StringAuxiliary::split(const std::string& src, std::vector<std::string>& slist,
+                            const std::string& separators, bool ignoreEmpty)
+{
+    if (src.empty() || separators.empty()) return;
+    bool inQuotes = false;
+    std::string::size_type start = 0;
+    for (std::string::size_type i = 0; i < src.size(); ++i)
+    {
+        if (src[i] == '"') inQuotes = !inQuotes;
+        else if (!inQuotes && separators.find(src[i]) != std::string::npos)
+        {
+            if (!ignoreEmpty || (i - start) > 0)
+                slist.push_back(src.substr(start, i - start));
+            start = i + 1;
+        }
+    }
+    if (!ignoreEmpty || (src.size() - start) > 0)
+        slist.push_back(src.substr(start, src.size() - start));
+}
+
+bool StringAuxiliary::startsWith(const std::string& str, const std::string& prefix, bool ignoreCase)
+{
+    if (prefix.size() > str.size()) return false;
+    for (size_t i = 0; i < prefix.size(); ++i)
+    {
+        if (!charsEqual(str[i], prefix[i], ignoreCase)) return false;
+    }
+    return true;
+}
+
+bool StringAuxiliary::endsWith(const std::string& str, const std::string& suffix, bool ignoreCase)
+{
+    if (suffix.size() > str.size()) return false;
+    size_t offset = str.size() - suffix.size();
+    for (size_t i = 0; i < suffix.size(); ++i)
+    {
+        if (!charsEqual(str[offset + i], suffix[i], ignoreCase)) return false;
+    }
+    return true;
+}
+
+bool StringAuxiliary::wildcardMatch(const std::string& str, const std::string& pattern,
+                                    bool ignoreCase)
+{
+    size_t s = 0, p = 0, star = std::string::npos, mark = 0;
+    while (s < str.size())
+    {
+        if (p < pattern.size() && (pattern[p] == '?' || charsEqual(str[s], pattern[p], ignoreCase)))
+        { ++s; ++p; }
+        else if (p < pattern.size() && pattern[p] == '*')
+        { star = p++; mark = s; }
+        else if (star != std::string::npos)
+        { p = star + 1; s = ++mark; }
+        else return false;
+    }
+    while (p < pattern.size() && pattern[p] == '*') ++p;
+    return p == pattern.size();
 }
 
 std::string StringAuxiliary::trim(const std::string& str)

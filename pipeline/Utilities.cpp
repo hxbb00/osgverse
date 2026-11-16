@@ -1,5 +1,6 @@
 #include <osg/io_utils>
 #include <osg/Version>
+#include <osg/Vec2>
 #include <osg/ComputeBoundsVisitor>
 #include <osg/FrameBufferObject>
 #include <osg/RenderInfo>
@@ -21,6 +22,8 @@
 #include <osgViewer/Viewer>
 #include <chrono>
 #include <codecvt>
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <array>
 #include <random>
@@ -32,6 +35,12 @@
 
 #include <backward.hpp>
 #include <tinycolormap.hpp>
+#include <heatmap.h>
+#if defined(OSG_GL3_AVAILABLE) && !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE)
+#   define VERSE_USE_LIGHTMAPPER 1
+#   define LIGHTMAPPER_IMPLEMENTATION
+#   include <lightmapper.h>
+#endif
 #include <mikktspace.h>
 #include <PoissonGenerator.h>
 #include <normalmap/normalmapgenerator.h>
@@ -297,6 +306,7 @@ namespace osgVerse
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_odbc"));
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_leveldb"));
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_mbtiles"));
+        regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_lottie"));
 #endif
         regObject->addFileExtensionAlias("ept", "verse_ept");
         regObject->addFileExtensionAlias("fbx", "verse_fbx");
@@ -325,6 +335,8 @@ namespace osgVerse
         regObject->addFileExtensionAlias("kmz", "verse_kml");
         regObject->addFileExtensionAlias("webp", "verse_webp");
         regObject->addFileExtensionAlias("ktx", "verse_ktx");
+        regObject->addFileExtensionAlias("lottie", "verse_lottie");
+        regObject->addFileExtensionAlias("exr", "verse_exr");
         regObject->addFileExtensionAlias("rseq", "verse_image");
         regObject->addFileExtensionAlias("jpg", "verse_image");
         regObject->addFileExtensionAlias("jpeg", "verse_image");
@@ -697,6 +709,177 @@ namespace osgVerse
         image1D->setImage(resolution, 1, 1, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE,
             (unsigned char*)values, osg::Image::USE_NEW_DELETE);
         return image1D.release();
+    }
+
+    osg::Image* generateHeatmapImage(const std::vector<osg::Vec2>& points, int width, int height,
+                                     int radius, int type, int alpha)
+    {
+        if (width < 1 || height < 1) return NULL;
+        heatmap_t* heatmap = heatmap_new((unsigned)width, (unsigned)height);
+        heatmap_stamp_t* stamp = (radius > 0) ? heatmap_stamp_gen((unsigned)radius) : NULL;
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            float u = std::max(0.0f, std::min(points[i].x(), 1.0f));
+            float v = std::max(0.0f, std::min(points[i].y(), 1.0f));
+            unsigned x = (unsigned)(u * (width - 1)), y = (unsigned)((1.0f - v) * (height - 1));
+            if (stamp) heatmap_add_point_with_stamp(heatmap, x, y, stamp);
+            else heatmap_add_point(heatmap, x, y);
+        }
+
+        // The first color is transparent so pixels without any point do not cover the background
+        const int numColors = 64;
+        std::vector<unsigned char> colors(numColors * 4);
+        for (int i = 0; i < numColors; ++i)
+        {
+            tinycolormap::Color c = tinycolormap::GetColor(
+                (float)i / (float)(numColors - 1), (tinycolormap::ColormapType)type);
+            colors[i * 4 + 0] = (unsigned char)(c.r() * 255.0f);
+            colors[i * 4 + 1] = (unsigned char)(c.g() * 255.0f);
+            colors[i * 4 + 2] = (unsigned char)(c.b() * 255.0f);
+            colors[i * 4 + 3] = (i == 0) ? 0 : (unsigned char)alpha;
+        }
+
+        heatmap_colorscheme_t* scheme = heatmap_colorscheme_load(colors.data(), numColors);
+        unsigned char* pixels = heatmap_render_to(heatmap, scheme, NULL);
+        osg::ref_ptr<osg::Image> image = new osg::Image;
+        if (pixels)
+            image->setImage(width, height, 1, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE,
+                            pixels, osg::Image::USE_MALLOC_FREE);
+
+        heatmap_colorscheme_free(scheme);
+        if (stamp) heatmap_stamp_free(stamp);
+        heatmap_free(heatmap);
+        return image->data() ? image.release() : NULL;
+    }
+
+    LightmapParameters::LightmapParameters()
+        : hemisphereSize(64), zNear(0.1f), zFar(1000.0f),
+          clearColor(0.0f, 0.0f, 0.0f, 1.0f), interpolationPasses(2),
+          interpolationThreshold(0.01f), distanceModifier(0.0f), width(512), height(512) {}
+
+    struct LightmapBaker::Impl
+    {
+        int width, height;
+#ifdef VERSE_USE_LIGHTMAPPER
+        lm_context* context;
+        bool geometrySet;
+        std::vector<float> pixels;
+        Impl() : width(0), height(0), context(NULL), geometrySet(false) {}
+#else
+        Impl() : width(0), height(0) {}
+#endif
+    };
+
+    LightmapBaker::LightmapBaker(const LightmapParameters& param) : _impl(new Impl)
+    {
+        _impl->width = param.width; _impl->height = param.height;
+#ifdef VERSE_USE_LIGHTMAPPER
+        _impl->context = lmCreate(param.hemisphereSize, param.zNear, param.zFar,
+                                  param.clearColor[0], param.clearColor[1], param.clearColor[2],
+                                  param.interpolationPasses, param.interpolationThreshold,
+                                  param.distanceModifier);
+#endif
+    }
+
+    LightmapBaker::~LightmapBaker()
+    {
+#ifdef VERSE_USE_LIGHTMAPPER
+        if (_impl->context) lmDestroy(_impl->context);
+#endif
+        delete _impl;
+    }
+
+    bool LightmapBaker::isValid() const
+    {
+#ifdef VERSE_USE_LIGHTMAPPER
+        return _impl->context != NULL;
+#else
+        return false;
+#endif
+    }
+
+    bool LightmapBaker::setGeometry(const osg::Vec3Array* positions, const osg::Vec3Array* normals,
+                                    const osg::Vec2Array* lightmapUVs,
+                                    const osg::DrawElements* indices)
+    {
+#ifdef VERSE_USE_LIGHTMAPPER
+        if (!isValid() || !positions || positions->empty() || !lightmapUVs) return false;
+        const int w = _impl->width, h = _impl->height;
+        _impl->pixels.assign((size_t)w * h * 3, 0.0f);
+        lmSetTargetLightmap(_impl->context, _impl->pixels.data(), w, h, 3);
+
+        int count = (int)positions->size();
+        lm_type indexType = LM_NONE; const void* indexPtr = NULL;
+        if (indices)
+        {
+            if (dynamic_cast<const osg::DrawElementsUByte*>(indices)) indexType = LM_UNSIGNED_BYTE;
+            else if (dynamic_cast<const osg::DrawElementsUShort*>(indices))
+                indexType = LM_UNSIGNED_SHORT;
+            else indexType = LM_UNSIGNED_INT;
+            indexPtr = indices->getDataPointer();
+            count = (int)indices->getNumIndices();
+        }
+
+        lmSetGeometry(_impl->context, NULL,
+                      LM_FLOAT, positions->getDataPointer(), (int)sizeof(osg::Vec3),
+                      normals ? LM_FLOAT : LM_NONE, normals ? normals->getDataPointer() : NULL,
+                      (int)sizeof(osg::Vec3),
+                      LM_FLOAT, lightmapUVs->getDataPointer(), (int)sizeof(osg::Vec2),
+                      count, indexType, indexPtr);
+        _impl->geometrySet = true;
+        return true;
+#else
+        (void)positions; (void)normals; (void)lightmapUVs; (void)indices;
+        return false;
+#endif
+    }
+
+    bool LightmapBaker::begin(int viewport[4], osg::Matrixf& viewMatrix, osg::Matrixf& projMatrix)
+    {
+#ifdef VERSE_USE_LIGHTMAPPER
+        if (!isValid() || !_impl->geometrySet) return false;
+        float view[16], proj[16];
+        if (!lmBegin(_impl->context, viewport, view, proj)) return false;
+        std::memcpy(viewMatrix.ptr(), view, sizeof(float) * 16);
+        std::memcpy(projMatrix.ptr(), proj, sizeof(float) * 16);
+        return true;
+#else
+        (void)viewport; (void)viewMatrix; (void)projMatrix;
+        return false;
+#endif
+    }
+
+    void LightmapBaker::end()
+    {
+#ifdef VERSE_USE_LIGHTMAPPER
+        if (isValid()) lmEnd(_impl->context);
+#endif
+    }
+
+    float LightmapBaker::getProgress() const
+    {
+#ifdef VERSE_USE_LIGHTMAPPER
+        return isValid() ? lmProgress(_impl->context) : 1.0f;
+#else
+        return 1.0f;
+#endif
+    }
+
+    osg::Image* LightmapBaker::createImage()
+    {
+#ifdef VERSE_USE_LIGHTMAPPER
+        if (!isValid() || _impl->pixels.empty()) return NULL;
+        const size_t bytes = sizeof(float) * _impl->pixels.size();
+        float* data = new float[_impl->pixels.size()];
+        std::memcpy(data, _impl->pixels.data(), bytes);
+
+        osg::ref_ptr<osg::Image> image = new osg::Image;
+        image->setImage(_impl->width, _impl->height, 1, GL_RGB32F_ARB, GL_RGB, GL_FLOAT,
+                        (unsigned char*)data, osg::Image::USE_NEW_DELETE);
+        return image.release();
+#else
+        return NULL;
+#endif
     }
 
     void guessOpenGLVersions(int& contextVersion, int& glslVersion)
