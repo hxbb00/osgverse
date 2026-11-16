@@ -25,9 +25,23 @@
 // GL query enums / entry points only exist on desktop GL builds. On GLES / WebGL the whole
 // query path is compiled out and the corresponding metrics are simply reported as 0.
 #if !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE)
-#   define VERSE_PERF_QUERIES 1
+#  define VERSE_PERF_QUERIES 1
+#  ifndef GL_ARB_pipeline_statistics_query
+#    define GL_ARB_pipeline_statistics_query 1
+#    define GL_VERTICES_SUBMITTED_ARB         0x82EE
+#    define GL_PRIMITIVES_SUBMITTED_ARB       0x82EF
+#    define GL_VERTEX_SHADER_INVOCATIONS_ARB  0x82F0
+#    define GL_TESS_CONTROL_SHADER_PATCHES_ARB 0x82F1
+#    define GL_TESS_EVALUATION_SHADER_INVOCATIONS_ARB 0x82F2
+#    define GL_GEOMETRY_SHADER_PRIMITIVES_EMITTED_ARB 0x82F3
+#    define GL_FRAGMENT_SHADER_INVOCATIONS_ARB 0x82F4
+#    define GL_COMPUTE_SHADER_INVOCATIONS_ARB 0x82F5
+#  endif /* GL_ARB_pipeline_statistics_query */
+#  ifndef GL_SAMPLES_PASSED
+#    define GL_SAMPLES_PASSED                 0x8914
+#  endif
 #else
-#   define VERSE_PERF_QUERIES 0
+#  define VERSE_PERF_QUERIES 0
 #endif
 
 namespace osgVerse
@@ -765,7 +779,7 @@ namespace osgVerse
                     if (!_bins.empty())
                     {
                         osgUtil::Statistics stats; getStats(stats);
-                        if (stats.numDrawables > drawables)
+                        if (stats.numDrawables > (int)drawables)
                         {
                             unsigned int nested = (unsigned int)stats.numDrawables - drawables;
                             drawCalls += nested; drawables += nested;

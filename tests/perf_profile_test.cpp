@@ -1,4 +1,4 @@
-#include <osg/io_utils>
+﻿#include <osg/io_utils>
 #include <osg/GL>
 #include <osg/Depth>
 #include <osg/MatrixTransform>
