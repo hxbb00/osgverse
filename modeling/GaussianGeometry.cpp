@@ -831,7 +831,8 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getShRed(int index)
             { GET_SHCOEF_DATA(ra, 1, 0, index); }
         else
         {
-            ra = new osg::Vec4Array(_numSplats); osg::Vec4* ptr = NULL;
+            ra = new osg::Vec4Array; ra->assign(_numSplats, osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+            osg::Vec4* ptr = NULL;
             if (index == 0)
             {
                 if (_coreAttrBuffer.valid())
@@ -846,14 +847,20 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getShRed(int index)
             }
 
             if (_shcoefBuffer.valid() && _shcoefBuffer->size() > 0)
-            {
-                unsigned short* raw = (unsigned short*)((char*)_shcoefBuffer->getDataPointer());
-                if (HalfFloat::convert<osg::Vec4>(raw, 4, _numSplats, tempV)) ptr = tempV.data(); else return ra;
+            {   // Each splat owns 15 half4 entries and entry k is the k-th higher-band
+                // coefficient with (R, G, B) stored in its xyz components
+                const unsigned short* raw = (const unsigned short*)_shcoefBuffer->getDataPointer();
+                int sh = index * 4 - 1, maxEntry = (int)(_shcoefBuffer->size() / 4 / 15);
 #pragma omp parallel for
                 for (int i = 0; i < _numSplats; ++i)
                 {
-                    int sh = (index * 4 - 1); osg::Vec4& v = (*ra)[i];
-                    for (int k = 0; k < 4; ++k) { if (k + sh >= 0) v[k] = ptr[i * 15 + k + sh][0]; }
+                    osg::Vec4& v = (*ra)[i];
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        int entry = sh + k;
+                        if (entry >= 0 && entry < 15 && i < maxEntry)
+                            v[k] = HalfFloat(raw[(i * 15 + entry) * 4]).get();
+                    }
                 }
             }
         }
@@ -872,7 +879,8 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getShGreen(int index)
             { GET_SHCOEF_DATA(ra, 2, 1, index); }
         else
         {
-            ra = new osg::Vec4Array(_numSplats); osg::Vec4* ptr = NULL;
+            ra = new osg::Vec4Array; ra->assign(_numSplats, osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+            osg::Vec4* ptr = NULL;
             if (index == 0)
             {
                 size_t blockSize = _numSplats * sizeof(short) * 4;
@@ -890,13 +898,18 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getShGreen(int index)
 
             if (_shcoefBuffer.valid() && _shcoefBuffer->size() > 0)
             {
-                unsigned short* raw = (unsigned short*)((char*)_shcoefBuffer->getDataPointer());
-                if (HalfFloat::convert<osg::Vec4>(raw, 4, _numSplats, tempV)) ptr = tempV.data(); else return ra;
+                const unsigned short* raw = (const unsigned short*)_shcoefBuffer->getDataPointer();
+                int sh = index * 4 - 1, maxEntry = (int)(_shcoefBuffer->size() / 4 / 15);
 #pragma omp parallel for
                 for (int i = 0; i < _numSplats; ++i)
                 {
-                    int sh = (index * 4 - 1); osg::Vec4& v = (*ra)[i];
-                    for (int k = 0; k < 4; ++k) { if (k + sh >= 0) v[k] = ptr[i * 15 + k + sh][1]; }
+                    osg::Vec4& v = (*ra)[i];
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        int entry = sh + k;
+                        if (entry >= 0 && entry < 15 && i < maxEntry)
+                            v[k] = HalfFloat(raw[(i * 15 + entry) * 4 + 1]).get();
+                    }
                 }
             }
         }
@@ -915,7 +928,8 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getShBlue(int index)
             { GET_SHCOEF_DATA(ra, 3, 2, index); }
         else
         {
-            ra = new osg::Vec4Array(_numSplats); osg::Vec4* ptr = NULL;
+            ra = new osg::Vec4Array; ra->assign(_numSplats, osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+            osg::Vec4* ptr = NULL;
             if (index == 0)
             {
                 size_t blockSize = _numSplats * sizeof(short) * 4;
@@ -933,13 +947,18 @@ osg::ref_ptr<osg::Vec4Array> GaussianGeometry::getShBlue(int index)
 
             if (_shcoefBuffer.valid() && _shcoefBuffer->size() > 0)
             {
-                unsigned short* raw = (unsigned short*)((char*)_shcoefBuffer->getDataPointer());
-                if (HalfFloat::convert<osg::Vec4>(raw, 4, _numSplats, tempV)) ptr = tempV.data(); else return ra;
+                const unsigned short* raw = (const unsigned short*)_shcoefBuffer->getDataPointer();
+                int sh = index * 4 - 1, maxEntry = (int)(_shcoefBuffer->size() / 4 / 15);
 #pragma omp parallel for
                 for (int i = 0; i < _numSplats; ++i)
                 {
-                    int sh = (index * 4 - 1); osg::Vec4& v = (*ra)[i];
-                    for (int k = 0; k < 4; ++k) { if (k + sh >= 0) v[k] = ptr[i * 15 + k + sh][2]; }
+                    osg::Vec4& v = (*ra)[i];
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        int entry = sh + k;
+                        if (entry >= 0 && entry < 15 && i < maxEntry)
+                            v[k] = HalfFloat(raw[(i * 15 + entry) * 4 + 2]).get();
+                    }
                 }
             }
         }

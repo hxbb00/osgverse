@@ -715,7 +715,6 @@ namespace osgVerse
     USE_OSGPLUGIN(verse_mesh) \
     USE_OSGPLUGIN(verse_leveldb) \
     USE_OSGPLUGIN(verse_mbtiles) \
-    USE_OSGPLUGIN(verse_lottie) \
     USE_OSGPLUGIN(verse_tiles) \
     USE_OSGPLUGIN(verse_terrain) \
     USE_OSGPLUGIN(verse_tms) \

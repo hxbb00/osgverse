@@ -35,6 +35,8 @@
 #include <xxYUV/rgb2yuv.h>
 #include <avir/avir.h>
 #include <nanoid/nanoid.h>
+// Use the single miniz implementation compiled into osgVerseDependency (rlottie zip.cpp)
+#define MINIZ_HEADER_FILE_ONLY
 #include <miniz.h>
 // miniz provides zlib-compatible macro aliases (e.g. `compress` -> `mz_compress`), which would
 // collide with CompressAuxiliary::compress(); drop the conflicting macro names we don't need here

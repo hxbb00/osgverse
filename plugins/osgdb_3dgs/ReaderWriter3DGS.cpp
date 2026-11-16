@@ -329,6 +329,16 @@ protected:
         osg::Node& nonconst = const_cast<osg::Node&>(node); nonconst.accept(fgv);
 
         const std::vector<std::pair<osg::Geometry*, osg::Matrix>>& geomList = fgv.getGeometries();
+        int maxDegree = 0;
+        for (size_t i = 0; i < geomList.size(); ++i)
+        {
+            osgVerse::GaussianGeometry* geom =
+                dynamic_cast<osgVerse::GaussianGeometry*>(geomList[i].first);
+            if (geom) maxDegree = osg::maximum(maxDegree, osg::minimum(geom->getShDegrees(), 3));
+        }
+        cloud.meta.shDegree = maxDegree;
+        size_t numRest = (maxDegree >= 3) ? 15 : ((maxDegree >= 2) ? 8 : ((maxDegree >= 1) ? 3 : 0));
+
         for (size_t i = 0; i < geomList.size(); ++i)
         {
             osgVerse::GaussianGeometry* geom =
@@ -336,6 +346,7 @@ protected:
             if (!geom) continue;  // FIXME: apply matrix?
 
             int numSplats = geom->getNumSplats(); if (!numSplats) continue;
+            size_t basePoint = cloud.positions.size() / 3;
             float *pos3 = (float*)geom->getPosition3(), *pos4 = (float*)geom->getPosition4();
             if (pos4)
             {
@@ -354,7 +365,7 @@ protected:
                 size_t curr = cloud.scales.size(); cloud.scales.resize(curr + numSplats * 3);
 #pragma omp parallel for
                 for (int i = 0; i < numSplats; ++i)
-                { for (int k = 0; k < 3; ++k) cloud.scales[curr + i * 3 + k] = logf(*(ptr + i * 3 + k)); }
+                { for (int k = 0; k < 3; ++k) cloud.scales[curr + i * 3 + k] = logf(osg::maximum(*(ptr + i * 3 + k), 1e-12f)); }
             }
 
             osg::ref_ptr<osg::Vec4Array> rot = geom->getRotation();
@@ -371,28 +382,72 @@ protected:
                 size_t curr = cloud.alphas.size(); cloud.alphas.resize(curr + numSplats);
 #pragma omp parallel for
                 for (int i = 0; i < numSplats; ++i)
-                    cloud.alphas[curr + i] = logf(ptr[i] / (1.0f - ptr[i]));
+                {
+                    float op = osg::minimum(osg::maximum(ptr[i], 1e-6f), 1.0f - 1e-6f);
+                    cloud.alphas[curr + i] = logf(op / (1.0f - op));
+                }
             }
 
+            // DC coefficients: getShRed/Green/Blue(0) return (dc, c0, c1, c2)
             osg::ref_ptr<osg::Vec4Array> r = geom->getShRed(0);
             osg::ref_ptr<osg::Vec4Array> g = geom->getShGreen(0);
             osg::ref_ptr<osg::Vec4Array> b = geom->getShBlue(0);
-            if (r.valid() && g.valid() && b.valid())
+            size_t numTarget = (size_t)numSplats;
+            bool dcValid = r.valid() && g.valid() && b.valid() && r->size() >= numTarget &&
+                           g->size() >= numTarget && b->size() >= numTarget;
             {
-                size_t curr = cloud.colors.size(); cloud.colors.resize(curr + numSplats * 3);
-#pragma omp parallel for
-                for (int i = 0; i < numSplats; ++i)
+                size_t curr = cloud.colors.size(); cloud.colors.resize(curr + numSplats * 3, 0.0f);
+                if (dcValid)
                 {
-                    cloud.colors[curr + i * 3 + 0] = (*r)[i].x();
-                    cloud.colors[curr + i * 3 + 1] = (*g)[i].x();
-                    cloud.colors[curr + i * 3 + 2] = (*b)[i].x();
+#pragma omp parallel for
+                    for (int i = 0; i < numSplats; ++i)
+                    {
+                        cloud.colors[curr + i * 3 + 0] = (*r)[i].x();
+                        cloud.colors[curr + i * 3 + 1] = (*g)[i].x();
+                        cloud.colors[curr + i * 3 + 2] = (*b)[i].x();
+                    }
                 }
             }
-            // FIXME: more sh-coeffs?
+
+            // Higher-order bands: getter index grp holds 4 coefficients per channel,
+            // grp=0 -> (dc, c0, c1, c2) and grp>0 -> (c{4grp-1} .. c{4grp+2})
+            int degree = osg::minimum(geom->getShDegrees(), 3);
+            size_t geomRest = (degree >= 3) ? 15 : ((degree >= 2) ? 8 : ((degree >= 1) ? 3 : 0));
+            size_t writeRest = osg::minimum(geomRest, numRest);
+            if (writeRest > 0)
+            {
+                cloud.sh.resize((basePoint + numSplats) * numRest * 3, 0.0f);
+                int maxGroup = (writeRest > 3) ? (int)((writeRest - 4) / 4 + 1) : 0;
+                for (int grp = 0; grp <= maxGroup; ++grp)
+                {
+                    osg::ref_ptr<osg::Vec4Array> rg = geom->getShRed(grp);
+                    osg::ref_ptr<osg::Vec4Array> gg = geom->getShGreen(grp);
+                    osg::ref_ptr<osg::Vec4Array> bg = geom->getShBlue(grp);
+                    if (!rg.valid() || !gg.valid() || !bg.valid()) continue;
+                    if (rg->size() < numTarget || gg->size() < numTarget || bg->size() < numTarget)
+                        continue;
+
+                    for (size_t c = 0; c < writeRest; ++c)
+                    {
+                        size_t cGrp = (c < 3) ? 0 : ((c + 1) / 4);
+                        if ((int)cGrp != grp) continue;
+                        int pos = (c < 3) ? (int)(c + 1) : (int)((c + 1) % 4);
+                        size_t dst = (basePoint * numRest + c) * 3;
+#pragma omp parallel for
+                        for (int k = 0; k < numSplats; ++k)
+                        {
+                            cloud.sh[dst + k * numRest * 3 + 0] = (*rg)[k][pos];
+                            cloud.sh[dst + k * numRest * 3 + 1] = (*gg)[k][pos];
+                            cloud.sh[dst + k * numRest * 3 + 2] = (*bg)[k][pos];
+                        }
+                    }
+                }
+            }
         }
 
-        size_t numSh = cloud.sh.size() / cloud.positions.size();
-        cloud.numPoints = cloud.positions.size() / 3; return cloud;
+        cloud.numPoints = (int32_t)(cloud.positions.size() / 3);
+        cloud.sh.resize((size_t)cloud.numPoints * numRest * 3, 0.0f);
+        return cloud;
     }
 #else
     osgVerse::GaussianGeometry* fromSplat(const std::string& buffer, osgVerse::GaussianGeometry::RenderMethod m) const

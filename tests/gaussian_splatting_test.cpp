@@ -5,6 +5,8 @@
 #include <osg/BlendEquation>
 #include <osg/Depth>
 #include <osg/MatrixTransform>
+#include <osg/PagedLOD>
+#include <osg/ProxyNode>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 #include <osgGA/TrackballManipulator>
@@ -18,6 +20,7 @@
 #include <modeling/Math.h>
 #include <modeling/AnnotationMaker.h>
 #include <modeling/GaussianGeometry.h>
+#include <modeling/GaussianSimplifier.h>
 #include <pipeline/Pipeline.h>
 #include <pipeline/MultiEffectNode.h>
 #include <pipeline/ResourceManager.h>
@@ -347,6 +350,80 @@ void createAnnotationScene(osg::Group* root, osgVerse::AnnotationMaker* maker)
     }
 }
 
+// Simplify all Gaussian geometries in the scene and replace them in their geodes.
+// The sorter is updated as well when it has already been registered by the reader.
+struct GaussianSimplifyVisitor : public osg::NodeVisitor
+{
+    GaussianSimplifyVisitor(float ratio, osgVerse::GaussianSorter* sorter)
+    :   osg::NodeVisitor(TRAVERSE_ALL_CHILDREN), _ratio(ratio), _sorter(sorter), _numReplaced(0) {}
+
+    virtual void apply(osg::Geode& node)
+    {
+        for (unsigned int i = 0; i < node.getNumDrawables(); ++i)
+        {
+            osgVerse::GaussianGeometry* geom =
+                dynamic_cast<osgVerse::GaussianGeometry*>(node.getDrawable(i));
+            if (!geom) continue;
+
+            osgVerse::GaussianSimplifyOptions opt;
+            opt.ratio = _ratio; opt.verbose = true;
+            osg::ref_ptr<osgVerse::GaussianGeometry> simplified =
+                osgVerse::GaussianSimplifier::simplifyGeometry(*geom, opt);
+            if (!simplified.valid()) continue;
+
+            std::cout << "[Simplify] " << geom->getNumSplats() << " -> "
+                      << simplified->getNumSplats() << " splats (SH degree "
+                      << simplified->getShDegrees() << ")" << std::endl;
+            if (_sorter)
+            {
+                _sorter->removeGeometry(geom);
+                _sorter->addGeometry(simplified.get());
+            }
+            node.replaceDrawable(geom, simplified.get()); _numReplaced++;
+        }
+        traverse(node);
+    }
+
+    unsigned int getNumReplaced() const { return _numReplaced; }
+
+protected:
+    float _ratio;
+    osgVerse::GaussianSorter* _sorter;
+    unsigned int _numReplaced;
+};
+
+// Paged/LOD scenes (3D Tiles, LCC, ...) can't be simplified as a whole
+struct LodNodeFinder : public osg::NodeVisitor
+{
+    LodNodeFinder() : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN), found(false) {}
+
+    virtual void apply(osg::PagedLOD& node) { found = true; traverse(node); }
+    virtual void apply(osg::LOD& node) { found = true; traverse(node); }
+    virtual void apply(osg::ProxyNode& node) { found = true; traverse(node); }
+    bool found;
+};
+
+static void simplifyGaussianNode(osg::Node* node, float ratio, osgVerse::GaussianSorter* sorter)
+{
+    if (!(ratio > 0.0f && ratio < 1.0f))
+    {
+        std::cout << "[Simplify] Invalid ratio " << ratio << ", option ignored." << std::endl;
+        return;
+    }
+
+    LodNodeFinder lf; node->accept(lf);
+    if (lf.found)
+    {
+        std::cout << "[Simplify] Paged/LOD model (3D Tiles, LCC, ...) is not supported, "
+                  << "option ignored." << std::endl;
+        return;
+    }
+
+    GaussianSimplifyVisitor sv(ratio, sorter); node->accept(sv);
+    if (sv.getNumReplaced() == 0)
+        std::cout << "[Simplify] No Gaussian geometry found, option ignored." << std::endl;
+}
+
 int main(int argc, char** argv)
 {
     osgViewer::Viewer viewer;
@@ -371,6 +448,7 @@ int main(int argc, char** argv)
     osg::ArgumentParser arguments(&argc, argv);
     std::string optString; arguments.read("-O", optString);
     std::string savedFile; arguments.read("--save", savedFile);
+    float simplifyRatio = 0.0f; arguments.read("--simplify", simplifyRatio);
 
     double firstX = 0.0, firstY = 0.0, firstZ = 0.0;
     bool fpsView = arguments.read("--first", firstX, firstY, firstZ);
@@ -385,11 +463,13 @@ int main(int argc, char** argv)
         if (!gs) gs = osgDB::readNodeFile(BASE_DIR + "/models/3dgs_parrot.splat", new osgDB::Options(optString));
         if (!gs) { std::cout << "No 3DGS file loaded" << std::endl; return 1; }
 
-        gs->setCullCallback(osgVerse::GaussianGeometry::createUniformCallback());
-        root->addChild(gs.get()); viewer.setSceneData(root.get());
-
+        // Note: geometries are already registered to the global sorter by the reader
         osgVerse::GaussianSorter* sorter = static_cast<osgVerse::GaussianSorter*>(
             osgVerse::getGlobalFileCallback()->getGaussian()->sorterBase.get());
+        simplifyGaussianNode(gs.get(), simplifyRatio, sorter);
+
+        gs->setCullCallback(osgVerse::GaussianGeometry::createUniformCallback());
+        root->addChild(gs.get()); viewer.setSceneData(root.get());
         viewer.getCamera()->setPreDrawCallback(new osgVerse::GaussianSortCallback(sorter));
     }
     else
@@ -409,6 +489,9 @@ int main(int argc, char** argv)
         osg::ref_ptr<osg::Node> gs = osgDB::readNodeFiles(arguments, options.get());
         if (!gs) gs = osgDB::readNodeFile(BASE_DIR + "/models/3dgs_parrot.splat", options.get());
         if (!gs) { std::cout << "No 3DGS file loaded" << std::endl; return 1; }
+
+        // No sorter is created yet in this mode, so only replace the geometries
+        simplifyGaussianNode(gs.get(), simplifyRatio, NULL);
 
         root->getOrCreateStateSet()->getOrCreateUniform("GaussianRenderingMode", osg::Uniform::FLOAT)->set(0.0f);
         root->addChild(gs.get()); root->addChild(hudCanvas.create(1920, 1080));

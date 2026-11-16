@@ -2,11 +2,11 @@ SET(LIB_NAME osgVerseModeling)
 SET(LIBRARY_INCLUDE_FILES
     MeshDeformer.h MeshTopology.h MeshBoolean.h GeometryMerger.h GeometryMapper.h
     TextureMapping.h FFDModeler.h AnnotationMaker.h DynamicGeometry.h GaussianGeometry.h
-    Math.h Octree.h Utilities.h MeshFixer.h Predicates.h)
+    GaussianSimplifier.h Math.h Octree.h Utilities.h MeshFixer.h Predicates.h)
 SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     MeshDeformer.cpp MeshTopology.cpp MeshBoolean.cpp MeshFixer.cpp Predicates.cpp
-    FFDModeler.cpp AnnotationMaker.cpp DynamicGeometry.cpp
-    TextureMapping.cpp GeometryMerger.cpp GeometryMapper.cpp GaussianGeometry.cpp
+    FFDModeler.cpp AnnotationMaker.cpp DynamicGeometry.cpp TextureMapping.cpp
+    GeometryMerger.cpp GeometryMapper.cpp GaussianGeometry.cpp GaussianSimplifier.cpp
     Math.cpp Utilities.cpp UtilitiesEx.cpp
 )
 IF(MSVC AND MSVC_VERSION LESS 1909)

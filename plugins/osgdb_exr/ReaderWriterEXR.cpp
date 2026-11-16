@@ -10,6 +10,9 @@
 #include <fstream>
 #include <vector>
 
+// Reuse the miniz implementation compiled into osgVerseDependency (rlottie zip.cpp) instead
+// of compiling a second copy, which produces duplicate mz_* symbols in static/WASM builds.
+#define MINIZ_HEADER_FILE_ONLY
 #define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>
 
