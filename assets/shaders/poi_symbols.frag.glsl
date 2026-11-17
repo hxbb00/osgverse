@@ -12,11 +12,11 @@ VERSE_FS_OUT vec4 fragData;
 void main()
 {
 #ifdef FAR_DISTANCE
-    vec4 baseColor = texture2D(IconTexture, TexCoordBG);
+    vec4 baseColor = VERSE_TEX2D(IconTexture, TexCoordBG);
     fragData = baseColor * UserColor;
 #else
-    vec4 textColor = texture2D(TextTexture, TexCoord);
-    vec4 bgColor = texture2D(BackgroundTexture, TexCoordBG);
+    vec4 textColor = VERSE_TEX2D(TextTexture, TexCoord);
+    vec4 bgColor = VERSE_TEX2D(BackgroundTexture, TexCoordBG);
     fragData = mix(bgColor * UserColor, textColor, textColor.a);
 #endif
     VERSE_FS_FINAL(fragData);

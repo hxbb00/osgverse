@@ -6,99 +6,123 @@
 - 已完成的"新增"任务如果需要修改/除虫，则新建TODO列表行
 - 已完成的"优化/除虫"任务如果需要再次优化/除虫，则在原列表行直接改动
 
+#### 本次审视说明（2026-11-17）
+- 范围：原 93 条 TODO、当前工作区与最近提交、关键源码与测试目录、README/AGENTS/HELP 文档；以代码证据为主，未做全平台运行时回归。
+- 排序：有缺漏/未修复条目按优先级 P0→P3 排列；复核后未见明显问题的历史完成项统一放到表格末尾。P0=阻断构建或主流程，P1=核心功能/稳定性缺失，P2=重要完善，P3=覆盖度与体验，"-"=保留项。
+- 重要变更：合并原第 23/32 行重复条目；多条原标 100% 但代码证据不支持的条目已明确降级并在备注注明"原100%"；新增 vksplat/3DGS 训练、MLT、Earth AI、Terrarium、EXR/Lottie、PerfProfiler 等文档漏记项。
+- 当前未提交改动：本次文档更新，以及 `pipeline/Utilities.cpp`（CORE 下禁用 lightmapper 的开关）；其余修复均已进历史提交。
+
 #### TODO列表
 | 模块      | 所属库        | 类型     | 完成情况   | 具体内容描述  | 备注 |
 |-----------|-------------|----------|---------|-------------|------|
-| 编译      |              | 新增     |         | 支持Docker自动编译依赖库，OSG，以及osgVerse的多版本程序包 | |
-| 编译      |              | 新增     | 50%     | 支持UWP编译流程 | 可以编译通过，需要提供测试例子 |
-| 编译      |              | 新增     | 50%     | 支持Android编译流程，支持直接纳入Android Studio | 目前已经可以编译Android库，需要提供测试例子 |
-| 编译      |              | 新增     |         | 支持Apple Mac OSX和IOS编译流程 | |
-| 编译      |              | 新增     |         | 测试手机端浏览器的支持情况，微信，Chrome，Opera等 | |
-| 渲染      | pipeline     | 新增     |         | 支持集群渲染，多机自动帧同步，网格调整，融合带调整 | |
-| 渲染      | pipeline     | 除虫     |         | BrdfLUT处理的结果没有考虑滤波问题 | https://github.com/xarray/osgverse/issues/7 |
-| 渲染      | pipeline     | 新增     |         | SkyBox中支持后处理的Atmospheric Scattering天空盒 | |
-| 渲染      | pipeline     | 除虫     |         | 对于大坐标模型，NodeSelector无法正确显示 | |
-| 渲染      | pipeline     | 新增     |         | ShadowModule支持来自多个光源的阴影，包括点光源和平行光 | |
-| 渲染      | pipeline     | 优化     |         | 对于大坐标模型，阴影bias需要根据坡度值动态修改PolygonOffset | |
-| 渲染      | pipeline     | 优化     | 75%     | 目前没办法处理多Slave（Across Screen）和CompositeViewer的情况 | 多Slave可处理但不能显示Forward天空盒 |
-| 渲染      | pipeline     | 优化     |         | 目前没办法处理Viewer多线程DrawThreadPerContext和ThreadPerCamera | |
-| 渲染      | pipeline     | 除虫     |         | 处理某些模型时，HBAO法线出现大量花斑 | |
-| 渲染      | pipeline     | 除虫     |         | 对于小物件，AO的效果噪声比较严重，且Bloom结果不好 | |
-| 渲染      | pipeline     | 除虫     |         | 对于简单几何体，光照容易产生异常边界线，效果不好 | |
-| 渲染/例程  | pipeline     | 新增     |         | 增加一个测试案例演示如何增加多个光源，并测试多光源渲染压力 | |
-| 渲染      | pipeline     | 除虫     |         | 如果clearStagesFromView()删除管线，移动视角后再恢复，则阴影错误 | |
-| 渲染      | pipeline     | 新增     | 50%     | 支持后处理抗锯齿方案，FXAA/TAA | 目前已经支持FXAA |
-| 渲染/例程  | pipeline     | 新增     | 40%     | 支持自己扩展Pipeline::Stage，增加一个测试案例演示使用NV HBAO | |
-| 渲染      | pipeline     | 优化     | 75%    | 目前没办法处理多Slave（Across Screen）和CompositeViewer的情况 | 多Slave可处理但不能显示Forward天空盒 |
-| 辅助工具  | helpers       | 新增     |         | 实现Blender的导出插件第一版(静态模型，PBR材质) | |
-| 辅助工具  | helpers       | 新增     |         | 实现3dsmax的导出插件第一版(静态模型，PBR材质) | |
-| 数据读写  | readerwriter  | 新增     |         | 支持MeshSync流传输修改模型，实现Blender和编辑器的动态模型切换编辑 | |
-| 数据读写  | readerwriter  | 新增     |         | 支持倾斜摄影数据的自动修改处理框架 | |
-| 数据读写  | readerwriter  | 优化     | 80%     | FBX和GLTF插件支持导入角色和角色动画并显示 | 已实现GLTF/FBX导入角色，剩余部分测试工作 |
-| 模型/动画 | animation     | 优化     | 80%     | 支持初步的粒子系统，考虑基于计算着色器 | |
-| 模型/动画 | animation     | 优化     |         | 支持PhysX引擎的刚体，步行漫游，驾驶 | |
-| 脚本      | script       | 新增     | 80%     | 使用Serialization映射OSG和osgVerse的核心函数 | OSG函数已经全部映射完成 |
-| 脚本      | script       | 新增     |         | 考虑SWIG的方式接入C#和Python等脚本语言 | |
-| 例程      | ai           | 新增     |         | 编写测试程序验证TrellisPipeline，演示基于AI的3D模型生成 | 对应ai/TrellisPipeline.h |
-| 例程      | ai           | 新增     |         | 编写测试程序验证ObjectTracker，演示AI推理输出的多目标跟踪 | 对应ai/Utilities.h |
-| 例程      | animation    | 新增     |         | 编写测试程序验证VectorSmoother和TimeOut，演示数据滤波和时间控制 | 对应animation/Utilities.h |
-| 例程      | modeling     | 新增     |         | 编写测试程序验证FFDModeler和BSplineVolume，演示自由变形 | 对应modeling/FFDModeler.h |
-| 例程      | modeling     | 新增     |         | 编写测试程序验证MeshDeformer，演示网格变形/蒙皮 | 对应modeling/MeshDeformer.h |
-| 例程      | modeling     | 新增     |         | 编写测试程序验证AnnotationCluster，演示标注聚类显示 | 对应modeling/AnnotationCluster.h |
-| 例程      | modeling     | 新增     |         | 编写测试程序验证MathExpression，演示数学表达式解析求值 | 对应modeling/Math.h |
-| 例程      | modeling     | 新增     |         | 编写测试程序验证PointCloudQuery，演示点云查询 | 对应modeling/Math.h |
-| 例程      | modeling     | 新增     |         | 编写测试程序验证DynamicPointLine/Polyline/Polygon，演示动态线/面绘制 | 对应modeling/DynamicGeometry.h |
-| 例程      | modeling     | 新增     |         | 重新编写TextureMapping和ConvexHull的测试程序 | 原测试已废弃(deprecated) |
-| 例程      | pipeline     | 新增     |         | 编写测试程序验证NISUpscaler，演示NVIDIA图像上采样 | 对应pipeline/NISUpscaler.h |
-| 例程      | pipeline     | 新增     |         | 编写测试程序验证TsfFramework，演示Windows TSF文本输入法 | 对应pipeline/TsfFramework.h |
-| 例程      | pipeline     | 新增     |         | 编写测试程序验证MultiEffectNode，演示多效果节点 | 对应pipeline/MultiEffectNode.h |
-| 例程      | readerwriter | 新增     |         | 编写测试程序验证GraphicsWindowWin32NV窗口实现 | 对应readerwriter/GraphicsWindowWin32NV.h |
-| 例程      | readerwriter | 新增     |         | 编写测试程序验证FeatureDefinition和EncodedFrameObject | 对应readerwriter/FeatureDefinition.h |
-| 例程      | ui           | 新增     |         | 编写测试程序验证SpiderEditor，演示节点图编辑器 | 对应ui/ImGuiComponents.h |
-| 例程      | ui           | 新增     |         | 编写测试程序验证Timeline，演示时间轴控件 | 对应ui/ImGuiComponents.h |
-| 例程      | ui           | 新增     |         | 编写测试程序验证VirtualKeyboard和FileDialog | 对应ui/ImGuiComponents.h |
-| 例程      | ui           | 新增     |         | 编写测试程序验证常用UI组件(Label/Button/CheckBox/ComboBox/InputField/Slider/ListView等) | |
-| 例程      | ui           | 新增     |         | 编写测试程序验证ImGuiManager的3D/RTT模式(addToTexture等) | 对应ui/ImGui3D.cpp |
-| 编译      |              | 新增     | 100%     | 支持backward-cpp自动打印崩溃时的程序堆栈 | |
-| 编译      |              | 新增     | 100%     | 支持Static编译流程 | |
-| 编译      |              | 新增     | 100%     | 支持MinGW编译流程 | |
-| 编译      |              | 除虫     | 100%     | 解决ept插件和laszip的Ubuntu编译问题 | |
-| 编译/渲染 |              | 新增     | 100%      | 支持GL3 Core Profile | |
-| 编译/渲染 |              | 新增     | 100%      | 支持GLES2 / GLES3 | |
-| 编译/渲染 |              | 新增     | 100%      | 支持Angel并通过自定义的方式来切换不同底层(DX/Vulkan) | |
-| 编译/渲染 |              | 新增     | 100%      | 支持GLSL 1.2，可以运行在虚拟机和低端国产显卡上 | |
-| 编译      |              | 新增     | 100%     | 支持摩尔线程，景嘉微，Quadro，树莓派，RISC-V的编译和测试运行 | |
-| 编译      |              | 新增     | 100%     | 支持Emscripten / WebAssembly编译流程，可以输出到浏览器端 | |
-| 编译      |              | 新增     | 100%     | 通过Emscripten支持WebGL1/2接口 | |
-| 编译      |              | 新增     | 100%     | 支持流媒体推流和拉流，支持WebRTC云渲染 | |
-| 渲染      | pipeline     | 优化     | 100%     | 不要用NodeMask来管理Deferred场景，避免影响用户代码 | |
-| 渲染      | pipeline     | 除虫     | 100%     | 帧速率较低时，会明显感受到Deferred场景比Forward慢一拍 | |
-| 渲染      | pipeline     | 除虫     | 100%     | SkyBox对于大坐标场景显示错误，并且被裁切 | |
-| 渲染      | pipeline     | 除虫     | 100%     | SkyBox用tex2d纹理时，会有一条明显的接缝边界线 | |
-| 渲染      | pipeline     | 除虫     | 100%     | NodeSelector会被物体遮挡 | |
-| 渲染      | pipeline     | 优化     | 100%     | ShadowModule支持PSM/LispSM/TSM来提升阴影质量 | |
-| 渲染      | pipeline     | 优化     | 100%     | ShadowModule支持EVSM/PCSS软阴影 | |
-| 渲染      | pipeline     | 优化     | 100%     | 需要明确贴图metallic和roughness是如何表达的，软件如何导出 | |
-| 渲染      | pipeline     | 除虫     | 100%     | 解决Sponza法线贴图不能共享以及matallic闪烁的问题 | |
-| 渲染      | pipeline     | 新增     | 100%     | 考虑初步支持OpenXR标准的VR设备渲染 | |
-| 渲染      | pipeline     | 除虫     | 100%     | 全屏/窗口切换或者缩放窗口大小后，多层阴影显示不正确 | |
-| 渲染      | pipeline     | 除虫     | 100%     | 加入自定义管线后，全屏/窗口切换，阴影和场景显示错误 | |
-| 渲染      | pipeline     | 新增     | 100%     | 支持非MRT的流水线，且GBuffer Pass可以支持PBR透明体和前向光照 | |
-| 渲染      | pipeline     | 优化     | 100%     | 在PBR Lighting过程中通过LightManager光源数据表计算多种光照结果 | |
-| 渲染      | pipeline     | 除虫     | 100%     | 发现OSG 311版本中渲染报错，和Texture2DArray有关 | |
-| 渲染      | pipeline     | 除虫     | 100%     | 发现311版本中缩放窗口后多层阴影的问题，因为没有实现resize() | |
-| 渲染      | pipeline     | 除虫     | 100%     | 发现摩尔S50/S80显卡上延迟和非延迟场景的深度融合错误 | |
-| 渲染      | pipeline     | 优化     | 100%     | 后处理Bloom的模糊处理方法不理想，目前可能会产生锯齿 | |
-| 渲染      | pipeline     | 新增     | 100%     | 通过脚本的方式来管理标准和自定义的Pipeline | |
-| 插件      | plugins      | 新增     | 100%     | 支持伪插件方式自动替换PBR贴图顺序(?.D4,S3,N3,X1M1R1.pbrlayout) | |
-| 插件      | plugins      | 新增     | 100%     | 使用libhv支持多种网络协议，替代curl插件 | |
-| 插件      | plugins      | 新增     | 100%     | 使用leveldb支持数据库读写操作，可以用数据库来存储osgb文件 | |
-| 辅助工具  | helpers      | 新增     | 100%     | 实现Unity的导出插件第一版(静态模型，PBR材质) | |
-| 数据读写  | readerwriter | 新增     | 100%     | 自动检查输入几何体的正确性，尝试优化输入的几何数据 | |
-| 数据读写  | readerwriter | 新增     | 100%     | 支持KTX纹理格式的读取和写入，支持纹理压缩功能 | |
-| 数据读写  | readerwriter | 新增     | 100%     | 支持默认常见图片格式的读取，不需要额外插件，主要用于WASM等场合 | |
-| 数据读写  | readerwriter | 新增     | 100%     | 支持倾斜摄影模型的相邻层合并，顶层合并，3dtiles读取 | |
-| 模型/动画 | animation    | 优化     | 100%     | PlayerAnimation支持直接输入角色骨骼和动画数据 | |
-| 模型/动画 | animation    | 优化     | 100%     | PlayerAnimation支持外部数据驱动 | |
-| 模型/动画 | animation    | 优化     | 100%     | 支持EaseMotion，路径动画，DoTween形式的纤程动画 | 已实现TweenAnimation，待测试 |
-|<img width=40/>|         |<img width=40/>|<img width=40/>| |
+| 系统      |              | 新增     |         | 自动化回归测试与持续集成 | P0；`tests/CMakeLists.txt` 的 NEW_TEST/NEW_EXAMPLE 只生成手工程序，无 `enable_testing()/add_test()`，仓库无 GitHub Actions/其他 CI 配置；多平台提交无法自动验收 |
+| 系统      |              | 新增     |         | 编译器与平台矩阵自动构建 | P1；近期连续修 VS2015/VS2017/Windows lottie/MLT 问题，说明矩阵缺少 CI 闸门；至少覆盖 MSVC 2015/2017/最新版、MinGW、GCC/Clang、WASM、Android |
+| 渲染      | pipeline     | 除虫     | 85%     | 多 Slave（Across Screen）与 CompositeViewer 支持 | P1；原两行 75% 已合并；`applyStagesToView(View*)` 和 `applications/viewer_composite` 已可用，resize 处理 slave 投影偏移；遗留 `Pipeline.cpp:1146` FIXME：前向天空盒/前向场景被禁用；TAA 场景也需移除天空盒 |
+| 渲染      | pipeline     | 除虫     |         | Viewer 的 DrawThreadPerContext / ThreadPerCamera 多线程绘制 | P1；实际未支持，`viewer_composite/viewer_main.cpp:204`、`viewer_main.cpp:280`、`pipeline_test.cpp:331` 均强制 SingleThreaded，原因是共享阴影/RTT 纹理未同步 |
+| 渲染      | pipeline     | 优化     | 90%     | 后处理抗锯齿 FXAA/TAA | P1；原 50% 已过时；TAA 已实现抖动投影、历史缓冲、重投影、邻域 clamp、camera-cut 重置与低性能回退 FXAA；无速度缓冲，运动物体拖影；与天空盒同时启用有限制 |
+| 渲染      | pipeline     | 新增     |         | ShadowModule 支持 PSM/LispSM/TSM 提升阴影质量 | P1；原 100% 降级为 0%：`ShadowModule.h:26-30` 技术枚举仅 Default/BandPCF/PoissonPCF/VSM/ESM/EVSM，全仓无 PSM/LispSM/TSM |
+| 渲染      | pipeline     | 优化     | 50%     | ShadowModule 支持 EVSM/PCSS 软阴影 | P1；原 100% 降级；EVSM 与 blur 链已实现，PCSS 全仓未实现 |
+| 渲染      | pipeline     | 新增     | 40%     | ShadowModule 支持多光源阴影（点光源和平行光） | P1；当前级联/阴影图主要围绕单一方向光组织，点光源立方体阴影图链路未见；已有 `many_lights_test.cpp` 但只验证多光源前向渲染压力 |
+| 渲染      | pipeline     | 除虫     | 40%     | NodeSelector 会被物体遮挡 | P1；原 100% 降级；`NodeSelector.cpp:133` 的 `Depth(ALWAYS)` 关键代码被注释，仅 ColorMask 处理不足以穿墙 |
+| 渲染      | pipeline     | 除虫     | 60%     | 非 MRT 流水线且 GBuffer 支持 PBR 透明体/前向光照 | P1；原 100% 降级；`PipelineStandard.cpp:821`、`:882` 在 MRT 不可用时直接 fatal，前向路径可渲染透明物但未见完整非 MRT GBuffer 落地 |
+| 渲染      | pipeline     | 除虫     | 65%     | SkyBox 大坐标显示/裁切与 tex2d 接缝 | P1；原 100% 降级；eye 平移+far 缩放与 CLAMP_TO_EDGE 已有，但 equirect 采样 atan 跳变仍可能出缝，未见边界混合；`COMPLEX_SKYBOX` 未定义 |
+| 渲染      | pipeline     | 新增     | 60%     | OpenXR 标准 VR 设备渲染 | P1；原 100% 降级；RenderCallbackXR 主体和示例存在，但 Emscripten 禁用、Android/EGL-GLES session 未实现、XCB/Wayland 仍 TODO |
+| 插件      | osgdb_mediastream | 除虫 | 50%   | 流媒体推流/拉流与 WebRTC 云渲染 | P1；原 100% 降级；ZLMediaKit 有 SDP/WebSocket 示例，但 `ReaderWriterZLMedia.cpp:177-187` 写接口 `NOT_IMPLEMENTED`，README 仍标 TBD |
+| 系统      |              | 新增     |         | GPU/显存预算、资源回收与生命周期治理 | P1；`PerfAnalyzer` 能报 VRAM_PRESSURE、`releaseGLObjects` 零散存在，但无显存预算、LRU/eviction、资源池、卸载回收策略；大模型/大场景仿真必备 |
+| 系统      |              | 新增     |         | 并发规范与竞态验证（TSAN/锁审计） | P1；仅 `IncrementalCompiler` 等局部锁与 QuickThread，结合上条多线程绘制不可用，缺乏系统性并发约束 |
+| 系统      |              | 新增     |         | 结构化日志、指标、追踪与崩溃上报 | P1；现有 OSG_NOTICE/WARN、ConsoleHandler、GL debug 回调与 backward-cpp 是零散能力，缺统一级别/标签、指标导出、追踪与远程告警 |
+| 渲染      | pipeline     | 除虫     | 75%     | GLSL 1.2 / Core Profile / WebGL 的 shader 兼容层 | P2；原 100% 降级；ShaderLibrary 的 VERSE_* 宏覆盖主体，poi_symbols 两个 shader 已于 2026-11-17 改用 VERSE_TEX2D 与 VERSE_INSTANCE_ID 适配（含 GLSL120 的 gl_InstanceIDARB 回退）；`particles.vert.glsl:33` 仍裸用 gl_InstanceID，同类低端卡/WebGL1 风险待处理 |
+| 编译      |              | 新增     | 80%     | backward-cpp 自动打印崩溃堆栈 | P2；原 100% 降级；头文件已引入且部分测试启用，但 viewer/editor 等主程序未见统一接入，不是"自动全局" |
+| 数据读写  | readerwriter | 优化     | 60%     | 自动检查输入几何体正确性并优化 | P2；原 100% 降级；有 `MeshInternalOptimizer` 与固定功能优化，但无统一自动入口，Web 插件中相关调用被注释 |
+| 辅助工具  | helpers      | 优化     | 80%     | Unity 导出插件第一版 | P2；原 100% 降级；几何/PBR 已实现，但 `SceneExporter.cs:113` 坐标手性 FIXME，camera/collider 仍 TODO |
+| 插件      | osgdb_pbrlayout | 除虫   | 80%     | 伪插件自动替换 PBR 贴图顺序 | P2；原 100% 降级；ORM 分量只取其一有 FIXME（ReaderWriterPBRLayout.cpp:169），奇数参数串可能越界读 p[j+1]（:194） |
+| 渲染      | pipeline     | 除虫     |         | HBAO 法线花斑、小物件 AO 噪声、简单几何光照异常边界线 | P2；三条均未见修复代码，当前 AO 是 SSAO（`std_ssao.frag.glsl`），Bloom 也仍沿用旧模糊方案 |
+| 渲染      | pipeline     | 新增     |         | 支持后处理 Atmospheric Scattering 天空盒 | P2；未见实现，可与 SkyBox 接缝/大坐标问题合并推进 |
+| 渲染      | pipeline     | 优化     |         | 大坐标模型阴影 bias 按坡度动态调整 PolygonOffset | P2；未见 slope-scale depth bias/PolygonOffset 联动 |
+| 渲染      | pipeline     | 除虫     |         | clearStagesFromView() 后移动视角再恢复，阴影错误 | P2；`Pipeline.cpp:1079-1113` 有清理逻辑，但未见回归测试，状态仍按未验证处理 |
+| 渲染      | pipeline     | 新增     |         | 集群渲染、多机帧同步、网格与融合带调整 | P2；尚未开始，大型仿真/CAVE 必备能力 |
+| 渲染      | pipeline     | 新增     | 80%     | 支持自定义扩展 Pipeline::Stage | P2；`tests/pipeline_test.cpp:218-308` 已演示 GBuffer/中间 Stage/显示 Stage/VR 扩展及 HistoryBufferCallback，可提升进度 |
+| 渲染/例程 | pipeline     | 新增     | 30%     | MultiEffectNode 独立测试案例 | P2；类与序列化包装齐全，但测试中只 include 未实例化 |
+| 渲染      | pipeline     | 新增     |         | NV HBAO 自定义 Stage 演示 | P2；全仓无 HBAO 实现，先补 AO 算法本体再谈演示 |
+| 模型/动画 | animation    | 优化     | 70%     | 粒子系统（基于计算着色器） | P2；原 80% 更正；已有 CPU LUT/CPU 顶点属性/GPU 几何着色器三条路径，无 compute 路径；compute 只用于 NIS/3DGS 等其他模块 |
+| 模型/动画 | animation    | 新增     |         | PhysX 刚体、步行漫游与驾驶 | P2；当前是 Bullet 路线，未见 PhysX 接入 |
+| 脚本      | script       | 新增     | 85%     | 使用 Serialization 映射 OSG 与 osgVerse 核心函数 | P2；原 80% 可上调；wrappers 数量充足，scripting_test 有反射/脚本示例；继续补 osgVerse 新库（MLT/AI/3DGS）映射 |
+| 脚本      | script       | 新增     |         | SWIG 接入 C# 和 Python | P2；明确未开始；无 .i 文件与构建集成，`swig_interface_test.cpp` 实为 wrapper 序列化测试，命名易误导 |
+| 数据读写  | readerwriter | 优化     | 85%     | FBX/GLTF 导入角色与动画并显示 | P2；原 80% 可上调；GLTF 骨骼/蒙皮/动画与 FBX 单层动画已通并有 player_animation_test；FBX 多层动画、blend-shape 动画未实现且无独立 FBX 播放测试 |
+| 数据读写  | readerwriter | 新增     |         | MeshSync 流传输修改模型，Blender 与编辑器动态切换编辑 | P2；未开始 |
+| 数据读写  | readerwriter | 新增     |         | 倾斜摄影数据自动修改处理框架 | P2；已有顶层/相邻层合并，自动处理框架未落地 |
+| 辅助工具  | helpers      | 新增     |         | Blender 导出插件第一版 | P2；未开始 |
+| 辅助工具  | helpers      | 新增     |         | 3dsmax 导出插件第一版 | P2；未开始 |
+| 编译      |              | 新增     | 50%     | UWP 编译流程 | P2；可编译通过，缺测试例子 |
+| 编译      |              | 新增     | 50%     | Android 编译流程与 Android Studio 集成 | P2；库可编译，缺测试例子 |
+| 编译      |              | 新增     |         | macOS 与 iOS 编译流程 | P1；成熟引擎必需的多端交付缺口，原表为空 |
+| 系统      |              | 新增     |         | 统一错误码、异常策略与失败恢复 | P2；仅少量 catch，SaveSceneGLTF 等处仍以警告代替错误，缺统一错误模型与失败注入测试 |
+| 数据读写  |              | 新增     |         | 数据 schema 版本、迁移与向后兼容测试 | P2；wrappers 有 OSG 编译期版本适配，但场景/配置格式无版本治理 |
+| 系统      |              | 新增     |         | 自动化性能基线与帧时间回归门禁 | P2；PerfProfiler/PerfAnalyzer 与 perf_profile_test 已提供采集手段，但无基线数据与门禁 |
+| 系统      |              | 新增     |         | 发布流程、CHANGELOG、SBOM 与许可证门禁 | P2；有 LICENSE/THIRDPARTY_LICENSES，无 CHANGELOG、发布脚本、SBOM 与自动合规检查 |
+| 系统      |              | 新增     |         | 网络状态同步与多人仿真（replication/authority/rollback） | P2；传输层有 WebRTC/WebSocket，但没有仿真状态同步机制，限制多人仿真场景 |
+| 渲染      | pipeline     | 新增     | 40%     | OpenXR 手柄绑定、手势与触觉交互 | P2；已有 ActionSet/姿态输入，但缺 hand tracker 调用、haptic 与一致性测试 |
+| 编译      |              | 新增     |         | Docker 自动编译依赖库、OSG 与 osgVerse 多版本程序包 | P2；未开始 |
+| 编译      |              | 新增     |         | 手机浏览器支持测试（微信/Chrome/Opera） | P3；未开始 |
+| 编译      |              | 新增     | 90%     | 支持 GL3 Core Profile | P3；原 100% 保留主体能力，但 Windows 下 lightmapper 裸 GL 符号问题见首行，暂不标满 |
+| 编译/渲染 |              | 新增     | 95%     | GLES2 / GLES3 与 GLSL 1.2 兼容运行 | P3；原 100% 微调，poi_symbols 兼容问题已修复（见 shader 兼容层行） |
+| 渲染      | pipeline     | 优化     | 60%     | 通过脚本管理标准与自定义 Pipeline | P3；原 100% 降级；C++ 侧已接线（`PipelineStandard.cpp:1686`、`viewer_main.cpp:335`、`qt_viewer/viewer_main.cpp:78` 调 `Pipeline::load`），脚本层暴露程度仍需确认 |
+| 例程      | ai           | 新增     | 20%     | TrellisPipeline 测试程序 | P3；`ggml_related_test.cpp` 只 include，未调用 generate |
+| 例程      | ai           | 新增     |         | ObjectTracker 多目标跟踪测试 | P3；实现存在但无测试 |
+| 例程      | animation    | 新增     |         | VectorSmoother 与 TimeOut 数据滤波/时间控制测试 | P3；实现存在但无测试 |
+| 例程      | modeling     | 新增     |         | FFDModeler 与 BSplineVolume 自由变形测试 | P3；实现存在但无测试 |
+| 例程      | modeling     | 新增     |         | MeshDeformer 网格变形/蒙皮测试 | P3；实现存在但无测试 |
+| 例程      | modeling     | 新增     |         | MathExpression 数学表达式解析求值测试 | P3；实现存在但无测试 |
+| 例程      | modeling     | 新增     |         | PointCloudQuery 点云查询测试 | P3；实现存在但无测试 |
+| 例程      | modeling     | 新增     | 10%     | DynamicPointLine/Polyline/Polygon 动态线面绘制测试 | P3；mesh_process_test 只 include 未使用 |
+| 例程      | modeling     | 新增     | 50%     | 重写 TextureMapping 和 ConvexHull 测试程序 | P3；texture_reprojection_test 已覆盖贴图重投影，ConvexHull 仍只在 deprecated 测试 |
+| 例程      | pipeline     | 新增     |         | TsfFramework Windows TSF 输入法测试 | P3；实现存在但无测试 |
+| 例程      | readerwriter | 新增     |         | GraphicsWindowWin32NV 窗口实现测试 | P3；实现存在但无测试 |
+| 例程      | readerwriter | 新增     | 40%     | FeatureDefinition 与 EncodedFrameObject 测试 | P3；FeatureDefinition 在 poi_cluster_test 中有使用，EncodedFrameObject 全仓无使用 |
+| 例程      | ui           | 新增     | 40%     | SpiderEditor 节点图编辑器测试 | P3；控件存在，但 uniform_serializer.cpp 的 createSpiderNode 仍返回 -1 |
+| 例程      | ui           | 新增     | 50%     | Timeline 时间轴控件测试 | P3；scene_editor 菜单已接入，无独立测试 |
+| 例程      | ui           | 新增     | 40%     | VirtualKeyboard 与 FileDialog 测试 | P3；实现存在，compressing_test 中 FileDialog 调用被注释 |
+| 例程      | ui           | 新增     | 60%     | 常用 UI 组件（Label/Button/CheckBox/ComboBox/InputField/Slider/ListView）演示 | P3；imgui_test 仅覆盖 Button/Checkbox 等部分 |
+| 模型/动画 | animation    | 新增     | 80%     | TweenAnimation 路径/纤程动画验证 | P3；原备注"待测试"；已有手工交互测试且 CMake 仍标 FIXME，缺自动断言 |
+| 渲染/例程 | pipeline     | 新增     | 70%     | 多光源测试案例 | P3；`tests/many_lights_test.cpp` 已存在，可上调进度，待补压力基线断言 |
+| 系统      |              | 新增     |         | 统一的输入设备抽象与手柄映射配置 | P3；现有窗口/UI 输入分散，XR 输入亦缺绑定配置 |
+| —— | —— | —— | —— | **以下为复核后未见明显缺漏的历史完成项（未做运行时回归）** | —— |
+| 编译      |              | 新增     | 100%     | 支持 Static 编译流程 | 优先级：-；选项联动与静态插件注册机制齐全 |
+| 编译      |              | 新增     | 100%     | 支持 MinGW 编译流程 | 优先级：-；CMake 与 Setup.sh 分支齐备 |
+| 编译      |              | 新增     | 100%     | 解决 ept 插件和 laszip 的 Ubuntu 编译问题 | 优先级：- |
+| 编译      |              | 新增     | 100%     | 支持摩尔线程、景嘉微、Quadro、树莓派、RISC-V 编译和测试运行 | 优先级：- |
+| 编译      |              | 新增     | 100%     | 支持 Emscripten / WebAssembly 编译流程并输出浏览器端 | 优先级：-；仅 earth_demo 子目录未启用，不影响主流程 |
+| 编译      |              | 新增     | 100%     | 通过 Emscripten 支持 WebGL1/2 接口 | 优先级：- |
+| 编译      |              | 除虫     | 100%     | VS2017 下 MLT 三处编译错误：Layer 移动构造、std::tuple 缺失、is_signed_v 默认实参 ICE | 优先级：-；已在 aa8ebcd4 修复并经 cl.exe 全翻译单元验证 |
+| 编译      |              | 除虫     | 100%     | VS2015 / Windows lottie 插件 / headless SDL 等近期构建修复 | 优先级：-；见 c934e3a7、2b3b5dee、389b040e |
+| 编译      | 3rdparty/thorvg | 除虫   | 100%     | VS2017 构建 verse_core 时 tvgStr.cpp:99 的 NAN 表达式报 C2143 | 优先级：-；已用 `std::numeric_limits<float>::quiet_NaN()/infinity()` 替换 C 宏，`osgVerseDependency` 与 `osgVersePipeline` 均构建通过 |
+| 编译/渲染 |              | 新增     | 100%     | 支持 Angel 并通过自定义方式切换不同底层（DX/Vulkan） | 优先级：- |
+| 渲染      | pipeline     | 优化     | 100%     | 不用 NodeMask 管理 Deferred 场景 | 优先级：- |
+| 渲染      | pipeline     | 除虫     | 100%     | 低帧率下 Deferred 比 Forward 慢一拍 | 优先级：- |
+| 渲染      | pipeline     | 除虫     | 100%     | 加入自定义管线后全屏/窗口切换阴影与场景显示错误 | 优先级：- |
+| 渲染      | pipeline     | 除虫     | 100%     | OSG 3.1.1 Texture2DArray 渲染报错 | 优先级：- |
+| 渲染      | pipeline     | 除虫     | 100%     | OSG 3.1.1 缩放窗口后多层阴影 resize 问题 | 优先级：- |
+| 渲染      | pipeline     | 除虫     | 100%     | 摩尔 S50/S80 上延迟与非延迟场景深度融合错误 | 优先级：- |
+| 渲染      | pipeline     | 优化     | 100%     | 后处理 Bloom 模糊方法锯齿问题 | 优先级：-；新发现的小物件 Bloom 噪声另立行跟踪 |
+| 渲染      | pipeline     | 新增     | 100%     | PBR 透明体前向光照通路 | 优先级：-；完整非 MRT GBuffer 另立行跟踪 |
+| 渲染      | pipeline     | 优化     | 100%     | PBR Lighting 通过 LightManager 光源数据表计算多种光照 | 优先级：- |
+| 渲染      | pipeline     | 除虫     | 100%     | Sponza 法线贴图共享与 metallic 闪烁 | 优先级：- |
+| 渲染      | pipeline     | 除虫     | 100%     | 全屏/窗口切换或缩放后多层阴影显示不正确 | 优先级：- |
+| 渲染      | pipeline     | 优化     | 100%     | 明确 metallic/roughness 表达与导出方式 | 优先级：- |
+| 插件      | plugins      | 新增     | 100%     | libhv 支持多种网络协议替代 curl | 优先级：-；http/https/ftp/ftps 与 POST 均已接线 |
+| 插件      | plugins      | 新增     | 100%     | leveldb 数据库读写与 osgb 存储 | 优先级：- |
+| 数据读写  | readerwriter | 新增     | 100%     | KTX 纹理读取/写入与纹理压缩 | 优先级：- |
+| 数据读写  | readerwriter | 新增     | 100%     | 默认常见图片格式读取（WASM 等场合免插件） | 优先级：- |
+| 数据读写  | readerwriter | 新增     | 100%     | 倾斜摄影相邻层/顶层合并与 3dtiles 读取 | 优先级：- |
+| 模型/动画 | animation    | 优化     | 100%     | PlayerAnimation 支持直接输入骨骼和动画数据 | 优先级：- |
+| 模型/动画 | animation    | 优化     | 100%     | PlayerAnimation 支持外部数据驱动 | 优先级：- |
+| 插件      | osgdb_mlt    | 新增     | 100%     | MapLibre Tile（MLT）与 pmtiles 数据读取插件 | 优先级：-；README.md 已列，VS2017 编译问题已修；原 TODO 漏记 |
+| 渲染/模型 | plugins/3dgs | 新增     | 100%     | 3D Gaussian Splatting 读取、渲染、简化，以及 vksplat/GaussianTrainer 训练 | 优先级：-；原 TODO 漏记，见 README.md、tests/gaussian_* 与提交 54ad54a7 |
+| 系统      | earth_explorer | 新增   | 100%     | Earth Explorer 多供应商 AI 助手与工具调用 | 优先级：-；原 TODO 漏记，见 HELP.zh-CN.md |
+| 数据读写  | osgdb_terrain | 新增    | 100%     | Terrarium 高程数据与 OSG 插件体系集成 | 优先级：-；原 TODO 漏记，见 HELP.zh-CN.md |
+| 插件      | osgdb_exr/osgdb_lottie | 新增 | 100% | EXR 与 Lottie 动画插件 | 优先级：-；原 TODO 漏记，Windows lottie 构建已修 |
+| 系统      | pipeline     | 新增     | 100%     | PerfProfiler / PerfAnalyzer 相机与节点统计 | 优先级：-；性能基线与门禁另立行 |
+| 编译/例程 |              | 新增     | 100%     | headless SDL 渲染支持 | 优先级：-；见 389b040e |
+| 例程      | modeling     | 新增     | 100%     | AnnotationCluster 标注聚类测试 | 优先级：-；poi_cluster_test 已实例化 |
+| 例程      | pipeline     | 新增     | 100%     | NISUpscaler NVIDIA 图像上采样测试 | 优先级：-；forward_pbr_test 已调用 |
+| 例程      | ui           | 新增     | 100%     | ImGuiManager 的 3D/RTT 模式（addToTexture）测试 | 优先级：-；imgui_test 已覆盖 |

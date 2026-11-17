@@ -22,6 +22,7 @@
 
 #include "thorvg_config.h"
 #include <cmath>
+#include <limits>
 #include "tvgCommon.h"
 #include "tvgMath.h"
 #include "tvgStr.h"
@@ -88,7 +89,7 @@ float toFloat(const char *str, char **end)
             else goto error;
         }
         if (end) *end = (char *) (iter);
-        return (minus == -1) ? -INFINITY : INFINITY;
+        return (minus == -1) ? -std::numeric_limits<float>::infinity() : std::numeric_limits<float>::infinity();
     }
 
     if (tolower(*iter) == 'n') {
@@ -96,7 +97,7 @@ float toFloat(const char *str, char **end)
         else goto error;
 
         if (end) *end = (char *) (iter);
-        return (minus == -1) ? -NAN : NAN;
+        return (minus == -1) ? -std::numeric_limits<float>::quiet_NaN() : std::numeric_limits<float>::quiet_NaN();
     }
 
     //Optional: integer part before dot

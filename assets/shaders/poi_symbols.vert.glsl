@@ -20,9 +20,9 @@ void main()
 {
     float r = float(gl_InstanceID) * InvResolution;
     float c = floor(r) * InvResolution; r = fract(r);
-    vec4 pos = texture2D(PosTexture, vec2(r, c));
-    vec4 dir = texture2D(DirTexture, vec2(r, c));
-    UserColor = texture2D(ColorTexture, vec2(r, c));
+    vec4 pos = VERSE_TEX2D(PosTexture, vec2(r, c));
+    vec4 dir = VERSE_TEX2D(DirTexture, vec2(r, c));
+    UserColor = VERSE_TEX2D(ColorTexture, vec2(r, c));
 #ifdef MID_DISTANCE
     float tx = float(gl_InstanceID) * Scale.z;
     float ty = floor(tx) * Scale.z; tx = fract(tx);

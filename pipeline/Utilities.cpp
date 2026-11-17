@@ -28,7 +28,6 @@
 #include <array>
 #include <random>
 #include <thread>
-
 #if defined(_OPENMP)
 #   include <omp.h>
 #endif
@@ -36,10 +35,12 @@
 #include <backward.hpp>
 #include <tinycolormap.hpp>
 #include <heatmap.h>
-#if defined(OSG_GL3_AVAILABLE) && !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE)
+#if !defined(WIN32) && !defined(_WIN32)
+# if defined(OSG_GL3_AVAILABLE) && !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE)
 #   define VERSE_USE_LIGHTMAPPER 1
 #   define LIGHTMAPPER_IMPLEMENTATION
 #   include <lightmapper.h>
+# endif
 #endif
 #include <mikktspace.h>
 #include <PoissonGenerator.h>
@@ -795,6 +796,7 @@ namespace osgVerse
 #ifdef VERSE_USE_LIGHTMAPPER
         return _impl->context != NULL;
 #else
+        OSG_WARN << "[LightmapBaker] currently only work under Linux & GLCore\n";
         return false;
 #endif
     }
