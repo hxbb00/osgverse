@@ -24,7 +24,6 @@
 | Avir             | Embedded | 3.1       | ReaderWriter       | MIT          | https://github.com/avaneev/avir |
 | backward-cpp     | Embedded |           | -                  | MIT          | https://github.com/bombela/backward-cpp |
 | bc7_rdo          | Embedded |           | ReaderWriter       | MIT/Apache2  | https://github.com/richgel999/bc7enc_rdo |
-| blend2d          | Embedded | 0.11.4    | Pipeline           | Zlib         | https://github.com/blend2d/blend2d |
 | box3d            | Embedded | 20260706  | Animation          | MIT          | https://github.com/erincatto/box3d |
 | ByteTrack-cpp    | Embedded | 20260327  | AI                 | MIT          | https://github.com/Vertical-Beach/ByteTrack-cpp |
 | CDT              | Embedded | 1.4.0     | Modeling           | MPL2         | https://github.com/artem-ogre/CDT |
@@ -106,6 +105,7 @@
 | tinyexr          | Embedded |           | verse_exr          | BSD          | https://github.com/syoyo/tinyexr |
 | tinyfiledialogs  | Embedded | 3.18.2    | UI                 | Zlib         | https://sourceforge.net/projects/tinyfiledialogs |
 | tinyspline       | Embedded |           | Modeling           | MIT          | https://github.com/msteinbeck/tinyspline |
+| thorvg           | Embedded | 1.2.0     | Pipeline           | MIT          | https://github.com/thorvg/thorvg |
 | Trellis2++       | Embedded | 20260811  | AI (GGML)          | MIT          | https://github.com/localai-org/trellis2cpp |
 | tweeny           | Embedded |           | Animation          | MIT          | https://github.com/mobius3/tweeny |
 | ufbx             | Embedded | 0.22.0    | verse_fbx          | MIT /Public  | https://github.com/ufbx/ufbx |

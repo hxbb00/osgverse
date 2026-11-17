@@ -5,6 +5,9 @@
 #include <osg/Image>
 #include <osg/Texture2D>
 #include <functional>
+#include <map>
+#include <string>
+#include <vector>
 
 namespace osgVerse
 {
@@ -18,7 +21,7 @@ namespace osgVerse
         : color(c), filled(f), extending(PAD), type(COLOR) { transform.makeIdentity(); }
 
         DrawerStyleData(osg::Image* im, ExtendMode e = PAD)
-        : image(im), filled(true), extending(e), type(IMAGE) { optimizeImage(); transform.makeIdentity(); }
+        : image(im), filled(true), extending(e), type(IMAGE) { transform.makeIdentity(); }
 
         DrawerStyleData(const osg::Vec2f& s, const osg::Vec2f& e,
                         const std::map<float, osg::Vec4f>& stops, bool f = false)
@@ -30,7 +33,6 @@ namespace osgVerse
         : gradientStops(stops), filled(f), extending(PAD), type(RADIAL_GRADIENT)
         { gradient.set(s[0], s[1], e[0], e[1]); gradient2.set(r0, r1, 0.0f, 0.0f); transform.makeIdentity(); }
 
-        void optimizeImage();
         osg::ref_ptr<osg::Image> image;
         std::map<float, osg::Vec4f> gradientStops;
         osg::Vec4f color, gradient, gradient2;
@@ -95,9 +97,9 @@ namespace osgVerse
         enum StrokeOption
         {
             WIDTH, COLOR,  // color can be set as 0xFF0000FF, ...
-            START_CAP, END_CAP,  // 0: Butt, 1: Square, 2: Round, 3: Reversed-round, 4: Triangle, 5: Reversed-triangle
+            START_CAP, END_CAP,  // 0: Butt, 1: Square, 2: Round (3-5 are not supported by ThorVG)
             JOIN,  // 0: Miter-join, 1: Auto-miter-bevel-join, 2: Auto-miter-round-join, 3: Bevel-join, 4: Round-join
-            DASH_OFFSET, AUTO_JOIN_LIMIT
+            DASH_OFFSET, AUTO_JOIN_LIMIT  // TODO: dash pattern is not exposed yet, so DASH_OFFSET has no effect
         };
         void setStrokeOption(StrokeOption opt, double value);
         double getStrokeOption(StrokeOption opt) const;
@@ -122,14 +124,13 @@ namespace osgVerse
         };
         void setBlendOperator(BlendMode value);
 
-        static unsigned char* convertImage(osg::Image* image, int& format, int& components);
         void setDrawingInThread(int b);
 
     protected:
         bool testDrawingInThread(int b);
         void destroyDrawingThread();
 
-        osg::ref_ptr<osg::Referenced> _b2dData;
+        osg::ref_ptr<osg::Referenced> _tvgData;
         OpenThreads::Thread* _thread;
         OpenThreads::Mutex _mutex;
         int _drawingInThread;

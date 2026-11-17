@@ -29,7 +29,7 @@
 
 ### Embedded 3rdparty Libraries (3rdparty/)
 The project includes many embedded third-party libraries:
-- **blend2d**: 2D vector graphics engine
+- **thorvg**: 2D vector graphics engine (Drawer2D)
 - **imgui**: Immediate mode GUI (with extensions like ImGuizmo, implot)
 - **leveldb**: Key-value storage
 - **libhv**: High-performance network library
@@ -41,6 +41,13 @@ The project includes many embedded third-party libraries:
 - **Eigen**: Linear algebra
 - And many more (see THIRDPARTY_LICENSES.md for complete list)
 
+Notes for the vendored ThorVG (`3rdparty/thorvg`): only the CPU rasterizer and the
+`sfnt`/`raw`/`svg` loaders are included. `thorvg_config.h` is generated from
+`thorvg_config.h.in` (the upstream `config.h` include was renamed to avoid clashing with
+other 3rdparty `config.h`), `THORVG_AVX_SUPPORT` / `THORVG_NEON_SUPPORT` is enabled when
+the host CPU supports it, and the global `operator new/delete` overrides were removed so
+ThorVG does not hijack the host allocator.
+
 ## Project Structure
 
 ```
@@ -51,7 +58,7 @@ osgVerse/
 ├── CODE_STYLE.md               # Coding style guidelines
 │
 ├── 3rdparty/                   # Embedded third-party libraries
-│   ├── blend2d/               # 2D graphics
+│   ├── thorvg/                # 2D vector graphics (Drawer2D)
 │   ├── imgui/                 # GUI library
 │   ├── leveldb/               # Database
 │   ├── libhv/                 # Network library

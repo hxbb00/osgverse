@@ -167,7 +167,7 @@ Our project is already tested on graphics cards listed as below:
 10. osgVerse_Test_Paging_Lod: a quick utility for paged LOD file combination, optimization and transferring to levelDB.
 11. osgVerse_Test_Point_Cloud: an example for point cloud viewing and manipulating. (TBD: eye-dome rendering)
 12. osgVerse_Test_Player_Animation: an example of character animation loading and playing. (TBD: simple UI)
-13. osgVerse_Test_Symbols: an example for drawing with Blend2D and displaying massive symbols with icons and texts.
+13. osgVerse_Test_Symbols: an example for drawing with ThorVG and displaying massive symbols with icons and texts.
 14. osgVerse_Test_Tween_Animation: an example for tween animations, like path and data-driven animations. (TBD: time-out events)
 15. osgVerse_Test_Polygon2D: an eample of 2D polygon operations. (TBD: labeling, spline usage, loading MVT)
 16. osgVerse_Test_Mesh_Process: an example of 3D mesh operations. (TBD: labeling, topology, NURBS, common shapes)
