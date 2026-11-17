@@ -1,12 +1,72 @@
+/* Gaussian splatting viewer and simplification test.
+
+   Usage: osgVerse_Test_3DGS <model> [options]
+
+   Model options (any format supported by the verse_3dgs plugin: .ply, .splat, .spz,
+   .ksplat, .sog, .lcc, ...):
+     -O <string>                 Extra reader options, e.g. "RenderMethod=0".
+     --render-mode <hint>        Custom-mode render method: "" (SSBO instancing), "TBO", "TEX2D",
+                                "GS" (geometry shader).
+     --annotation <file>         Load an annotation scene instead of a splat model.
+     --first <x> <y> <z>         First-person camera position (not recommended for benchmarks:
+                                its orientation differs from --agent-eye).
+
+   Simplification (training-free, see modeling/GaussianSimplifier.h):
+     --simplify <ratio>          Reduce the splat count in place before rendering, e.g. 0.5 keeps
+                                half of the splats and 0.1 keeps 10%. Paged/LOD models (3D Tiles,
+                                LCC, ...) print a notice and skip this option.
+                                Note: at close range the screen coverage (and therefore the fill
+                                rate) is roughly conserved, so a mild ratio like 0.5 mainly saves
+                                vertex/sorting work; use 0.25/0.1 or the shader knobs below to cut
+                                fill rate.
+     --simplify-opacity <mode>   Opacity of merged splats: average (default), union (NanoGS),
+                                or max. "union" composites two layers and darkens more.
+     --gauss-radius <sigma>      Max screen-space quad radius of a splat, in sigmas (default 3.0).
+                                The quad area scales with its square, so 2.5 removes ~27% of the
+                                fragments and 2.0 ~53%, at the cost of truncating the faint tail.
+     --gauss-alpha-cut <alpha>   Fragment discard threshold (default 0.01). Raising it (e.g. 0.03)
+                                reduces blended fragments but can harden the splat edges.
+
+   The two fill-rate knobs live in the splat shader's vec3 uniform "GaussianParameters":
+     x = rendering mode (0: splats, 1: points with key '1', back to 0 with key '0')
+     y = max quad radius in sigmas (<= 0 means 3.0)
+     z = alpha cutoff (<= 0 means 0.01)
+   Defaults (0, 3.0, 0.01) are installed by GlobalGaussianSorter when a model is read
+   (readerwriter/UtilitiesEx.cpp) and by this test in --custom mode.
+
+   Output and measurement:
+     --save <file>               Write the (possibly simplified) scene, then keep rendering.
+     --bench <frames>            Render N frames after 10 warm-up frames, print the average FPS
+                                and exit. A vsync-free window is created in this mode.
+     --agent ...                 Scripted capture: --agent-frames N, --agent-eye X Y Z,
+                                --agent-center X Y Z, --agent-size W H, --agent-output PREFIX
+                                (writes PNGs and exits). Add --agent-keep to keep running.
+     --custom                    Use the test's own state sets and sorter instead of the global
+                                gaussian pipeline (needed by --render-mode / --cuda-sort).
+     --cuda-sort                 Use the CUDA radix sorter in --custom mode.
+     --screen <n>, --show-bbox, --show-collision, --test-color
+                                 Display helpers.
+
+   Examples:
+     ./osgVerse_Test_3DGS model.ply --bench 120
+     ./osgVerse_Test_3DGS model.ply --simplify 0.5 --bench 120
+     ./osgVerse_Test_3DGS model.ply --gauss-radius 2.5 --gauss-alpha-cut 0.03 --bench 120
+     ./osgVerse_Test_3DGS model.ply --simplify 0.5 --save simplified.ply
+     ./osgVerse_Test_3DGS model.ply --agent --agent-frames 5 --agent-eye 0 -120 40 \
+         --agent-center 0 0 0 --agent-output /tmp/shot
+*/
+
 #include <osg/io_utils>
 #include <osg/ValueObject>
 #include <osg/Texture2D>
 #include <osg/BlendFunc>
 #include <osg/BlendEquation>
 #include <osg/Depth>
+#include <osg/GraphicsContext>
 #include <osg/MatrixTransform>
 #include <osg/PagedLOD>
 #include <osg/ProxyNode>
+#include <osg/Timer>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 #include <osgGA/TrackballManipulator>
@@ -354,8 +414,9 @@ void createAnnotationScene(osg::Group* root, osgVerse::AnnotationMaker* maker)
 // The sorter is updated as well when it has already been registered by the reader.
 struct GaussianSimplifyVisitor : public osg::NodeVisitor
 {
-    GaussianSimplifyVisitor(float ratio, osgVerse::GaussianSorter* sorter)
-    :   osg::NodeVisitor(TRAVERSE_ALL_CHILDREN), _ratio(ratio), _sorter(sorter), _numReplaced(0) {}
+    GaussianSimplifyVisitor(float ratio, int opacityMode, osgVerse::GaussianSorter* sorter)
+    :   osg::NodeVisitor(TRAVERSE_ALL_CHILDREN), _ratio(ratio), _opacityMode(opacityMode),
+        _sorter(sorter), _numReplaced(0) {}
 
     virtual void apply(osg::Geode& node)
     {
@@ -366,7 +427,7 @@ struct GaussianSimplifyVisitor : public osg::NodeVisitor
             if (!geom) continue;
 
             osgVerse::GaussianSimplifyOptions opt;
-            opt.ratio = _ratio; opt.verbose = true;
+            opt.ratio = _ratio; opt.opacityMode = _opacityMode; opt.verbose = true;
             osg::ref_ptr<osgVerse::GaussianGeometry> simplified =
                 osgVerse::GaussianSimplifier::simplifyGeometry(*geom, opt);
             if (!simplified.valid()) continue;
@@ -388,6 +449,7 @@ struct GaussianSimplifyVisitor : public osg::NodeVisitor
 
 protected:
     float _ratio;
+    int _opacityMode;
     osgVerse::GaussianSorter* _sorter;
     unsigned int _numReplaced;
 };
@@ -403,7 +465,54 @@ struct LodNodeFinder : public osg::NodeVisitor
     bool found;
 };
 
-static void simplifyGaussianNode(osg::Node* node, float ratio, osgVerse::GaussianSorter* sorter)
+// Simple FPS benchmark: skips the first warm-up frames (shader/pipeline compilation) and quits
+// after the requested number of frames, so load and simplification time are not counted
+struct FrameBenchmarkHandler : public osgGA::GUIEventHandler
+{
+    FrameBenchmarkHandler(int frames)
+    :   _frames(frames), _count(0), _warmup(10) { _timer.setStartTick(); }
+
+    virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
+    {
+        if (ea.getEventType() != osgGA::GUIEventAdapter::FRAME) return false;
+        ++_count;
+        if (_count == _warmup) _timer.setStartTick();
+        else if (_count >= _warmup + _frames)
+        {
+            double t = _timer.time_s();
+            std::cout << "[Bench] " << _frames << " frames in " << t << "s = "
+                      << (_frames / t) << " FPS" << std::endl;
+            osgViewer::ViewerBase* vb = dynamic_cast<osgViewer::ViewerBase*>(&aa);
+            if (vb) vb->setDone(true);
+        }
+        return false;
+    }
+
+protected:
+    osg::Timer _timer; int _frames, _count, _warmup;
+};
+
+// Optional fill-rate knobs of the splat shader (defaults keep the original behaviour).
+// They live in the same vec3 uniform as the rendering mode: x=mode, y=radius, z=cutoff.
+static void applyGaussianFillOptions(osg::Node* node, float radius, float cutoff)
+{
+    if (!node || (radius <= 0.0f && cutoff <= 0.0f)) return;
+    osg::StateSet* ss = node->getOrCreateStateSet();
+    osg::Uniform* param = ss->getUniform("GaussianParameters");
+    if (!param)
+    {
+        param = new osg::Uniform("GaussianParameters", osg::Vec3(0.0f, 3.0f, 0.01f));
+        ss->addUniform(param);
+    }
+
+    osg::Vec3 value; param->get(value);
+    if (radius > 0.0f) value.y() = radius;
+    if (cutoff > 0.0f) value.z() = cutoff;
+    param->set(value);
+}
+
+static void simplifyGaussianNode(osg::Node* node, float ratio, int opacityMode,
+                                 osgVerse::GaussianSorter* sorter)
 {
     if (!(ratio > 0.0f && ratio < 1.0f))
     {
@@ -419,7 +528,7 @@ static void simplifyGaussianNode(osg::Node* node, float ratio, osgVerse::Gaussia
         return;
     }
 
-    GaussianSimplifyVisitor sv(ratio, sorter); node->accept(sv);
+    GaussianSimplifyVisitor sv(ratio, opacityMode, sorter); node->accept(sv);
     if (sv.getNumReplaced() == 0)
         std::cout << "[Simplify] No Gaussian geometry found, option ignored." << std::endl;
 }
@@ -449,6 +558,19 @@ int main(int argc, char** argv)
     std::string optString; arguments.read("-O", optString);
     std::string savedFile; arguments.read("--save", savedFile);
     float simplifyRatio = 0.0f; arguments.read("--simplify", simplifyRatio);
+    std::string opacityName; arguments.read("--simplify-opacity", opacityName);
+    int opacityMode = 1;  // 0: union (NanoGS), 1: average, 2: max
+    if (opacityName == "union") opacityMode = 0;
+    else if (opacityName == "max") opacityMode = 2;
+    int benchFrames = 0; arguments.read("--bench", benchFrames);
+    float gaussRadius = 0.0f; arguments.read("--gauss-radius", gaussRadius);
+    float gaussCutoff = 0.0f; arguments.read("--gauss-alpha-cut", gaussCutoff);
+
+    // Agent options must be consumed before reading models, or they are taken as file names.
+    // The camera view is applied here and the manipulator is skipped when an eye is given.
+    bool hasAgentEye = (arguments.find("--agent-eye") >= 0) ||
+                       (arguments.find("--agent-center") >= 0);
+    bool agentMode = osgVerse::configureViewerForAgent(arguments, &viewer);
 
     double firstX = 0.0, firstY = 0.0, firstZ = 0.0;
     bool fpsView = arguments.read("--first", firstX, firstY, firstZ);
@@ -466,7 +588,8 @@ int main(int argc, char** argv)
         // Note: geometries are already registered to the global sorter by the reader
         osgVerse::GaussianSorter* sorter = static_cast<osgVerse::GaussianSorter*>(
             osgVerse::getGlobalFileCallback()->getGaussian()->sorterBase.get());
-        simplifyGaussianNode(gs.get(), simplifyRatio, sorter);
+        simplifyGaussianNode(gs.get(), simplifyRatio, opacityMode, sorter);
+        applyGaussianFillOptions(gs.get(), gaussRadius, gaussCutoff);
 
         gs->setCullCallback(osgVerse::GaussianGeometry::createUniformCallback());
         root->addChild(gs.get()); viewer.setSceneData(root.get());
@@ -491,15 +614,24 @@ int main(int argc, char** argv)
         if (!gs) { std::cout << "No 3DGS file loaded" << std::endl; return 1; }
 
         // No sorter is created yet in this mode, so only replace the geometries
-        simplifyGaussianNode(gs.get(), simplifyRatio, NULL);
+        simplifyGaussianNode(gs.get(), simplifyRatio, opacityMode, NULL);
 
-        root->getOrCreateStateSet()->getOrCreateUniform("GaussianRenderingMode", osg::Uniform::FLOAT)->set(0.0f);
+        // x: rendering mode, y: max quad radius, z: alpha cutoff (same defaults as GlobalGaussianSorter)
+        root->getOrCreateStateSet()->getOrCreateUniform("GaussianParameters", osg::Uniform::FLOAT_VEC3)
+            ->set(osg::Vec3(0.0f, 3.0f, 0.01f));
+        applyGaussianFillOptions(root.get(), gaussRadius, gaussCutoff);
         root->addChild(gs.get()); root->addChild(hudCanvas.create(1920, 1080));
         viewer.setSceneData(root.get());
 
         osgVerse::QuickEventHandler* handler = new osgVerse::QuickEventHandler;
-        handler->addKeyUpCallback('1', [&](int key) { root->getStateSet()->getUniform("GaussianRenderingMode")->set(1.0f); });
-        handler->addKeyUpCallback('0', [&](int key) { root->getStateSet()->getUniform("GaussianRenderingMode")->set(0.0f); });
+        handler->addKeyUpCallback('1', [&](int key) {
+            osg::Uniform* u = root->getStateSet()->getUniform("GaussianParameters");
+            osg::Vec3 v; u->get(v); u->set(osg::Vec3(1.0f, v.y(), v.z()));
+        });
+        handler->addKeyUpCallback('0', [&](int key) {
+            osg::Uniform* u = root->getStateSet()->getUniform("GaussianParameters");
+            osg::Vec3 v; u->get(v); u->set(osg::Vec3(0.0f, v.y(), v.z()));
+        });
         viewer.addEventHandler(handler);
 
         osg::ref_ptr<osgVerse::GaussianSorter> sorter = new osgVerse::GaussianSorter;
@@ -538,7 +670,24 @@ int main(int argc, char** argv)
     }
 
     int screenNo = 0; arguments.read("--screen", screenNo);
-    viewer.setUpViewOnSingleScreen(screenNo);
+    if (benchFrames > 0)
+    {   // Benchmark without vsync, otherwise 60Hz display reports only 60/30 fps buckets
+        osg::ref_ptr<osg::GraphicsContext::Traits> traits = new osg::GraphicsContext::Traits;
+        traits->x = 0; traits->y = 0; traits->width = 1920; traits->height = 1080;
+        traits->windowDecoration = false; traits->doubleBuffer = true;
+        traits->vsync = false; traits->screenNum = screenNo;
+        osg::ref_ptr<osg::GraphicsContext> gc = osg::GraphicsContext::createGraphicsContext(traits.get());
+        if (gc.valid())
+        {
+            gc->setClearColor(viewer.getCamera()->getClearColor());
+            viewer.getCamera()->setGraphicsContext(gc.get());
+            viewer.getCamera()->setViewport(new osg::Viewport(0, 0, 1920, 1080));
+        }
+        else
+            viewer.setUpViewOnSingleScreen(screenNo);
+    }
+    else
+        viewer.setUpViewOnSingleScreen(screenNo);
     if (arguments.read("--show-collision"))
     {
         osgVerse::QuickObjectVisitor qov; qov.setNodeMaskOverride(0xffffffff);  // to visit nodes with mask=0
@@ -550,8 +699,12 @@ int main(int argc, char** argv)
         root->accept(qov);  // find collision node and display it, only work for LCC scene
     }
 
-    if (fpsView) viewer.setCameraManipulator(new QwertyManipulator(osg::Vec3d(firstX, firstY, firstZ)));
-    else viewer.setCameraManipulator(new osgGA::TrackballManipulator);
+    if (!agentMode || !hasAgentEye)
+    {
+        if (fpsView) viewer.setCameraManipulator(new QwertyManipulator(osg::Vec3d(firstX, firstY, firstZ)));
+        else viewer.setCameraManipulator(new osgGA::TrackballManipulator);
+    }
+    if (benchFrames > 0) viewer.addEventHandler(new FrameBenchmarkHandler(benchFrames));
     
     if (!savedFile.empty()) osgDB::writeNodeFile(*root, savedFile);
     return viewer.run();

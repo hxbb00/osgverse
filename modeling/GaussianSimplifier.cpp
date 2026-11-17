@@ -303,7 +303,8 @@ namespace
     }
 
     bool mergeSplatPair(const GaussianSplatCloud& src, size_t i, size_t j,
-                        const SplatCache& cache, GaussianSplatCloud& dst, size_t dstIndex)
+                        const SplatCache& cache, GaussianSplatCloud& dst, size_t dstIndex,
+                        const GaussianSimplifyOptions& opt)
     {
         const float wi = cache.mass[i], wj = cache.mass[j];
         const float W = (wi + wj > 0.0f) ? (wi + wj) : 1.0f;
@@ -351,8 +352,15 @@ namespace
         dst.positions[dstIndex] = mu;
         dst.scales[dstIndex].set(std::sqrt(l0), std::sqrt(l1), std::sqrt(l2));
         dst.rotations[dstIndex] = matrixToQuat(R);
-        dst.opacities[dstIndex] = clampValue(src.opacities[i] + src.opacities[j] -
-                                             src.opacities[i] * src.opacities[j], 0.0f, 1.0f);
+
+        // Union preserves the composited alpha of two coincident layers but makes the
+        // merged splat more opaque, which enlarges its screen quad (k grows with alpha)
+        // and reduces fragment discards. Average/max keep the per-splat cost flat.
+        const float oi = src.opacities[i], oj = src.opacities[j];
+        float opacity = oi + oj - oi * oj;
+        if (opt.opacityMode == 1) opacity = 0.5f * (oi + oj);
+        else if (opt.opacityMode == 2) opacity = std::max(oi, oj);
+        dst.opacities[dstIndex] = clampValue(opacity, 0.0f, 1.0f);
 
         const float* shi = &src.sh[i * src.shDim];
         const float* shj = &src.sh[j * src.shDim];
@@ -403,7 +411,8 @@ namespace
 
     void mergeCloud(const GaussianSplatCloud& src,
                     const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
-                    const SplatCache& cache, GaussianSplatCloud& dst)
+                    const SplatCache& cache, GaussianSplatCloud& dst,
+                    const GaussianSimplifyOptions& opt)
     {
         const size_t N = src.count;
         std::vector<uint8_t> used(N, 0);
@@ -420,7 +429,7 @@ namespace
         for (int p = 0; p < (int)pairs.size(); ++p)
         {
             if (!mergeSplatPair(src, pairs[p].first, pairs[p].second, cache, dst,
-                                keep.size() + (size_t)p))
+                                keep.size() + (size_t)p, opt))
                 copySplat(src, pairs[p].first, dst, keep.size() + (size_t)p);
         }
     }
@@ -501,7 +510,7 @@ bool GaussianSimplifier::simplify(GaussianSplatCloud& cloud, const GaussianSimpl
         if (pairs.empty()) break;
 
         GaussianSplatCloud next;
-        mergeCloud(cloud, pairs, cache, next);
+        mergeCloud(cloud, pairs, cache, next, opt);
         cloud = std::move(next);
 
         if (opt.verbose)

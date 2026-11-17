@@ -355,7 +355,7 @@ namespace osgVerse
             virtual void registerGaussianObjects(osg::Node& node) = 0;
             osg::ref_ptr<osg::Referenced> sorterBase;
             osg::ref_ptr<osg::Program> program;
-            osg::ref_ptr<osg::Uniform> renderMode;
+            osg::ref_ptr<osg::Uniform> parameters;  // vec3: mode, max quad radius, alpha cutoff
             std::map<std::string, std::string> readOptions;
         };
 

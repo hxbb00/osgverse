@@ -1068,7 +1068,9 @@ namespace
             if (geom) osgVerse::Pipeline::createShaderDefinitions(geom, cxtVer, glslVer, gsDefinitions);
             
             program = osgVerse::GaussianGeometry::createProgram(vert, (hint == "GS") ? geom : NULL, frag, method);
-            renderMode = new osg::Uniform("GaussianRenderingMode", 0.0f); return true;
+            // x: rendering mode, y: max quad radius in sigma, z: alpha cutoff
+            parameters = new osg::Uniform("GaussianParameters", osg::Vec3(0.0f, 3.0f, 0.01f));
+            return true;
         }
 
         virtual void registerGaussianObjects(osg::Node& node)
@@ -1084,7 +1086,7 @@ namespace
 
             osgVerse::GaussianSorter* gs = static_cast<osgVerse::GaussianSorter*>(sorterBase.get());
             GaussianGeomVisitor ggv(gs, program.get()); node.accept(ggv);
-            node.getOrCreateStateSet()->addUniform(renderMode.get());
+            node.getOrCreateStateSet()->addUniform(parameters.get());
         }
 
         GlobalGaussianSorter(const InitResourceMap& r) : _resources(r) {}

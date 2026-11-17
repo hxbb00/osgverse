@@ -4,7 +4,8 @@
 
 uniform mat4 osg_ViewMatrixInverse;
 uniform vec2 NearFarPlanes, InvScreenResolution;
-uniform float GaussianRenderingMode;
+// x: rendering mode, y: max quad radius in sigma (<= 0 means 3.0), z: alpha cutoff
+uniform vec3 GaussianParameters;
 #if defined(CUSTOMIZED_TEX)
 void customizeColorChanging(inout vec4 color, vec4 param)
 {
@@ -258,7 +259,7 @@ void main()
 #endif
 
     mat3 V = mat3(0.0001, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0001);
-    if (GaussianRenderingMode < 0.5)
+    if (GaussianParameters.x < 0.5)
     {
 #if defined(USE_INSTANCING)
         //V = mat3(cov0.xyz, cov1.xyz, cov2.xyz);
@@ -306,7 +307,8 @@ void main()
         float maxDist2 = -2.0 * log(minVisibleAlpha / peakOpacity);
         if (maxDist2 < 0.0) { gl_Position = vec4(0.0, 0.0, -10.0, 1.0); return; }
 
-        float k = min(sqrt(maxDist2), 3.0);  // use dynamic quad-size
+        float kMax = (GaussianParameters.y > 0.0) ? GaussianParameters.y : 3.0;
+        float k = min(sqrt(maxDist2), kMax);  // use dynamic quad-size
         vec4 axes = computeExtens2D(k, cov2D, invCovariance);
         vec2 majAxis = axes.xy, minAxis = axes.zw;
 

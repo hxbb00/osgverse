@@ -38,7 +38,7 @@ struct GaussianSimplifyOptions
     GaussianSimplifyOptions()
     :   ratio(0.5f), mergeCapRatio(0.5f), opacityThreshold(0.1f),
         kNeighbors(16), sampleCount(1), numThreads(0), maxPasses(32),
-        lamGeo(1.0f), lamSh(1.0f), epsCov(1e-8f), seed(0),
+        lamGeo(1.0f), lamSh(1.0f), epsCov(1e-8f), seed(0), opacityMode(1),
         useSHCost(true), verbose(false) {}
 
     float ratio;             // target splat count / original count, in (0, 1)
@@ -52,6 +52,7 @@ struct GaussianSimplifyOptions
     float lamGeo, lamSh;     // weights of geometry and SH costs
     float epsCov;            // epsilon added to covariance diagonals
     unsigned int seed;       // random seed for Monte-Carlo samples
+    int opacityMode;         // 0: union (NanoGS), 1: average, 2: max
     bool useSHCost;          // whether SH difference joins the merge cost
     bool verbose;            // print per-pass information with OSG_INFO
 };
