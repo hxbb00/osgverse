@@ -307,6 +307,7 @@ namespace osgVerse
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_leveldb"));
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_mbtiles"));
         regObject->loadLibrary(regObject->createLibraryNameForExtension("verse_lottie"));
+        regObject->loadLibrary(regObject->createLibraryNameForExtension("colmap"));
 #endif
         regObject->addFileExtensionAlias("ept", "verse_ept");
         regObject->addFileExtensionAlias("fbx", "verse_fbx");

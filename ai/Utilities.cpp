@@ -17,11 +17,6 @@
 #   include "OnnxRuntimeEngine.h"
 #endif
 
-#if defined(_MSC_VER) && _MSC_VER < 1910  // VS2015
-#   define VERSE_NO_MINISPLATS 1
-#else
-#   include "minisplats/Trainer.h"
-#endif
 #include "Utilities.h"
 #include <algorithm>
 #include <iostream>

@@ -769,3 +769,8 @@ SET(THIRDPARTY_INCLUDE_FILES any.hpp picojson.h backward.hpp)
 SET(IMGUI_INCLUDE_FILES imgui/imgui.h imgui/imconfig.h imgui/ImGuizmo.h)
 INSTALL(FILES ${THIRDPARTY_INCLUDE_FILES} DESTINATION ${INSTALL_INCDIR}/osgVerse COMPONENT libosgverse-dev)
 INSTALL(FILES ${IMGUI_INCLUDE_FILES} DESTINATION ${INSTALL_INCDIR}/osgVerse/imgui COMPONENT libosgverse-dev)
+
+# Vendored VkSplat (Vulkan 3DGS trainer), desktop Linux/Windows only
+IF(VERSE_WITH_VKSPLAT)
+    ADD_SUBDIRECTORY(vksplat)
+ENDIF()

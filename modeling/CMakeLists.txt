@@ -2,7 +2,7 @@ SET(LIB_NAME osgVerseModeling)
 SET(LIBRARY_INCLUDE_FILES
     MeshDeformer.h MeshTopology.h MeshBoolean.h GeometryMerger.h GeometryMapper.h
     TextureMapping.h FFDModeler.h AnnotationMaker.h DynamicGeometry.h GaussianGeometry.h
-    GaussianSimplifier.h Math.h Octree.h Utilities.h MeshFixer.h Predicates.h)
+    GaussianSimplifier.h GaussianTrainer.h Math.h Octree.h Utilities.h MeshFixer.h Predicates.h)
 SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
     MeshDeformer.cpp MeshTopology.cpp MeshBoolean.cpp MeshFixer.cpp Predicates.cpp
     FFDModeler.cpp AnnotationMaker.cpp DynamicGeometry.cpp TextureMapping.cpp
@@ -38,3 +38,26 @@ INSTALL(TARGETS ${LIB_NAME} EXPORT ${LIB_NAME}
         LIBRARY DESTINATION ${INSTALL_LIBDIR} COMPONENT libosgverse
         ARCHIVE DESTINATION ${INSTALL_ARCHIVEDIR} COMPONENT libosgverse-dev)
 INSTALL(FILES ${LIBRARY_INCLUDE_FILES} DESTINATION ${INSTALL_INCDIR}/osgVerse/modeling COMPONENT libosgverse-dev)
+
+# 3DGS trainer backed by the vendored VkSplat Vulkan compute core
+IF(VERSE_WITH_VKSPLAT)
+    SET(TRAINER_LIB_NAME osgVerseGaussianTrainer)
+    ADD_LIBRARY(${TRAINER_LIB_NAME} STATIC GaussianTrainer.cpp GaussianTrainer.h)
+    SET_TARGET_PROPERTIES(${TRAINER_LIB_NAME} PROPERTIES DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}")
+    SET_TARGET_PROPERTIES(${TRAINER_LIB_NAME} PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${PROJECT_BINARY_DIR}/lib"
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${PROJECT_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY_DEBUG "${PROJECT_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY_RELEASE "${PROJECT_BINARY_DIR}/lib"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${PROJECT_BINARY_DIR}/bin"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${PROJECT_BINARY_DIR}/bin")
+    TARGET_INCLUDE_DIRECTORIES(${TRAINER_LIB_NAME} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} ${VULKAN_INCLUDE_DIR})
+    TARGET_COMPILE_OPTIONS(${TRAINER_LIB_NAME} PUBLIC -D_SCL_SECURE_NO_WARNINGS)
+    TARGET_LINK_LIBRARIES(${TRAINER_LIB_NAME} osgVerseModeling osgVerseVkSplat)
+    LINK_OSG_LIBRARY(${TRAINER_LIB_NAME} OpenThreads osg osgDB osgUtil)
+    INSTALL(TARGETS ${TRAINER_LIB_NAME} EXPORT ${TRAINER_LIB_NAME}
+            RUNTIME DESTINATION ${INSTALL_BINDIR} COMPONENT libosgverse
+            LIBRARY DESTINATION ${INSTALL_LIBDIR} COMPONENT libosgverse
+            ARCHIVE DESTINATION ${INSTALL_ARCHIVEDIR} COMPONENT libosgverse-dev)
+ENDIF(VERSE_WITH_VKSPLAT)

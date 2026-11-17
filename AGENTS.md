@@ -551,6 +551,15 @@ are packed by view range, and the VSM/EVSM paths add a blur chain the receiver-s
 shader consumes. `shadowNumber`, `shadowResolution` and the bias/exponent parameters come
 from `StandardPipelineParameters`.
 
+### 3DGS Training (VkSplat, Vulkan)
+
+- Vendored core: `3rdparty/vksplat/` (Apache-2.0, glm replaced by Eigen). It is built as `osgVerseVkSplat` only when `VERSE_BUILD_WITH_VKSPLAT=ON`, Vulkan is found, and the target is desktop Linux/Windows.
+- Public API: `modeling/GaussianTrainer.h` (`TrainerInput`, `GaussianTrainerParameters`, `GaussianTrainer`). The implementation is compiled into the separate `osgVerseGaussianTrainer` static library (`modeling/GaussianTrainer.cpp`), so the core modeling library does not depend on Vulkan.
+- Dataset IO: `plugins/osgdb_colmap` registers the `colmap` protocol/extension and returns a `TrainerInput`; use `osgDB::readObjectFile("colmap://path")` or `"path.colmap"`. `globalInitialize()` preloads the plugin so the protocol is registered before reading.
+- Shaders: `assets/shaders/3dgs_trainer/` (`slang/` sources, `generated/` and `radix_sort/` SPIR-V). They are stored explicitly and loaded from disk at runtime; `compile_shaders.py` in the same folder regenerates the SPIR-V (requires `slangc`/`glslc`).
+- The trainer owns its own `VkDevice` and compute queue and never touches the GL context during training. `createGeometry()` performs a one-time readback and builds a `GaussianGeometry` (INSTANCING) for the existing `GaussianGeometry`/`GaussianSorter` path; there is no per-step GL readback and no GL-Vulkan interop.
+- Test: `osgVerse_Test_Gaussian_Training` (`tests/gaussian_training_test.cpp`), e.g. `--dataset colmap:///data/garden --steps 200 --no-render`, or with `--agent ...` to capture a rendered image.
+
 ### GL Core Profile & Fixed-Function State
 
 A desktop GL core profile (and GLES/WebGL) has **removed** the whole fixed-function

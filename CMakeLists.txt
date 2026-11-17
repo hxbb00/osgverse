@@ -316,6 +316,7 @@ SET(VERSE_BUILD_EXPORTERS OFF CACHE BOOL "Enable build of exporters of other sof
 SET(VERSE_BUILD_3RDPARTIES ON CACHE BOOL "Enable build of common libraries like FreeType, Jpeg and PNG")
 SET(VERSE_BUILD_WITH_QT ON CACHE BOOL "Enable build of Qt based applications and tests")
 SET(VERSE_BUILD_WITH_CUDA ON CACHE BOOL "Enable build of NVIDIA CUDA based libraries and tests")
+SET(VERSE_BUILD_WITH_VKSPLAT ON CACHE BOOL "Enable build of the vendored VkSplat Vulkan 3DGS trainer")
 SET(VERSE_BUILD_WITH_ANGLE OFF CACHE BOOL "Enable to support Vulkan interface if use Google Angle as GLES interface")
 SET(VERSE_BUILD_DEPRECATED_TESTS OFF CACHE BOOL "Enable build of deprecated tests")
 SET(VERSE_STATIC_BUILD OFF CACHE BOOL "Enable static build of osgVerse libraries")
@@ -626,6 +627,14 @@ IF(NOT USE_WASM_OPTIONS)
         FIND_DEPENDENCE(GBM "gbm.h" "libgbm.so;libgbm.a" "")
     ENDIF()
 ENDIF(NOT USE_WASM_OPTIONS)
+
+# Vendored VkSplat 3DGS trainer: desktop Linux/Windows only (Vulkan compute)
+SET(VERSE_WITH_VKSPLAT OFF)
+IF(VERSE_BUILD_WITH_VKSPLAT AND VULKAN_FOUND AND NOT USE_WASM_OPTIONS AND NOT APPLE
+   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    SET(VERSE_WITH_VKSPLAT ON)
+    ADD_DEFINITIONS(-DVERSE_WITH_VKSPLAT=1)
+ENDIF()
 
 IF(MIMALLOC_FOUND)
     SET(VERSE_USE_MIMALLOC OFF CACHE BOOL "Enable use of mi-malloc to improve memory allocating")

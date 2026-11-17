@@ -1,0 +1,27 @@
+osgVerse - vendored VkSplat core
+================================
+
+This directory contains a modified subset of VkSplat:
+  https://github.com/harry7557558/vksplat
+  "VkSplat: High-Performance 3DGS Training in Vulkan Compute"
+  Jingxiang Chen, Mohamed Ibrahim, Yang Liu (Huawei Canada)
+  Eurographics 2026 - Short Papers, DOI 10.2312/egs.20261024
+
+Upstream license: Apache License 2.0 (see LICENSE).
+VkSplat itself is built on the following Apache-2.0 projects:
+  - gsplat, https://github.com/nerfstudio-project/gsplat
+  - slang-gaussian-rasterization, https://github.com/google/slang-gaussian-rasterization
+The radix sort shaders shipped under assets/shaders/3dgs_trainer/radix_sort are
+MIT licensed, Copyright (c) 2024 jaesung-cs (see the LICENSE file in that folder).
+
+Modifications by osgVerse:
+  - Replaced glm with Eigen; no additional third-party dependency is introduced.
+  - Removed the Python bindings, setup scripts and the web viewer.
+  - Removed the COLMAP reader; COLMAP datasets are parsed by plugins/osgdb_colmap
+    and handed to the trainer as VkSplatDataset (see modeling/GaussianTrainer.h).
+  - Replaced load_colmap_dataset() with loadDataset(const VkSplatDataset&).
+  - Added stb_image_impl.cpp with STB_IMAGE_STATIC so the implementation can live
+    alongside the other STB translation units already present in osgVerse.
+
+Files carrying Apache-2.0 headers remain under Apache-2.0; the modifications are
+released under the same license. See THIRDPARTY_LICENSES.md in the repository root.

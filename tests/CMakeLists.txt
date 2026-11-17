@@ -71,6 +71,10 @@ IF(NOT VERSE_USE_EXTERNAL_GLES)
 ENDIF(NOT VERSE_USE_EXTERNAL_GLES)
 
 NEW_EXAMPLE(osgVerse_Test_3DGS gaussian_splatting_test.cpp)  # 3D gaussian splatting load and render example
+IF(VERSE_WITH_VKSPLAT)
+    NEW_EXAMPLE(osgVerse_Test_Gaussian_Training gaussian_training_test.cpp)  # VkSplat-based 3DGS training example
+    TARGET_LINK_LIBRARIES(osgVerse_Test_Gaussian_Training osgVerseGaussianTrainer)
+ENDIF(VERSE_WITH_VKSPLAT)
 NEW_EXAMPLE(osgVerse_Test_Earth earth_test.cpp)  # Lightweight earth, atmosphere and ocean creation example
 NEW_EXAMPLE(osgVerse_Test_Cloud_Rendering cloud_rendering_test.cpp)  # Volumetric cloud rendering example
 NEW_EXAMPLE(osgVerse_Test_Forward_Pbr forward_pbr_test.cpp)  # Forward PBR rendering pass example

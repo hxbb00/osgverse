@@ -13,6 +13,7 @@ ADD_SUBDIRECTORY(osgdb_tms)
 
 # point clouds & 3DGS
 ADD_SUBDIRECTORY(osgdb_3dgs)
+ADD_SUBDIRECTORY(osgdb_colmap)
 ADD_SUBDIRECTORY(osgdb_ept)
 ADD_SUBDIRECTORY(osgdb_potree)
 ADD_SUBDIRECTORY(osgdb_vdb)

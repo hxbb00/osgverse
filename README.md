@@ -33,6 +33,7 @@ osgVerse, a complete 3D engine solution based on OpenSceneGraph.
 - [x] Provides scripting functionalities to support Python/JsonRPC scripting using OSGB serialization.
 - [x] Supports GL3 Core profile, GLES2 and GLES3. Google Angle is also supported for bridging low-level APIs like Vulkan and DirectX.
 - [x] Supports 3D Gaussian Splatting rendering and related formats: PLY, SPZ, SPLAT, PlayCanvas SOG and XGrids LCC.
+- [x] Supports 3D Gaussian Splatting training from COLMAP datasets using a vendored Vulkan-compute backend (VkSplat), exporting to PLY or GaussianGeometry.
 - [x] Supports dependency-free earth scene construction and high quality terrain/atmosphere/ocean rendering. (without osgEarth)
 - [ ] (PARTLY) Supports major desktop and mobile operating systems, including Windows, Linux, Mac OSX, Android, Harmony and IOS.
 - [x] Supports major embedded devices with GPU supports, including ARM and RISC-V.
@@ -89,6 +90,7 @@ osgVerse, a complete 3D engine solution based on OpenSceneGraph.
   - 5.14 The netCDF-C 4.9.3 or later, for NetCDF/HDF data reading plugin. (https://github.com/Unidata/netcdf-c)
   - 5.15 FFmpeg 6.0 or later, for video parsing and CPU based decoding/encoding. (https://github.com/FFmpeg/FFmpeg)
   - 5.16 GGML 0.13 or later, for AI/LLM based functionalities like human body reconstruction. (https://github.com/ggml-org/ggml)
+  - 5.17 Vulkan 1.3 or later, for the VkSplat-based 3D Gaussian Splatting trainer (desktop Linux/Windows only). (https://vulkan.lunarg.com/sdk/home)
 
 #### Supported Hardware
 To use osgVerse libraries and applications, OpenGL version must be higher than 2.0. Both core profile and compatible profile will work. Our project uses the GLSL functionality, and supports from GLSL 120 to the latest GLSL version.
@@ -125,7 +127,8 @@ Our project is already tested on graphics cards listed as below:
 7. osgVerseScript: Scripting support based on OSG serialization functionalities. Currently Python and JsonRPC.
 8. osgVerseAI: Artificial-Intelligence related classes, including navigation-mesh, AI models (onnx) loading and so on.
 9. osgVerseWrappers: All serialzier wrappers of osgVerse and extended OSG classes.
-10. TBD...
+10. osgVerseGaussianTrainer: 3D Gaussian Splatting trainer built on the vendored VkSplat Vulkan compute core (desktop Linux/Windows, requires Vulkan).
+11. TBD...
 
 ##### Module dependency chain
 |     Name     |               Depended Module             | Optional External Dependency |
@@ -137,6 +140,7 @@ Our project is already tested on graphics cards listed as below:
 | Animation    | Dependency, Pipeline, Modeling            | Effekseer            |
 | UI           | Dependency, Modeling, Script              | libCEF                       |
 | ReaderWriter | Dependency, Animation, Modeling, Pipeline | libDraco, SDL                |
+| GaussianTrainer | Dependency, Modeling                   | Vulkan                       |
 | Wrappers     | ALL                                       |                              |
 
 #### Applications
@@ -173,6 +177,7 @@ Our project is already tested on graphics cards listed as below:
 20. osgVerse_Test_Particle_Effekseer: another particle system example with Effekseer. (TBD: Effekseer scripting)
 21. osgVerse_Test_Scripting: an example for scripting implementation based on OSGB serialization format.
 22. osgVerse_Test_Video: an example for video demuxing, decoding and playing with multiple plugins.
+23. osgVerse_Test_Gaussian_Training: an example which trains 3DGS from a COLMAP dataset with Vulkan compute, then renders the result with the OpenGL 3DGS path. (requires Vulkan)
 
 ##### Tests for specified goals
 1. osgVerse_Test_Compressing: a test for KTX texture compression (DXT / ETC) and Draco geometry compressing.
@@ -193,6 +198,22 @@ Our project is already tested on graphics cards listed as below:
   - osgVerse_Test_Tesselation: a demo program to demonstrate how to use tessellation shaders of OpenGL 4.x.
   - osgVerse_Test_MultiView_Shader: a test for using geometry shader to implement multi-view rendering.
 
+#### 3D Gaussian Splatting training
+- Build option: `VERSE_BUILD_WITH_VKSPLAT` (default ON). It is enabled only when Vulkan is found and the target is desktop Linux/Windows; macOS, Android and WebAssembly builds skip the trainer.
+- Input: a COLMAP SfM dataset (`sparse/0/{cameras,images,points3D}.bin|txt` plus an image folder). Read it with the `osgdb_colmap` plugin using `colmap://path` or `path.colmap`; options include `imageDir`, `maskDir`, `evalInterval` and `globalScale`.
+- Shaders: `assets/shaders/3dgs_trainer` contains the Slang sources and prebuilt SPIR-V. Run `compile_shaders.py` in that folder (requires `slangc`/`glslc`) to regenerate them after editing the Slang code.
+- The trainer runs on its own Vulkan device and never touches the OpenGL context during training. `createGeometry()` performs a one-time readback and returns a `GaussianGeometry` for the existing 3DGS renderer.
+```cpp
+osg::ref_ptr<osg::Object> obj = osgDB::readObjectFile("colmap:///data/mipnerf360/garden");
+osg::ref_ptr<osgVerse::TrainerInput> input = dynamic_cast<osgVerse::TrainerInput*>(obj.get());
+osgVerse::GaussianTrainerParameters params;
+params.shaderDir = SHADER_DIR + "3dgs_trainer/";
+params.maxSteps = 30000;  // set useMCMC = true for the MCMC strategy
+osg::ref_ptr<osgVerse::GaussianTrainer> trainer = new osgVerse::GaussianTrainer;
+if (trainer->initialize(input.get(), params)) trainer->train();
+osg::ref_ptr<osgVerse::GaussianGeometry> geom = trainer->createGeometry();
+```
+
 #### OSG-style Plugins
 1. Mesh and mesh tiles:
   - osgdb_verse_fbx: a plugin with full-featured FBX format support.
@@ -203,6 +224,7 @@ Our project is already tested on graphics cards listed as below:
   - osgdb_verse_tms: a plugin to read tiles from TMS geographic server and render them with paging LOD support.
 2. Point cloud and 3D gaussian splatting:
   - osgdb_verse_3dgs: a plugin to read/writ 3D Gaussian Splatting data (.ply, .splat, .ksplat, .spz, .sog, .lcc and .lcc2).
+  - osgdb_colmap: a plugin to read COLMAP SfM datasets (cameras/images/points3D, bin or txt) as osgVerse::TrainerInput objects ("colmap://path" or "path.colmap").
   - osgdb_verse_ept: a plugin for massive point cloud based on Entwine and page them for rendering.
   - osgdb_verse_potree: a plugin for massive point cloud based on Potree and page them for rendering.
   - osgdb_verse_vdb: a plugin to read OpenVDB point volume and rendering it to point cloud or 3D image.

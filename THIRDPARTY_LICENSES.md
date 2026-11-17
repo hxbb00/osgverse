@@ -110,6 +110,7 @@
 | tweeny           | Embedded |           | Animation          | MIT          | https://github.com/mobius3/tweeny |
 | ufbx             | Embedded | 0.22.0    | verse_fbx          | MIT /Public  | https://github.com/ufbx/ufbx |
 | VHACD            | Embedded | 4.1       | Modeling           | BSD3         | https://github.com/kmammou/v-hacd |
+| VkSplat          | Embedded | 2026      | Modeling (trainer) | Apache2      | https://github.com/harry7557558/vksplat |
 | VRM              | Embedded | 20260824  | Animation          | MIT          | https://github.com/infosia/VRM.h |
 | vtzero           | Embedded | 1.1.0     | verse_mvt          | BSD2         |_https://github.com/mapbox/vtzero |
 | xatlas           | Embedded |           | -                  | MIT          | https://github.com/jpcy/xatlas |
@@ -137,6 +138,8 @@
 | Python           | (Linux) apt-get install libpython3.10-dev |
 | Qt               | Download from https://download.qt.io/official_releases/ |
 | SDL2             | (Linux) apt-get install libsdl2-dev |
+| Vulkan           | (Linux) apt-get install libvulkan-dev (Win) install the Vulkan SDK; required by the VkSplat 3DGS trainer |
+| Slang            | Optional, only for regenerating assets/shaders/3dgs_trainer with compile_shaders.py |
 | ZLMediaKit       | Manually Compile from source |
 
 ### OpenSceneGraph version history
