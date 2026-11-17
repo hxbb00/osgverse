@@ -234,7 +234,13 @@ float Shape::strokeMiterlimit() const noexcept
 
 Result Shape::trimpath(float begin, float end, bool simultaneous) noexcept
 {
-    to<ShapeImpl>(this)->trimpath({begin, end, simultaneous});
+    // Brace-initializing RenderTrimPath relies on C++14 aggregate rules (it has default
+    // member initializers), so use explicit members for MSVC 2015 (v140) compatibility.
+    RenderTrimPath trimPath;
+    trimPath.begin = begin;
+    trimPath.end = end;
+    trimPath.simultaneous = simultaneous;
+    to<ShapeImpl>(this)->trimpath(trimPath);
     return Result::Success;
 }
 

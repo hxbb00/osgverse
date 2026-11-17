@@ -23,10 +23,15 @@
 #ifndef _TVG_MATH_H_
 #define _TVG_MATH_H_
 
- #define _USE_MATH_DEFINES
+#ifndef _USE_MATH_DEFINES
+    #define _USE_MATH_DEFINES
+#endif
 
 #include <float.h>
 #include <cmath>
+// std::min/std::max are not pulled in transitively by every standard library
+// implementation (MSVC in particular), so include <algorithm> explicitly.
+#include <algorithm>
 #include "tvgCommon.h"
 
 namespace tvg
@@ -74,8 +79,11 @@ static inline bool equal(float a, float b)
 }
 
 
+// NOTE: the functions below intentionally avoid 'constexpr'. MSVC 2015 (v140) only
+// implements the C++11 form (a single return statement) and rejects the relaxed C++14
+// form used here, which osgVerse still supports through its C++14 fallback mode.
 template <typename T>
-static inline constexpr const T& clamp(const T& v, const T& min, const T& max)
+static inline const T& clamp(const T& v, const T& min, const T& max)
 {
     if (v < min) return min;
     else if (v > max) return max;
@@ -133,7 +141,7 @@ static inline void identity(Matrix* m)
 }
 
 
-static inline constexpr const Matrix identity()
+static inline const Matrix identity()
 {
     return {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 }
@@ -216,7 +224,7 @@ Point operator*(const Point& pt, const Matrix& m);
 Point normal(const Point& p1, const Point& p2);
 void normalize(Point& pt);
 
-static inline constexpr const Point operator*=(Point& pt, const Matrix* m)
+static inline const Point operator*=(Point& pt, const Matrix* m)
 {
     if (m) pt *= *m;
     return pt;

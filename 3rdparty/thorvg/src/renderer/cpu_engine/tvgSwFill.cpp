@@ -476,7 +476,11 @@ static ConicAARange _conicAARange(const SwFill* fill, float rx, float ry, uint32
     // normal distance limits AA to the band around the infinite boundary line
     auto distance = dot(conic->normal, offset) * conic->invFwidth;
     auto distanceDx = conic->distanceDx;
-    auto range = ConicAARange{0.0f, static_cast<float>(len)};
+    // ConicAARange has default member initializers, so a braced initializer would need the
+    // C++14 aggregate rules; assign the members explicitly for MSVC 2015 (v140).
+    ConicAARange range;
+    range.begin = 0.0f;
+    range.end = static_cast<float>(len);
     if (tvg::zero(distanceDx)) {
         if (distance <= -0.5f || distance >= 0.5f) return {};
     } else {

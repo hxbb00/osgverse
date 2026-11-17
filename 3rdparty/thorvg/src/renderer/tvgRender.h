@@ -105,7 +105,8 @@ struct RenderRegion : Region
     RenderRegion() = default;
     constexpr RenderRegion(int32_t xMin, int32_t yMin, int32_t xMax, int32_t yMax) : Region{xMin, yMin, xMax, yMax} {}
 
-    static constexpr RenderRegion intersect(const RenderRegion& lhs, const RenderRegion& rhs)
+    // 'constexpr' would require the relaxed C++14 form, which MSVC 2015 (v140) lacks
+    static inline RenderRegion intersect(const RenderRegion& lhs, const RenderRegion& rhs)
     {
         RenderRegion ret = {std::max(lhs.xMin, rhs.xMin), std::max(lhs.yMin, rhs.yMin), std::min(lhs.xMax, rhs.xMax), std::min(lhs.yMax, rhs.yMax)};
         // Not intersected: collapse to zero-area region
@@ -114,7 +115,7 @@ struct RenderRegion : Region
         return ret;
     }
 
-    static constexpr RenderRegion add(const RenderRegion& lhs, const RenderRegion& rhs)
+    static inline RenderRegion add(const RenderRegion& lhs, const RenderRegion& rhs)
     {
         return {std::min(lhs.xMin, rhs.xMin), std::min(lhs.yMin, rhs.yMin), std::max(lhs.xMax, rhs.xMax), std::max(lhs.yMax, rhs.yMax)};
     }

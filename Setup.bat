@@ -163,7 +163,7 @@ if "!BuildSystemMode!"=="0" (
         goto exit
     )
 
-    :: Get Visual Studio version
+    rem Get Visual Studio version
     for /f "tokens=1 delims=." %%a in ('msbuild -nologo -version 2^>^&1') do (
         set "MSBUILD_MAJOR=%%a"
         echo Found Visual Studio version: %%a
@@ -186,7 +186,7 @@ if "!BuildSystemMode!"=="0" (
         goto exit
     )
 
-    :: Desktop build
+    rem Desktop build
     if "!QuietMode!"=="0" (
         set /p DebugLibFlag="Would you like to build Debug libraries (default: Release)? (y/n) > "
         if /i "!DebugLibFlag!"=="y" set BuildTypeString=Debug
@@ -196,7 +196,7 @@ if "!BuildSystemMode!"=="0" (
     set BasicCmakeOptions=-G"%CMAKE_GENERATOR%" -A x64 -DCMAKE_CONFIGURATION_TYPES=!BuildTypeString!
     echo Using CMake generator: %CMAKE_GENERATOR%
     if "!BuildMode!"=="2" (
-        :: OpenGL ES
+        rem OpenGL ES
         if not "!SkipOsgBuild!"=="1" (
             set /p Gles2Flag="Would you like to compile GLES2 version (default: GLES3)? (y/n) > "
             if /i "!Gles2Flag!"=="y" set BuildGles2=1
@@ -210,7 +210,7 @@ if "!BuildSystemMode!"=="1" (
         goto exit
     )
 
-    :: WASM (WebGL 1 and WebGL 2)
+    rem WASM (WebGL 1 and WebGL 2)
     if not defined EMSDK (
         echo EMSDK variable not found. Please download Emscripten and run 'emsdk_env.bat' before current work.
         goto exit
@@ -240,7 +240,7 @@ if "!BuildSystemMode!"=="2" (
         goto exit
     )
 
-    :: Default architecture is arm64-v8a (aarch64). Alternatives: armeabi-v7a (arm-linux-ohos), x86_64 (x86_64-linux-ohos)
+    rem Default architecture is arm64-v8a (aarch64). Alternatives: armeabi-v7a (arm-linux-ohos), x86_64 (x86_64-linux-ohos)
     set HarmonyToolchain="%HARMONY_CMD%\sdk\default\openharmony\native\build\cmake\ohos.toolchain.cmake"
     set "PATH=%HARMONY_CMD%\sdk\default\openharmony\native\build-tools\cmake\bin;%PATH%"
     set ThirdPartyBuildDir=%CurrentDir%\build\3rdparty_harmony
@@ -317,7 +317,6 @@ if "!BuildSystemMode!"=="2" (
         -DZLIB_LIBRARY_RELEASE=%ThirdPartyBuildDir%\zlib\libzlib.a ^
         -DTIFF_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\tiff;%ThirdPartyBuildDir%\tiff ^
         -DTIFF_LIBRARY_RELEASE=%ThirdPartyBuildDir%\tiff\libtiff.a
-    )
 )
 
 :: Fix some OpenSceneGraph compile errors
@@ -340,7 +339,7 @@ if not "!SkipOsgBuild!"=="1" (
     %SedEXE% -i.bak "s/IF(WIN32 AND NOT ANDROID)/IF(${OSG_WINDOWING_SYSTEM} STREQUAL \"Win32\" AND WIN32 AND NOT ANDROID)/g" "%OpenSceneGraphRoot%\src\osgViewer\CMakeLists.txt"
     %SedEXE% -i.bak "s/ANDROID_3RD_PARTY()/#ANDROID_3RD_PARTY(#)/g" "%OpenSceneGraphRoot%\CMakeLists.txt"
 
-    :: Fix WebGL running errors
+    rem Fix WebGL running errors
     if "!BuildMode!"=="3" (
         %SedEXE% -i.bak "s#dlopen(#NULL;\/\/dlopen\/\/(#g" "%OpenSceneGraphRoot%\src\osgDB\DynamicLibrary.cpp"
         %SedEXE% -i.bak "s#isTexture2DArraySupported = validContext#isTexture2DArraySupported = isTexture3DSupported;\/\/validContext#g" "%OpenSceneGraphRoot%\src\osg\GLExtensions.cpp"
@@ -358,7 +357,7 @@ if not "!SkipOsgBuild!"=="1" (
     %SedEXE% -i.bak "s#std::max#osg::maximum#g" "%OpenSceneGraphRoot%\src\osg\Texture.cpp"
     %SedEXE% -i.bak "s#case(GL_HALF_FLOAT):#case GL_HALF_FLOAT: case 0x8D61:#g" "%OpenSceneGraphRoot%\src\osg\Image.cpp"
 
-    :: Fix OpenHarmony compilation errors
+    rem Fix OpenHarmony compilation errors
     if "!BuildMode!"=="6" (
         %SedEXE% -i.bak "s/ADD_DEFINITIONS(-DHAVE_PTHREAD_TESTCANCEL)/#ADD_DEFINITIONS(#-DHAVE_PTHREAD_TESTCANCEL)/g" "%OpenSceneGraphRoot%\src\OpenThreads\pthreads\CMakeLists.txt"
         %SedEXE% -i.bak "s/ADD_DEFINITIONS(-DHAVE_PTHREAD_CANCEL)/#ADD_DEFINITIONS(#-DHAVE_PTHREAD_CANCEL)/g" "%OpenSceneGraphRoot%\src\OpenThreads\pthreads\CMakeLists.txt"
@@ -370,7 +369,7 @@ if not "!SkipOsgBuild!"=="1" (
 :: Compile OpenSceneGraph
 echo *** Building OpenSceneGraph...
 if "!BuildMode!"=="0" (
-    :: OpenGL Compatible Profile
+    rem OpenGL Compatible Profile
     if not exist %CurrentDir%\build\osg_def\ mkdir %CurrentDir%\build\osg_def
     set ExtraOptions=-DCMAKE_INSTALL_PREFIX=%CurrentDir%\build\sdk
     if not "!SkipOsgBuild!"=="1" (
@@ -381,7 +380,7 @@ if "!BuildMode!"=="0" (
     )
 )
 if "!BuildMode!"=="1" (
-    :: OpenGL Core Profile
+    rem OpenGL Core Profile
     if not exist %CurrentDir%\build\osg_core\ mkdir %CurrentDir%\build\osg_core
     set ExtraOptions=-DOPENGL_PROFILE=GLCORE ^
         -DGLCORE_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\opengl ^
@@ -396,7 +395,7 @@ if "!BuildMode!"=="1" (
     )
 )
 if "!BuildMode!"=="2" (
-    :: OpenGL ES
+    rem OpenGL ES
     if not exist %CurrentDir%\build\osg_es\ mkdir %CurrentDir%\build\osg_es
     set ExtraOptions=-DOSG_WINDOWING_SYSTEM=None ^
         -DOPENGL_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\opengl ^
@@ -414,7 +413,7 @@ if "!BuildMode!"=="2" (
     )
 )
 if "!BuildMode!"=="3" (
-    :: WASM toolchain: WebGL 1
+    rem WASM toolchain: WebGL 1
     if not exist %CurrentDir%\build\osg_wasm\ mkdir %CurrentDir%\build\osg_wasm
     set ExtraOptions=-DCMAKE_TOOLCHAIN_FILE="%EmsdkToolchain%" ^
         -DCMAKE_INCLUDE_PATH=%CurrentDir%\helpers\toolchain_builder\opengl ^
@@ -430,7 +429,7 @@ if "!BuildMode!"=="3" (
     )
 )
 if "!BuildMode!"=="4" (
-    :: WASM toolchain: WebGL 2
+    rem WASM toolchain: WebGL 2
     if not exist %CurrentDir%\build\osg_wasm2\ mkdir %CurrentDir%\build\osg_wasm2
     set ExtraOptions=-DCMAKE_TOOLCHAIN_FILE="%EmsdkToolchain%" ^
         -DCMAKE_INCLUDE_PATH=%CurrentDir%\helpers\toolchain_builder\opengl ^
@@ -446,8 +445,8 @@ if "!BuildMode!"=="4" (
     )
 )
 if "!BuildMode!"=="7" (
-    :: WASM toolchain: WebGPU, with GLES 3 served by gles-on-webgpu.
-    :: No GL emulation flags here: every gl*() call must resolve to gles-on-webgpu
+    rem WASM toolchain: WebGPU, with GLES 3 served by gles-on-webgpu.
+    rem No GL emulation flags here: every gl*() call must resolve to gles-on-webgpu
     if not exist %CurrentDir%\build\osg_webgpu\ mkdir %CurrentDir%\build\osg_webgpu
     set ExtraOptions=-DCMAKE_TOOLCHAIN_FILE="%EmsdkToolchain%" ^
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
@@ -471,7 +470,7 @@ if "!BuildMode!"=="7" (
     )
 )
 if "!BuildMode!"=="6" (
-    :: Harmony: OpenGLES 3
+    rem Harmony: OpenGLES 3
     if not exist %CurrentDir%\build\osg_harmony\ mkdir %CurrentDir%\build\osg_harmony
     set ExtraOptions=-DCMAKE_TOOLCHAIN_FILE="%HarmonyToolchain%" -DOSG_WINDOWING_SYSTEM=None ^
         -DOPENGL_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\opengl;%CurrentDir%\helpers\osg_builder\ohos ^
@@ -510,7 +509,7 @@ if "!BuildMode!"=="4" (
 echo *** Building osgVerse...
 set OsgRootLocation=""
 if "!BuildMode!"=="0" (
-    :: Desktop: OpenGL Compatible Profile
+    rem Desktop: OpenGL Compatible Profile
     if not exist %CurrentDir%\build\verse_def\ mkdir %CurrentDir%\build\verse_def
     cd %CurrentDir%\build\verse_def
     cmake !ThirdDepOptions! !ExtraOptions! -DOSG_ROOT="%CurrentDir%\build\sdk" %CurrentDir%
@@ -518,7 +517,7 @@ if "!BuildMode!"=="0" (
     if not !errorlevel! == 0 (goto exit)
 )
 if "!BuildMode!"=="1" (
-    :: Desktop: OpenGL Core Profile
+    rem Desktop: OpenGL Core Profile
     if not exist %CurrentDir%\build\verse_core\ mkdir %CurrentDir%\build\verse_core
     cd %CurrentDir%\build\verse_core
     set ExtraOptions2=-DOPENGL_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\opengl
@@ -527,7 +526,7 @@ if "!BuildMode!"=="1" (
     if not !errorlevel! == 0 (goto exit)
 )
 if "!BuildMode!"=="2" (
-    :: Desktop: OpenGL ES
+    rem Desktop: OpenGL ES
     if not exist %CurrentDir%\build\verse_es\ mkdir %CurrentDir%\build\verse_es
     cd %CurrentDir%\build\verse_es
     set ExtraOptions2=-DOPENGL_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\opengl ^
@@ -537,7 +536,7 @@ if "!BuildMode!"=="2" (
     if not !errorlevel! == 0 (goto exit)
 )
 if "!BuildMode!"=="3" (
-    :: WASM toolchain: WebGL 1
+    rem WASM toolchain: WebGL 1
     if not exist %CurrentDir%\build\verse_wasm\ mkdir %CurrentDir%\build\verse_wasm
     set OsgRootLocation=%CurrentDir%\build\sdk_wasm
     cd %CurrentDir%\build\verse_wasm
@@ -546,7 +545,7 @@ if "!BuildMode!"=="3" (
     if not !errorlevel! == 0 (goto exit)
 )
 if "!BuildMode!"=="4" (
-    :: WASM toolchain: WebGL 2
+    rem WASM toolchain: WebGL 2
     if not exist %CurrentDir%\build\verse_wasm2\ mkdir %CurrentDir%\build\verse_wasm2
     set OsgRootLocation=%CurrentDir%\build\sdk_wasm2
     cd %CurrentDir%\build\verse_wasm2
@@ -555,7 +554,7 @@ if "!BuildMode!"=="4" (
     if not !errorlevel! == 0 (goto exit)
 )
 if "!BuildMode!"=="6" (
-    :: Harmony toolchain: OpenGL ES
+    rem Harmony toolchain: OpenGL ES
     if not exist %CurrentDir%\build\verse_harmony\ mkdir %CurrentDir%\build\verse_harmony
     cd %CurrentDir%\build\verse_harmony
     set ExtraOptions2=-DOPENGL_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\opengl ^
@@ -565,9 +564,9 @@ if "!BuildMode!"=="6" (
     if not !errorlevel! == 0 (goto exit)
 )
 if "!BuildMode!"=="7" (
-    :: WASM toolchain: WebGPU, with GLES 3 served by gles-on-webgpu.
-    :: Only the libraries are built: the wasm demos shipped with osgVerse target
-    :: WebGL 2 (SDL window + -sFULL_ES3), which this build does not use.
+    rem WASM toolchain: WebGPU, with GLES 3 served by gles-on-webgpu.
+    rem Only the libraries are built: the wasm demos shipped with osgVerse target
+    rem WebGL 2 (SDL window + -sFULL_ES3), which this build does not use.
     if not exist %CurrentDir%\build\verse_wasm_webgpu\ mkdir %CurrentDir%\build\verse_wasm_webgpu
     cd %CurrentDir%\build\verse_wasm_webgpu
     cmake !ThirdDepOptions! !ExtraOptions! -DUSE_WASM_OPTIONS=!UseWasmOption! -DVERSE_USE_WEBGPU=ON ^
@@ -582,8 +581,8 @@ if "!BuildMode!"=="7" (
         osgVerseReaderWriter osgVersePipeline osgVerseScript osgVerseWrappers osgVerseUI osgVerseAI
     if not !errorlevel! == 0 (goto exit)
 
-    :: The WebGPU demo is configured as its own project because a WebGPU build
-    :: links different libraries than the WebGL 2 build above.
+    rem The WebGPU demo is configured as its own project because a WebGPU build
+    rem links different libraries than the WebGL 2 build above.
     echo *** Building wasm\wgpu_simple_demo...
     if not exist %CurrentDir%\build\wgpu_simple_wasm\ mkdir %CurrentDir%\build\wgpu_simple_wasm
     cd %CurrentDir%\build\wgpu_simple_wasm
@@ -607,6 +606,18 @@ set SedEXE=%CurrentDir%\wasm\sed.exe
 set Sdl2Root=%CurrentDir%\..\SDL2
 set GradleLocalPropFile=%CurrentDir%\android\local.properties
 set GradleSettingsFile=%CurrentDir%\android\settings.gradle
+
+:: OpenSceneGraph 3.6.x only checks OSG_GLES1/GLES2 in the Android branch of
+:: getGLExtensionFuncPtr(), so an OPENGL_PROFILE=GLES3 build (passed by
+:: android/osg/build.gradle) leaves 'handle' undeclared. GLES3 symbols are exported by
+:: libGLESv2.so as well, so reuse the GLES2 branch. This patch must live here because the
+:: Android flow jumps over the generic patch block above, and it is kept afterwards since
+:: Gradle builds OSG from source and may recompile it at any time.
+findstr /c:"defined(OSG_GLES3_AVAILABLE) || defined(OSG_GLES2_AVAILABLE)" "%OpenSceneGraphRoot%\src\osg\GLExtensions.cpp" >nul 2>&1
+if not !errorlevel!==0 (
+    %SedEXE% -i.bak "s/#elif defined(OSG_GLES2_AVAILABLE)/#elif defined(OSG_GLES3_AVAILABLE) || defined(OSG_GLES2_AVAILABLE)/g" "%OpenSceneGraphRoot%\src\osg\GLExtensions.cpp"
+    call :KeepOsgFileTimes
+)
 
 where gradle -v >nul 2>&1
 if not %errorlevel%==0 (
@@ -675,7 +686,7 @@ if "!QuietMode!"=="0" (
         ) > "%GradleSettingsFile%"
     )
 ) else (
-    :: TODO: auto check and create %GradleSettingsFile%?
+    rem TODO: auto check and create %GradleSettingsFile%?
     echo "Ignore creation of %GradleSettingsFile%..."
 )
 

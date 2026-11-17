@@ -444,7 +444,12 @@ void SfntLoader::wrapEllipsis(FontMetrics& fm, const Point& box, const char* utf
 
         //normal case
         if (cursor.x + xadv < box.x) {
-            capture = {out.pts.count, out.cmds.count, xadv, fm.length};
+            // 'capture' has default member initializers, so assigning a brace-enclosed list
+            // would need the C++14 aggregate rules; set the members one by one instead.
+            capture.pts = out.pts.count;
+            capture.cmds = out.cmds.count;
+            capture.xadv = xadv;
+            capture.length = fm.length;
             ++fm.length;
             _build(rtgm->path, cursor, offset, out);
             cursor.x += xadv;

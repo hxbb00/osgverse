@@ -53,11 +53,17 @@ using namespace tvg;
 #endif
 
 // Portable 'fallthrough' attribute
-#if __has_cpp_attribute(fallthrough)
-    #ifdef _MSC_VER
-        #define TVG_FALLTHROUGH [[fallthrough]];
+// '__has_cpp_attribute' does not exist before VS2017/GCC5; probing it directly makes the
+// preprocessor report C4067 (unexpected tokens after the directive), so guard it first.
+#ifdef __has_cpp_attribute
+    #if __has_cpp_attribute(fallthrough)
+        #ifdef _MSC_VER
+            #define TVG_FALLTHROUGH [[fallthrough]];
+        #else
+            #define TVG_FALLTHROUGH __attribute__ ((fallthrough));
+        #endif
     #else
-        #define TVG_FALLTHROUGH __attribute__ ((fallthrough));
+        #define TVG_FALLTHROUGH
     #endif
 #else
     #define TVG_FALLTHROUGH

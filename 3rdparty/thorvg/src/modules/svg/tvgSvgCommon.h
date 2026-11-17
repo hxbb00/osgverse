@@ -106,7 +106,9 @@ constexpr SvgFillFlags operator|(SvgFillFlags a, SvgFillFlags b)
     return SvgFillFlags(int(a) | int(b));
 }
 
-constexpr void operator|=(SvgFillFlags& a, const SvgFillFlags b)
+// 'constexpr' on a function with a body statement needs the relaxed C++14 form,
+// which MSVC 2015 (v140) does not implement.
+inline void operator|=(SvgFillFlags& a, const SvgFillFlags b)
 {
     a = SvgFillFlags(int(a) | int(b));
 }
@@ -135,7 +137,7 @@ constexpr SvgStrokeFlags operator|(SvgStrokeFlags a, SvgStrokeFlags b)
     return SvgStrokeFlags(int(a) | int(b));
 }
 
-constexpr void operator|=(SvgStrokeFlags& a, const SvgStrokeFlags b)
+inline void operator|=(SvgStrokeFlags& a, const SvgStrokeFlags b)
 {
     a = SvgStrokeFlags(int(a) | int(b));
 }
@@ -189,7 +191,7 @@ constexpr SvgStyleFlags operator|(SvgStyleFlags a, SvgStyleFlags b)
     return SvgStyleFlags(int(a) | int(b));
 }
 
-constexpr void operator|=(SvgStyleFlags& a, const SvgStyleFlags b)
+inline void operator|=(SvgStyleFlags& a, const SvgStyleFlags b)
 {
     a = SvgStyleFlags(int(a) | int(b));
 }

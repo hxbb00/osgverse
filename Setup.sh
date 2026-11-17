@@ -427,6 +427,17 @@ if [ "$SkipOsgBuild" = 0 ]; then
     fi
 fi
 
+# OpenSceneGraph 3.6.x only checks OSG_GLES1/GLES2 in the Android branch of
+# getGLExtensionFuncPtr(), so an OPENGL_PROFILE=GLES3 build leaves 'handle' undeclared.
+# GLES3 symbols are exported by libGLESv2.so as well, so reuse the GLES2 branch.
+# This must also be applied when the OSG build is skipped, because Gradle builds OSG from
+# source through android/osg/CMakeLists.txt and may recompile it at any time.
+if [ "$BuildMode" = '5' ]; then
+    OpenSceneGraphRoot=$CurrentDir/../OpenSceneGraph
+    PatchFileSafely 's/#elif defined(OSG_GLES2_AVAILABLE)$/#elif defined(OSG_GLES3_AVAILABLE) || defined(OSG_GLES2_AVAILABLE)/g' \
+        "$OpenSceneGraphRoot/src/osg/GLExtensions.cpp"
+fi
+
 # Compile OpenSceneGraph
 echo "*** Building OpenSceneGraph..."
 if [ "$BuildMode" = '1' ]; then
