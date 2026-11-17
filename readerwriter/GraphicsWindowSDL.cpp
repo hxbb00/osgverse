@@ -8,6 +8,7 @@
 #   include <SDL3/SDL_properties.h>
 #endif
 #include <iostream>
+#include <cstring>
 
 #if defined(SDL_VIDEO_DRIVER_COCOA)
 extern "C" void* getViewFromWindow(NSWindow* window);
@@ -61,6 +62,37 @@ static void EGLAPIENTRY eglErrorCallback(EGLenum error, const char* command, EGL
 
 namespace
 {
+    static int g_numSdlWindows = 0;
+
+    /** Headless mode uses SDL's "offscreen" video driver: it still creates a window object
+        (backed by an EGL surface) but connects to neither X11 nor Wayland. SDL is usually
+        initialized by SDLWindowingSystem before the first window is created, so the video
+        subsystem is restarted once with that driver while no window exists yet */
+    static bool useHeadlessVideoDriver()
+    {
+        const char* driver = SDL_GetCurrentVideoDriver();
+        if (driver != NULL && strcmp(driver, "offscreen") == 0) return true;
+        if (g_numSdlWindows > 0) return false;  // Do not disturb existing windows
+
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+#if VERSE_WITH_SDL == 2
+        SDL_SetHint(SDL_HINT_VIDEODRIVER, "offscreen");
+        if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0)
+#else
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+        if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
+#endif
+        {
+            OSG_WARN << "[GraphicsWindowSDL] Failed to init headless video driver: "
+                     << SDL_GetError() << std::endl;
+            return false;
+        }
+
+        OSG_NOTICE << "[GraphicsWindowSDL] Headless video driver: "
+                   << SDL_GetCurrentVideoDriver() << std::endl;
+        return true;
+    }
+
     static int getModKey()
     {
         SDL_Keymod modstates = SDL_GetModState();
@@ -241,6 +273,8 @@ GraphicsWindowSDL::~GraphicsWindowSDL()
 void GraphicsWindowSDL::initialize()
 {
     WindowData* winData = static_cast<WindowData*>(_traits->inheritedWindowData.get());
+    bool headless = (winData != NULL) ? winData->headless : false;
+    if (headless) useHeadlessVideoDriver();
 #if defined(VERSE_EMBEDDED) && !defined(VERSE_WASM)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     OSG_NOTICE << "[GraphicsWindowSDL] Create EGL system for embedded device" << std::endl;
@@ -286,8 +320,9 @@ void GraphicsWindowSDL::initialize()
     int winX = 50, winY = 50, winW = 1280, winH = 720;
     unsigned int flags = SDL_WINDOW_OPENGL;
 #if VERSE_WITH_SDL == 2
-    flags |= SDL_WINDOW_SHOWN;
+    if (!headless) flags |= SDL_WINDOW_SHOWN;
 #endif
+    if (headless) flags |= SDL_WINDOW_HIDDEN;
     if (_traits.valid())
     {
 #if defined(SDL_VIDEO_DRIVER_COCOA)
@@ -312,7 +347,7 @@ void GraphicsWindowSDL::initialize()
 #endif
 
         const char* winName = _traits->windowName.empty() ? NULL : _traits->windowName.c_str();
-        if (_traits->screenNum > 0)
+        if (_traits->screenNum > 0 && !headless)
         {
             int displayCount = 0; SDL_GET_DISPLAYS(displayCount);
             if (_traits->screenNum < displayCount)
@@ -348,7 +383,11 @@ void GraphicsWindowSDL::initialize()
 
 #  if VERSE_WITH_SDL == 2
         SDL_SysWMinfo sdlInfo; SDL_VERSION(&sdlInfo.version);
-        SDL_GetWindowWMInfo(_sdlWindow, &sdlInfo);
+        if (!SDL_GetWindowWMInfo(_sdlWindow, &sdlInfo))
+        {
+            OSG_WARN << "[GraphicsWindowSDL] No native window handle found; the manual EGL path "
+                     << "can not work in headless mode" << std::endl; return;
+        }
 #   if defined(SDL_VIDEO_DRIVER_WINDOWS)
         EGLNativeWindowType hWnd = (EGLNativeWindowType)sdlInfo.info.win.window;
 #   elif defined(SDL_VIDEO_DRIVER_X11)
@@ -459,6 +498,8 @@ void GraphicsWindowSDL::initialize()
 
     if (_sdlWindow == NULL)
     { OSG_WARN << "[GraphicsWindowSDL] Failed: " << SDL_GetError() << std::endl; return; }
+    else
+        g_numSdlWindows++;
 
     // Create context
 #if defined(VERSE_GLES_DESKTOP)

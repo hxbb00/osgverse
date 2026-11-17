@@ -70,17 +70,16 @@ int main(int argc, char** argv)
 
     bool useGLFW = arguments.read("--use-glfw"), useWin32Ex = arguments.read("--use-win32ex");
     bool forceEGL = arguments.read("--force-egl");
+    bool headless = arguments.read("--headless");
     bool testPipeline = arguments.read("--with-deferred"), showShadowMaps = arguments.read("--debug-shadow");
 #if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE)
     testPipeline = true;
 #endif
 
-    osg::ref_ptr<osg::Node> scene = osgDB::readNodeFiles(arguments);
-    if (!scene) scene = osgDB::readNodeFile(BASE_DIR + "/models/Sponza/Sponza.gltf");
-
-    // The scene graph
+    // The scene graph. The model itself is read at the end of the setup, after all optional
+    // arguments (especially the --agent* ones) are consumed by configureViewerForAgent(), so
+    // that they are never mistaken for file names
     osg::ref_ptr<osg::MatrixTransform> sceneRoot = new osg::MatrixTransform;
-    if (scene.valid()) sceneRoot->addChild(scene.get());
     sceneRoot->setMatrix(osg::Matrix::scale(125.0f, 125.0f, 125.0f));
     osgVerse::Pipeline::setPipelineMask(*sceneRoot, DEFERRED_SCENE_MASK | SHADOW_CASTER_MASK);
 
@@ -128,15 +127,17 @@ int main(int argc, char** argv)
     traits->x = 50; traits->y = 50; traits->width = 1280; traits->height = 720;
     traits->alpha = 8; traits->depth = 24; traits->stencil = 8;
     traits->windowDecoration = true; traits->doubleBuffer = true;
-    traits->readDISPLAY(); traits->setUndefinedScreenDetailsToDefaultScreen();
+    if (!headless) { traits->readDISPLAY(); traits->setUndefinedScreenDetailsToDefaultScreen(); }
 
 #if OSG_VERSION_GREATER_THAN(3, 4, 0)
 #   ifdef VERSE_WITH_SDL
     traits->windowingSystemPreference = "SDL";
-    if (forceEGL)
+    if (forceEGL || headless)
     {
-        osg::ref_ptr<osgVerse::GraphicsWindowSDL::WindowData> winData = new osgVerse::GraphicsWindowSDL::WindowData;
-        winData->forceEGL = true; traits->inheritedWindowData = winData;
+        osg::ref_ptr<osgVerse::GraphicsWindowSDL::WindowData> winData =
+            new osgVerse::GraphicsWindowSDL::WindowData;
+        winData->forceEGL = forceEGL; winData->headless = headless;
+        traits->inheritedWindowData = winData;
     }
 #   endif
     if (useGLFW) traits->windowingSystemPreference = "GLFW";
@@ -209,6 +210,14 @@ int main(int argc, char** argv)
         postCamera->addChild(skybox.get());
     }
 #endif
+
+    // Automation / screenshot interface (consumes --agent* options)
+    osgVerse::configureViewerForAgent(arguments, viewer.get());
+
+    // Load the scene (or the default Sponza) after all the arguments are consumed
+    osg::ref_ptr<osg::Node> scene = osgDB::readNodeFiles(arguments);
+    if (!scene) scene = osgDB::readNodeFile(BASE_DIR + "/models/Sponza/Sponza.gltf");
+    if (scene.valid()) sceneRoot->addChild(scene.get());
 
     // Start the main loop
     while (!viewer->done())

@@ -16,10 +16,14 @@ namespace osgVerse
         struct OSGVERSE_RW_EXPORT WindowData : public osg::Referenced
         {
             WindowData(const std::string& canvas = "#canvas")
-                : canvasElement(canvas), majorVersion(0), minorVersion(0), forceEGL(false), sleepable(true) {}
+                : canvasElement(canvas), majorVersion(0), minorVersion(0), forceEGL(false),
+                  headless(false), sleepable(true) {}
             std::string canvasElement;       // For emscripten build, set HTML canvas name
             int majorVersion, minorVersion;  // Expected OpenGL version
             bool forceEGL;                   // Force use EGL even on Desktop windowing systems
+            bool headless;                   // Enable headless rendering: create a hidden window
+                                             // with SDL's "offscreen" video driver, which needs
+                                             // neither X11 nor Wayland (its own EGL surface)
             bool sleepable;                  // For emscripten build, set if giving back control
                                              // to the browser when running with asyncify
         };

@@ -283,7 +283,8 @@ void ShaderLibrary::createShaderDefinitions(osg::Shader& shader, int glVer, int 
 
 #if defined(OSG_GLES3_AVAILABLE)
     ss << "precision highp float;" << std::endl << "precision highp sampler2D;" << std::endl
-       << "precision mediump sampler3D;" << std::endl;
+       << "precision mediump sampler3D;" << std::endl << "precision highp samplerCube;" << std::endl
+       << "precision highp samplerBuffer;" << std::endl;
 #elif defined(OSG_GLES2_AVAILABLE)
     ss << "precision highp float;" << std::endl;
 #endif
