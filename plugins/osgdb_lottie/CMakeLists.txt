@@ -13,6 +13,10 @@ ENDIF()
 
 SET_PROPERTY(TARGET ${LIB_NAME} PROPERTY FOLDER "PLUGINS")
 TARGET_COMPILE_OPTIONS(${LIB_NAME} PUBLIC -D_SCL_SECURE_NO_WARNINGS)
+# rlottie is bundled as a static library inside osgVerseDependency: do not let the C API
+# be declared with __declspec(dllimport), or MSVC looks for __imp_lottie_animation_*
+# symbols that a static library does not provide.
+TARGET_COMPILE_DEFINITIONS(${LIB_NAME} PRIVATE RLOTTIE_STATIC)
 TARGET_LINK_LIBRARIES(${LIB_NAME} osgVerseDependency)
 LINK_OSG_LIBRARY(${LIB_NAME} OpenThreads osg osgDB osgUtil)
 

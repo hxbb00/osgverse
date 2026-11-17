@@ -688,7 +688,7 @@ ADD_DEFINITIONS(-DApproxMVBB_BUILD_LIBRARY                                # Appr
                 -DTVG_STATIC                                              # ThorVG
                 -DLEVELDB_COMPILE_LIBRARY -DLEVELDB_HAS_PORT_CONFIG_H=1   # LevelDB
                 -DHV_STATICLIB -DWITH_MBEDTLS                             # libhv / mbedtls
-                -DRLOTTIE_BUILD=0                                         # Rlottie
+                -DRLOTTIE_STATIC                                         # Rlottie
                 -DKHRONOS_STATIC -DLIBKTX -DKTX_FEATURE_KTX1 -DKTX_FEATURE_WRITE=1 -DKTX_OMIT_VULKAN=1  # libKTX
                 -DBASISD_SUPPORT_KTX2_ZSTD=0 -DBASISD_SUPPORT_KTX2=1 -DBASISU_SUPPORT_OPENCL=0          # libKTX: BasisU
                 -DUSINGZ                                                  # clipper2
