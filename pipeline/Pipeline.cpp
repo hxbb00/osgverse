@@ -660,7 +660,11 @@ struct MyResizedCallback : public osg::GraphicsContext::ResizedCallback
         double heightChangeRatio = double(h) / double(traits->height);
         double aspectRatioChange = widthChangeRatio / heightChangeRatio;
         if (_pipeline.valid())
-            _pipeline->getInvScreenResolution()->set(osg::Vec2(1.0f / (float)w, 1.0f / (float)h));
+        {
+            float scale = _pipeline->getRenderScale();
+            _pipeline->getInvScreenResolution()->set(
+                osg::Vec2(1.0f / ((float)w * scale), 1.0f / ((float)h * scale)));
+        }
 
         osg::GraphicsContext::Cameras cameras = gc->getCameras();
         for (osg::GraphicsContext::Cameras::iterator itr = cameras.begin(); itr != cameras.end(); ++itr)
@@ -852,7 +856,7 @@ namespace osgVerse
         _invScreenResolution = new osg::Uniform(
             "InvScreenResolution", osg::Vec2(1.0f / 1920.0f, 1.0f / 1080.0f));
         _glContextVersion = glContextVer; _glVersion = 0;
-        _glslTargetVersion = glslVer;
+        _glslTargetVersion = glslVer; _renderScale = 1.0f;
     }
 
     osg::GraphicsContext* Pipeline::createGraphicsContext(int w, int h, const std::string& glContext,
@@ -1061,6 +1065,11 @@ namespace osgVerse
             _stageContext = createGraphicsContext(w, h, glContext, NULL);
         }
         _stageSize = osg::Vec2s(w, h);
+        // Intermediate stages may render at a lower resolution (render scale < 1) while the
+        // display stage is always full-sized, so resolution-dependent shader uniforms follow
+        // the render resolution instead of the window size
+        _invScreenResolution->set(osg::Vec2(1.0f / ((float)w * _renderScale),
+                                            1.0f / ((float)h * _renderScale)));
         _stageContext->setResizedCallback(new MyResizedCallback(this));
 
         // Enable the osg_* uniforms that the shaders will use in GL3/GL4 and GLES2/3. On a
@@ -1323,7 +1332,12 @@ namespace osgVerse
             else if (type >= DEPTH16) comp = osg::Camera::DEPTH_BUFFER;
 
             osg::ref_ptr<osg::Texture> tex = buffers[i].bufferToShare;
-            if (!tex) tex = createTexture(type, _stageSize[0], _stageSize[1], _glVersion);
+            if (!tex)
+            {
+                int ww = (int)(_stageSize[0] * _renderScale);
+                int hh = (int)(_stageSize[1] * _renderScale);
+                tex = createTexture(type, osg::maximum(1, ww), osg::maximum(1, hh), _glVersion);
+            }
             if (i > 0) s->camera->attach(comp, tex.get(), 0, 0, false, 0);
             else s->camera = createRTTCamera(comp, tex.get(), _stageContext.get(), false);
             s->outputs[bufName] = tex.get();
@@ -1375,7 +1389,8 @@ namespace osgVerse
             if (type == DEPTH24_STENCIL8 || type == DEPTH32_STENCIL8) comp = osg::Camera::PACKED_DEPTH_STENCIL_BUFFER;
             else if (type >= DEPTH16) comp = osg::Camera::DEPTH_BUFFER;
 
-            float ww = _stageSize[0] * sizeScale, hh = _stageSize[1] * sizeScale;
+            float ww = _stageSize[0] * sizeScale * _renderScale;
+            float hh = _stageSize[1] * sizeScale * _renderScale;
             if (ww < 1.0f) ww = 1.0f; if (hh < 1.0f) hh = 1.0f;
             osg::ref_ptr<osg::Texture> tex = buffers[i].bufferToShare;
             if (!tex) tex = createTexture(type, (int)ww, (int)hh, _glVersion);
@@ -1414,7 +1429,8 @@ namespace osgVerse
             if (type == DEPTH24_STENCIL8 || type == DEPTH32_STENCIL8) comp = osg::Camera::PACKED_DEPTH_STENCIL_BUFFER;
             else if (type >= DEPTH16) comp = osg::Camera::DEPTH_BUFFER;
 
-            float ww = _stageSize[0] * sizeScale, hh = _stageSize[1] * sizeScale;
+            float ww = _stageSize[0] * sizeScale * _renderScale;
+            float hh = _stageSize[1] * sizeScale * _renderScale;
             if (ww < 1.0f) ww = 1.0f; if (hh < 1.0f) hh = 1.0f;
             osg::ref_ptr<osg::Texture> tex = buffers[i].bufferToShare;
             if (!tex) tex = createTexture(type, (int)ww, (int)hh, _glVersion);

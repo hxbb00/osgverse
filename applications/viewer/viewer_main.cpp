@@ -1,6 +1,7 @@
 #include PREPENDED_HEADER
 #include <osg/io_utils>
 #include <osg/ComputeBoundsVisitor>
+#include <osg/DisplaySettings>
 #include <osg/Texture2D>
 #include <osg/MatrixTransform>
 #include <osgDB/ReadFile>
@@ -295,6 +296,21 @@ int main(int argc, char** argv)
 #endif
 
     // Always call viewer.setUp*() before setupStandardPipeline()!
+    // NVIDIA Image Scaling (see StandardPipelineParameters::upscaling): 1 keeps the resolution
+    // and only sharpens, 2 renders the pipeline at half resolution and upscales it back. It is
+    // implemented with compute shaders, so a GL 4.3+ context has to be requested before the
+    // window is created; the GL2 build also needs its compatibility profile for the
+    // fixed-function states it still uses
+    int upscaling = 0; arguments.read("--upscaling", upscaling);
+    if (upscaling > 0)
+    {
+        osg::DisplaySettings* ds = osg::DisplaySettings::instance();
+        ds->setGLContextVersion("4.3");
+#if !defined(OSG_GL3_AVAILABLE)
+        ds->setGLContextProfileMask(0x00000002);  // GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB
+#endif
+    }
+
     int screenNo = 0; arguments.read("--screen", screenNo);
     viewer.setUpViewOnSingleScreen(screenNo);
     viewer.setRealizeOperation(new osgVerse::RealizeOperation(false));
@@ -317,6 +333,7 @@ int main(int argc, char** argv)
     // pipeline falls back to FXAA
     if (arguments.read("--taa")) { params.enableTAA = true; params.useDeferredSky = true; }
     if (arguments.read("--no-taa")) params.enableTAA = false;
+    params.upscaling = upscaling;
     setupStandardPipeline(pipeline.get(), &viewer, params);
 
     // The sky box is drawn by its own camera after the deferred stages, so it is not part of

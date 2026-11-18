@@ -197,7 +197,13 @@ namespace osgVerse
             osg::Matrix proj; osg::Vec2s vp(1920, 1080); float zn = 0.1f, zf = 1000.0f;
             if (_pipeline.valid())
             {
+                // The cluster grid has to match the viewport the lighting shader runs with,
+                // which is the (possibly scaled down) G-Buffer resolution
                 vp = _pipeline->getStageSize();
+                float rs = _pipeline->getRenderScale();
+                if (rs < 1.0f && rs > 0.0f)
+                    vp.set((short)osg::maximum(1, (int)(vp.x() * rs)),
+                           (short)osg::maximum(1, (int)(vp.y() * rs)));
                 if (_pipeline->getDeferredCallback() != NULL)
                 {
                     osg::Vec2d nf = _pipeline->getDeferredCallback()->getCalculatedNearFar();

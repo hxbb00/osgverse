@@ -279,7 +279,7 @@ namespace osgVerse
         { if (_upscaler.valid()) _upscaler->dispatch(renderInfo.getState()); }
 
     protected:
-        osg::observer_ptr<NISUpscaler> _upscaler;
+        osg::ref_ptr<NISUpscaler> _upscaler;  // keeps the upscaler alive with the camera callback
     };
 }
 

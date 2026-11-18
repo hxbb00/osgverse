@@ -8,6 +8,7 @@
 #include "HistoryBufferCallback.h"
 #include "IntersectionManager.h"
 #include "NodeSelector.h"
+#include "NISUpscaler.h"
 #include "Utilities.h"
 #include "Global.h"
 
@@ -568,7 +569,7 @@ namespace osgVerse
         withEmbeddedViewer(false), debugShadowModule(false), debugShadowCombination(false),
         enableVSync(true), enableMRT(true), enableAO(true), enablePostEffects(true),
         enableUserInput(false), enableDepthPartition(false), enableVR(false), enable3DGS(true),
-        enableTAA(false), enableBloom(true), useDeferredSky(false)
+        enableTAA(false), enableBloom(true), useDeferredSky(false), upscaling(0)
     {
         obtainScreenResolution(originWidth, originHeight);
         if (!originWidth) originWidth = 1920; if (!originHeight) originHeight = 1080;
@@ -592,7 +593,7 @@ namespace osgVerse
         withEmbeddedViewer(false), debugShadowModule(false), debugShadowCombination(false),
         enableVSync(true), enableMRT(true), enableAO(true), enablePostEffects(true),
         enableUserInput(false), enableDepthPartition(false), enableVR(false), enable3DGS(true),
-        enableTAA(false), enableBloom(true), useDeferredSky(false)
+        enableTAA(false), enableBloom(true), useDeferredSky(false), upscaling(0)
     {
         obtainScreenResolution(originWidth, originHeight);
         if (!originWidth) originWidth = 1920; if (!originHeight) originHeight = 1080;
@@ -843,6 +844,26 @@ namespace osgVerse
 
         GLVersionData* data = p->getVersionData();
         if (!data) data = queryOpenGLVersion(p, spp.withEmbeddedViewer, mainCam->getGraphicsContext());
+
+        // NVIDIA Image Scaling is implemented with compute shaders, which need a GL 4.3+ context
+        // (a compatibility profile is fine, GLES/WebGL builds are not). The whole pipeline is
+        // rendered at 1/upscaling of the screen resolution when the factor is above 1, so the
+        // render scale has to be set before the stages are created; the display stage is always
+        // full-sized. Without tone mapping (post effects) there is no LDR color to upscale
+        int upscaling = spp.upscaling;
+        if (upscaling > 2)
+        {
+            OSG_WARN << "[StandardPipeline] NIS supports at most 2x upscaling, " << upscaling
+                     << " is clamped to 2" << std::endl;
+            upscaling = 2;
+        }
+        if (upscaling > 0 && (data == NULL || data->glVersion < 430 || !spp.enablePostEffects))
+        {
+            OSG_WARN << "[StandardPipeline] NIS upscaling needs a GL 4.3+ context and the post "
+                     << "effects (tone mapping) stages; it is disabled." << std::endl;
+            upscaling = 0;
+        }
+        if (upscaling > 1) p->setRenderScale(1.0f / (float)upscaling);
 
         p->startStages(spp.originWidth, spp.originHeight, mainCam->getGraphicsContext());
         if (data)
@@ -1268,6 +1289,7 @@ namespace osgVerse
                     downsampleValue = osg::maximum((int)stageSize[1], 1080) * sizeScale;
                     osg::Vec2 invRes(1.0f / osg::maximum((int)stageSize[0], 1920) * sizeScale,
                                      1.0f / downsampleValue);
+                    invRes /= p->getRenderScale();  // the buffers are scaled down with the pipeline
 
                     std::string id = std::to_string(downsampleIndex);
                     std::string lastId = std::to_string(downsampleIndex - 1);
@@ -1404,6 +1426,7 @@ namespace osgVerse
                     lumValue = osg::maximum((int)lumSize[1], 1080) * sizeScale;
                     osg::Vec2 invRes(1.0f / osg::maximum((int)lumSize[0], 1920) * sizeScale,
                                      1.0f / lumValue);
+                    invRes /= p->getRenderScale();  // the buffers are scaled down with the pipeline
 
                     std::string id = std::to_string(lumIndex);
                     std::string lastId = std::to_string(lumIndex - 1);
@@ -1534,6 +1557,54 @@ namespace osgVerse
             spp.applyUserInputStages(mainCam, p, occasion, false,
                 lastPostStage->getBufferTexture(osg::Camera::COLOR_BUFFER),
                 gbuffer->getBufferTexture(osg::Camera::DEPTH_BUFFER));
+        }
+
+        // Optional last pass: NVIDIA Image Scaling. Its input is the color buffer of the last
+        // stage above, which the pipeline rendered at the reduced render resolution, while its
+        // output is a full-sized texture presented by the final stage below
+        if (upscaling > 0)
+        {
+            osgVerse::Pipeline::Stage* colorStage = p->getStage(p->getNumStages() - 1);
+            osg::Texture* colorBuffer =
+                colorStage ? colorStage->getBufferTexture(osg::Camera::COLOR_BUFFER) : NULL;
+            osg::Texture2D* inputTexture = dynamic_cast<osg::Texture2D*>(colorBuffer);
+            if (inputTexture != NULL)
+            {
+                int inW = inputTexture->getTextureWidth(), inH = inputTexture->getTextureHeight();
+                int outW = (int)p->getStageSize()[0], outH = (int)p->getStageSize()[1];
+                osg::ref_ptr<osg::Texture2D> outputTexture =
+                    osgVerse::NISUpscaler::createTexture(outW, outH);
+                osg::ref_ptr<osgVerse::NISUpscaler> nis = new osgVerse::NISUpscaler(
+                    (upscaling > 1) ? osgVerse::NISUpscaler::SCALER :
+                                      osgVerse::NISUpscaler::SHARPEN);
+                if (outputTexture.valid() && nis->initialize(inW, inH, outW, outH, 0.5f))
+                {
+                    nis->setInputTexture(inputTexture);
+                    nis->setOutputTexture(outputTexture.get());
+
+                    osgVerse::Pipeline::BufferDescriptions buffers;
+                    buffers.push_back(osgVerse::Pipeline::BufferDescription(
+                        "UpscaledBuffer", osgVerse::Pipeline::RGBA_INT8, outputTexture.get()));
+                    osgVerse::Pipeline::Stage* nisStage =
+                        p->addWorkStage("NISUpscaling", 1.0f, NULL, NULL, buffers);
+
+                    // The stage itself draws nothing: its pre-draw callback dispatches the NIS
+                    // compute shader, which writes the upscaled texture through an image binding.
+                    // The quad of a work stage and the buffer clear are therefore both removed
+                    osg::Camera* nisCamera = nisStage->camera.get();
+                    nisCamera->removeChildren(0, nisCamera->getNumChildren());
+                    nisCamera->setClearMask(0);
+                    nisCamera->setPreDrawCallback(new osgVerse::NISDrawCallback(nis.get()));
+                }
+                else
+                {
+                    OSG_WARN << "[StandardPipeline] Failed to initialize NIS upscaling from "
+                             << inW << "x" << inH << " to " << outW << "x" << outH << std::endl;
+                }
+            }
+            else
+                OSG_WARN << "[StandardPipeline] NIS upscaling needs a Texture2D color buffer."
+                         << std::endl;
         }
 
         // Final stage (color grading)

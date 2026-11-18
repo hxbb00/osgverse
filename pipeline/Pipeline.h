@@ -318,6 +318,13 @@ namespace osgVerse
         osg::Uniform* getInvScreenResolution() { return _invScreenResolution.get(); }
         osg::Vec2s getStageSize() const { return _stageSize; }
 
+        /** Scale factor applied to every intermediate stage buffer (1.0 by default): a value
+            below 1 makes the pipeline render at a lower resolution, which is what a final
+            upscaling pass needs (see StandardPipelineParameters::upscaling). Set it before the
+            stages are created; the display stage is always full-sized */
+        void setRenderScale(float scale) { _renderScale = (scale > 0.0f) ? scale : 1.0f; }
+        float getRenderScale() const { return _renderScale; }
+
         void setVersionData(GLVersionData* d);
         GLVersionData* getVersionData() { return _glVersionData.get(); }
         int getContextTargetVersion() const { return _glContextVersion; }
@@ -362,6 +369,7 @@ namespace osgVerse
         osg::ref_ptr<ExposureController> _exposureController;
         osg::observer_ptr<osg::Camera> _forwardCamera;
         osg::Vec2s _stageSize;
+        float _renderScale;
         int _glContextVersion, _glVersion, _glslTargetVersion;
     };
 
@@ -539,6 +547,13 @@ namespace osgVerse
             and skyboxFS), so that it takes part in bloom, tone mapping and TAA instead of
             being painted by a sky box camera after the deferred stages */
         bool useDeferredSky;
+        /** NVIDIA Image Scaling (NIS), applied as the last pass before the final display stage.
+            The value is the upscaling factor: 0 (default) adds no pass, 1 keeps the render
+            resolution (sharpening only), 2 renders the whole pipeline at half resolution and
+            upscales it back. It needs a desktop OpenGL 4.3+ context (compute shaders) and the
+            post effects (tone mapping) stages; it is ignored on the GLES/WebGL builds or
+            without them */
+        int upscaling;
 
         StandardPipelineParameters();
         StandardPipelineParameters(const std::string& shaderDir, const std::string& skyboxFile);
