@@ -4,6 +4,7 @@
 #include <osg/AnimationPath>
 #include <osg/Texture2D>
 #include <osg/Geometry>
+#include <osg/Material>
 #include <osgDB/ConvertUTF>
 #include <osgDB/FileNameUtils>
 #include <osgDB/ReadFile>
@@ -1313,19 +1314,30 @@ namespace osgVerse
             }
         }
 
+        osg::Vec4 baseColor(linearToSRGB(material.pbrMetallicRoughness.baseColorFactor[0]),
+                            linearToSRGB(material.pbrMetallicRoughness.baseColorFactor[1]),
+                            linearToSRGB(material.pbrMetallicRoughness.baseColorFactor[2]),
+                            material.pbrMetallicRoughness.baseColorFactor[3]);
         if (baseID >= 0 && baseID < _modelDef.textures.size())
             ss->setTextureAttributeAndModes(0, createTexture(uniformNames[0], _modelDef.textures[baseID]));
         else if (techTexID >= 0)
             ss->setTextureAttributeAndModes(0, createTexture(uniformNames[0], _modelDef.textures[techTexID]));
         else
         {
-            osg::Vec4 baseColor(linearToSRGB(material.pbrMetallicRoughness.baseColorFactor[0]),
-                                linearToSRGB(material.pbrMetallicRoughness.baseColorFactor[1]),
-                                linearToSRGB(material.pbrMetallicRoughness.baseColorFactor[2]),
-                                material.pbrMetallicRoughness.baseColorFactor[3]);
             osg::Texture2D* tex2D = createDefaultTextureForColor(baseColor);
             if (tex2D) ss->setTextureAttributeAndModes(0, tex2D);
         }
+
+        // Also provide the classic osg::Material carrying the base color. Besides being used by the
+        // compatibility (fixed-function) rendering, osgVerse's fixed-function removal turns it into
+        // a per-vertex color array in GL3/GLES builds. The pipeline shaders multiply the diffuse
+        // texture by osg_Color, and a geometry without a color array reads that attribute back as
+        // (0, 0, 0, 0) in a core/GLES context, which turns the whole model black
+        osg::ref_ptr<osg::Material> mtl = new osg::Material;
+        mtl->setDiffuse(osg::Material::FRONT_AND_BACK, baseColor);
+        mtl->setAmbient(osg::Material::FRONT_AND_BACK, baseColor);
+        mtl->setSpecular(osg::Material::FRONT_AND_BACK, osg::Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        ss->setAttribute(mtl.get());
 
         if (normalID >= 0)
             ss->setTextureAttributeAndModes(1, createTexture(uniformNames[1], _modelDef.textures[normalID]));

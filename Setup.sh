@@ -367,10 +367,13 @@ if [ "$BuildMode" = '3' ] || [ "$BuildMode" = '4' ] || [ "$BuildMode" = '7' ]; t
     fi
 else
     if [ -e "$ThirdPartyBuildDir/tiff/libtiff.a" ]; then
+        # The bundled libtiff is static and includes its JPEG codec (tif_jpeg*.c), so its JPEG
+        # symbols must be resolved by also linking the bundled libjpeg. Without it, OSG's tiff
+        # plugin is built with 22 unresolved jpeg_* symbols and fails to load at runtime
         ThirdDepOptions="
             $ThirdDepOptions
             -DTIFF_INCLUDE_DIR=$CurrentDir/helpers/toolchain_builder/tiff;$ThirdPartyBuildDir/tiff
-            -DTIFF_LIBRARY_RELEASE=$ThirdPartyBuildDir/tiff/libtiff.a"
+            -DTIFF_LIBRARY_RELEASE=$ThirdPartyBuildDir/tiff/libtiff.a;$ThirdPartyBuildDir/jpeg/libjpeg.a"
     fi
 fi
 

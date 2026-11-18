@@ -295,7 +295,7 @@ if "!BuildSystemMode!"=="0" (
         -DPNG_LIBRARY_RELEASE=%ThirdPartyBuildDir%\png\!BuildTypeString!\png.lib ^
         -DZLIB_LIBRARY_RELEASE=%ThirdPartyBuildDir%\zlib\!BuildTypeString!\zlib.lib ^
         -DTIFF_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\tiff;%ThirdPartyBuildDir%\tiff ^
-        -DTIFF_LIBRARY_RELEASE=%ThirdPartyBuildDir%\tiff\!BuildTypeString!\tiff.lib
+        -DTIFF_LIBRARY_RELEASE=%ThirdPartyBuildDir%\tiff\!BuildTypeString!\tiff.lib;%ThirdPartyBuildDir%\jpeg\!BuildTypeString!\jpeg.lib
 )
 if "!BuildSystemMode!"=="1" (
     set ThirdDepOptions=!ThirdDepOptions! !ThirdDepIncludes! ^
@@ -316,7 +316,7 @@ if "!BuildSystemMode!"=="2" (
         -DPNG_LIBRARY_RELEASE=%ThirdPartyBuildDir%\png\libpng.a ^
         -DZLIB_LIBRARY_RELEASE=%ThirdPartyBuildDir%\zlib\libzlib.a ^
         -DTIFF_INCLUDE_DIR=%CurrentDir%\helpers\toolchain_builder\tiff;%ThirdPartyBuildDir%\tiff ^
-        -DTIFF_LIBRARY_RELEASE=%ThirdPartyBuildDir%\tiff\libtiff.a
+        -DTIFF_LIBRARY_RELEASE=%ThirdPartyBuildDir%\tiff\libtiff.a;%ThirdPartyBuildDir%\jpeg\libjpeg.a
 )
 
 :: Fix some OpenSceneGraph compile errors

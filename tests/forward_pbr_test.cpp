@@ -146,12 +146,12 @@ osg::StateSet* createPbrStateSet(osgVerse::Pipeline* pipeline)
         // supporting it, and as a plain texture otherwise (see LightModule::getUseTextureBuffer)
         if (lm->getUseTextureBuffer() && lm->getParameterBuffer())
         {
-            forwardSS->setTextureAttributeAndModes(7, lm->getParameterBuffer());
+            osgVerse::applyTextureAttributeAndModes(&*forwardSS, 7, lm->getParameterBuffer());
             forwardSS->addUniform(new osg::Uniform("LightParameterBuffer", 7));
         }
         else
         {
-            forwardSS->setTextureAttributeAndModes(7, lm->getParameterTable());
+            osgVerse::applyTextureAttributeAndModes(&*forwardSS, 7, lm->getParameterTable());
             forwardSS->addUniform(new osg::Uniform("LightParameterMap", 7));
         }
         forwardSS->addUniform(lm->getLightNumber());
@@ -230,8 +230,13 @@ int main(int argc, char** argv)
     root->addChild(sceneRoot.get());
     root->addChild(lightGeode.get());
 
-    // The pipeline only for shader construction and lighting
-    osg::ref_ptr<osgVerse::Pipeline> pipeline = new osgVerse::Pipeline;
+    // The pipeline only for shader construction and lighting. It must know the real target GL/GLSL
+    // versions before any shader is created: with the default (100/120) the generated definitions
+    // use the fixed-function aliases (gl_Vertex, gl_ModelViewProjectionMatrix...), which do not
+    // exist in a GL3 core or GLES3 context, so the forward shader would fail to compile there
+    // (e.g. a completely black scene in the GLES3 build)
+    int cxtVer = 0, glslVer = 0; osgVerse::guessOpenGLVersions(cxtVer, glslVer);
+    osg::ref_ptr<osgVerse::Pipeline> pipeline = new osgVerse::Pipeline(cxtVer, glslVer);
     osg::ref_ptr<osgVerse::LightModule> lightModule = new osgVerse::LightModule("Light", pipeline.get());
     lightModule->setMainLight(light0.get(), "");  // no shadow module
     sceneRoot->setStateSet(createPbrStateSet(pipeline.get()));

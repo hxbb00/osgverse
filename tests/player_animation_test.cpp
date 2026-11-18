@@ -4,6 +4,7 @@
 #include <osg/MatrixTransform>
 #include <osg/Geometry>
 #include <osgDB/ReadFile>
+#include <osgDB/FileUtils>
 #include <osgDB/WriteFile>
 #include <osgGA/TrackballManipulator>
 #include <osgGA/StateSetManipulator>
@@ -89,8 +90,18 @@ int main(int argc, char** argv)
     player->addUpdateCallback(animManager.get()); animManagers[animManager.get()] = player.get();
 #else
     osg::ref_ptr<osgDB::Options> opt = new osgDB::Options("DisabledPBR=1");
-    osg::ref_ptr<osg::Node> player = (argc > 1) ? osgDB::readNodeFiles(arguments, opt.get())
-                                   : osgDB::readNodeFile(BASE_DIR + "/models/Characters/girl.glb", opt.get());
+    // Only pass real local files to osgDB::readNodeFiles(): it treats every non-option token as a
+    // file name, so a run with options only (e.g. the --agent* ones) would load nothing at all
+    std::vector<std::string> playerFiles;
+    for (int i = 1; i < arguments.argc(); ++i)
+    {
+        std::string name = arguments[i];
+        if (!osg::ArgumentParser::isOption(name.c_str()) && osgDB::fileExists(name))
+            playerFiles.push_back(name);
+    }
+    osg::ref_ptr<osg::Node> player = playerFiles.empty()
+        ? osgDB::readNodeFile(BASE_DIR + "/models/Characters/girl.glb", opt.get())
+        : osgDB::readNodeFiles(playerFiles, opt.get());
     if (player.valid()) playerRoot->addChild(player.get());
     animManagers = findAnimationManagers(player.get());
 #endif
