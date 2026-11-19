@@ -239,7 +239,15 @@ int main(int argc, char** argv)
 
     osg::ref_ptr<osgVerse::StandardPipelineViewer> viewer =
         new osgVerse::StandardPipelineViewer(false, true, false);
-    viewer->getParameters().shadowNumber = 0;  // this test owns the shadow rendering
+    // Keep one CSM stage so the standard pipeline creates its "Shadowing" pass; replace that
+    // pass's fragment shader with the VSM combine so the visible image uses the virtual map.
+    // --baseline keeps the stock CSM combine for an A/B comparison
+    bool useVsmCombine = !arguments.read("--baseline");
+    viewer->getParameters().shadowNumber = 1;
+    viewer->getParameters().shadowResolution = 512;
+    if (useVsmCombine)
+        viewer->getParameters().shaders.shadowCombineFS = osgDB::readShaderFile(
+            osg::Shader::FRAGMENT, SHADER_DIR + "vsm/vsm_test_combine.frag.glsl");
     viewer->getParameters().enableAO = false;
     viewer->getParameters().enablePostEffects = false;
     viewer->setSceneData(root.get());
@@ -288,7 +296,7 @@ int main(int argc, char** argv)
         OSG_WARN << "[VSM Test] Failed to create the page renderer" << std::endl;
         return 1;
     }
-    root->addChild(pageRenderer->getRoot());
+    pageRenderer->addToView(viewer.get());
 
     std::string atlasDump;
     if (arguments.read("--dump-atlas", atlasDump))
@@ -382,6 +390,24 @@ int main(int argc, char** argv)
 
     std::cout << "[VSM Test] Scene radius " << radius << ", region " << regionSize
               << ", light-space z [" << nearPlane << ", " << farPlane << "]" << std::endl;
+
+    // Feed the virtual map to the shadow combine stage created by the standard pipeline
+    osgVerse::Pipeline::Stage* shadowing = pipeline->getStage("Shadowing");
+    if (shadowing == NULL)
+    {
+        OSG_WARN << "[VSM Test] The pipeline has no Shadowing stage" << std::endl;
+        return 1;
+    }
+
+    osg::StateSet* shadowingSS = shadowing->getOrCreateStateSet();
+    vsm->applyToStateSet(shadowingSS, 8);
+    shadowingSS->addUniform(new osg::Uniform("VsmWorldToLight", osg::Matrixf(lightView)));
+    shadowingSS->addUniform(new osg::Uniform("VsmRegion", osg::Vec4(
+        (float)regionMinX, (float)regionMinY,
+        (float)(1.0 / regionSize), (float)(1.0 / regionSize))));
+    shadowingSS->addUniform(new osg::Uniform("VsmBias", 0.0015f));
+    shadowingSS->addUniform(new osg::Uniform("VsmLightDepthRange", osg::Vec4(
+        (float)nearPlane, (float)farPlane, (float)(1.0 / (farPlane - nearPlane)), 0.0f)));
 
     osgVerse::configureViewerForAgent(arguments, viewer.get());
 

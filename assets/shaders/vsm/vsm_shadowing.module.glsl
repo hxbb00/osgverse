@@ -9,17 +9,24 @@
 //   VsmIndirectionTexture : sampler2DArray, layer = light index / face,
 //                           texel = (tileX, tileY, level, valid)
 //   VsmShadowAtlas       : sampler2D, R32F normalized light-space depth, tile per page
-//   VsmPageMatrices      : samplerBuffer, 4 RGBA32F texels (matrix columns) per tile slot
+//
+// The page matrix itself is not uploaded: a page's local coordinates and depth are fully
+// determined by the light-space position, the fixed light region, the page level (which gives
+// the grid size) and the shared light near/far planes. Deriving them here avoids a per-tile
+// matrix lookup and keeps the sampling exactly consistent with the page caster, which
+// rasterises with scaleBias * projection * worldToLight.
 
 uniform sampler2DArray VsmIndirectionTexture;
 uniform sampler2D VsmShadowAtlas;
-uniform samplerBuffer VsmPageMatrices;
 
 // x = page table size, y = 1 / page table size, z = number of levels, w = unused
 uniform vec4 VsmPageParams;
 
 // x = tile resolution, y = tile count per row, z = atlas resolution, w = max tiles
 uniform vec4 VsmAtlasParams;
+
+// x = near plane, y = far plane, z = 1 / (far - near), w = unused (light view-space z)
+uniform vec4 VsmLightDepthRange;
 
 // x = softness, y = softness near, z = softness far, w = PCSS enabled
 uniform vec4 VsmPCSSParams;
@@ -31,7 +38,7 @@ float vsmVFetchDepth(vec2 uv)
     return VERSE_TEX2D(VsmShadowAtlas, uv).r;
 }
 
-// Fetch the page record covering this virtual UV. The lookup is point-sampled at the page
+// Fetch the page record covering this region UV. The lookup is point-sampled at the page
 // center, so all pixels of one page see the same record.
 vec4 vsmFetchPage(float layer, vec2 uv)
 {
@@ -40,42 +47,19 @@ vec4 vsmFetchPage(float layer, vec2 uv)
     return VERSE_TEX2DARRAY(VsmIndirectionTexture, vec3(uvInt, layer));
 }
 
-mat4 vsmGetPageMatrix(int tile)
-{
-    int base = tile * 4;
-    vec4 c0 = texelFetch(VsmPageMatrices, base + 0);
-    vec4 c1 = texelFetch(VsmPageMatrices, base + 1);
-    vec4 c2 = texelFetch(VsmPageMatrices, base + 2);
-    vec4 c3 = texelFetch(VsmPageMatrices, base + 3);
-    return mat4(c0, c1, c2, c3);
-}
-
-int vsmGetTileSlot(vec4 page)
-{
-    return int(page.y) * int(VsmAtlasParams.y) + int(page.x);
-}
-
-// Page-local [0, 1] UV to atlas UV, and the atlas rectangle of one tile, used to clamp PCF
-// taps so they can not read a neighbouring page
+// Page-local [0, 1] UV to atlas UV
 vec2 vsmPageToAtlasUV(vec4 page, vec2 pageUV)
 {
     float tileSize = VsmAtlasParams.x, atlasSize = VsmAtlasParams.z;
     return (page.rg * tileSize + pageUV * tileSize) / atlasSize;
 }
 
+// Atlas rectangle of one tile, used to clamp PCF taps so they can not read a neighbouring page
 void vsmGetTileRect(vec4 page, out vec2 uvMin, out vec2 uvMax)
 {
     float tileSize = VsmAtlasParams.x, atlasSize = VsmAtlasParams.z;
-    uvMin = page.rg * tileSize / atlasSize;
+    uvMin = (page.rg * tileSize) / atlasSize;
     uvMax = (page.rg + 1.0) * tileSize / atlasSize;
-}
-
-// Convert a world position into the virtual page table UV of one light. 'region' is
-// (minX, minY, 1 / sizeX, 1 / sizeY) in light space, the same region the page renderer used.
-vec2 vsmWorldToRegionUV(vec3 worldPos, mat4 worldToLight, vec4 region)
-{
-    vec3 localPos = (worldToLight * vec4(worldPos, 1.0)).xyz;
-    return (localPos.xy - region.xy) * region.zw;
 }
 
 float vsmCompareDepth(float receiverDepth, float casterDepth, float bias)
@@ -84,40 +68,43 @@ float vsmCompareDepth(float receiverDepth, float casterDepth, float bias)
 }
 
 // 3x3 PCF inside one page. The page depth range is tight, so the comparison needs only a
-// small receiver-side bias; the caller computes it from the page's texel depth delta.
-float vsmSamplePCF3x3(vec4 page, vec3 shadowCoord, float bias)
+// small receiver-side bias.
+float vsmSamplePCF3x3(vec4 page, vec2 pageUV, float depth, float bias)
 {
     vec2 uvMin, uvMax;
     vsmGetTileRect(page, uvMin, uvMax);
 
     float texel = 1.0 / VsmAtlasParams.z;
-    vec2 baseUV = vsmPageToAtlasUV(page, shadowCoord.xy);
+    vec2 baseUV = vsmPageToAtlasUV(page, pageUV);
     float sum = 0.0;
     for (int y = -1; y <= 1; ++y)
     {
         for (int x = -1; x <= 1; ++x)
         {
             vec2 uv = clamp(baseUV + vec2(float(x), float(y)) * texel, uvMin, uvMax);
-            sum += vsmCompareDepth(shadowCoord.z, vsmVFetchDepth(uv), bias);
+            sum += vsmCompareDepth(depth, vsmVFetchDepth(uv), bias);
         }
     }
     return sum / 9.0;
 }
 
-// Hard shadow lookup: the caller has already rebuilt the world position and the
-// world-to-light matrix, and selected the light layer.
+// Hard shadow lookup: the caller rebuilds the world position and the world-to-light matrix,
+// and selects the light layer.
 float vsmSampleShadow(int layer, vec3 worldPos, mat4 worldToLight, vec4 region,
                       float bias)
 {
-    vec2 uv = vsmWorldToRegionUV(worldPos, worldToLight, region);
+    vec3 local = (worldToLight * vec4(worldPos, 1.0)).xyz;
+    vec2 uv = (local.xy - region.xy) * region.zw;  // region UV across the whole light area
     vec4 page = vsmFetchPage(float(layer), uv);
     if (page.w < 0.5) return 1.0;  // not resident yet: leave the surface lit
 
-    int tile = vsmGetTileSlot(page);
-    vec3 shadowCoord = (vsmGetPageMatrix(tile) * vec4(worldPos, 1.0)).xyz;
-    return vsmSamplePCF3x3(page, shadowCoord, bias);
+    // Pages of one level tile the region uniformly, so the page-local UV is the fractional
+    // part of the region UV scaled by the grid size
+    float grid = VsmPageParams.x / exp2(page.z);
+    vec2 pageUV = fract(uv * grid);
+    float depth = (-local.z - VsmLightDepthRange.x) * VsmLightDepthRange.z;
+    return vsmSamplePCF3x3(page, pageUV, depth, bias);
 }
 
 // PCSS will be added together with the sampling integration (P3/P4). The hard PCF path above
 // is intentionally complete and cheap, which is what the first standalone test needs.
-

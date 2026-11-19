@@ -6,6 +6,7 @@
 #include <osg/CullFace>
 #include <osg/PolygonOffset>
 #include <osgDB/ReadFile>
+#include <osgViewer/View>
 #include <iostream>
 
 #ifndef GL_DEPTH_CLAMP
@@ -15,8 +16,8 @@
 namespace osgVerse
 {
     VirtualShadowPageRenderer::VirtualShadowPageRenderer()
-    :   _concurrency(0), _nextSlot(0), _tileResolution(0), _atlasResolution(0),
-        _renderOrderBase(-1000), _enabled(true)
+    :   _casterMask(0), _concurrency(0), _nextSlot(0), _tileResolution(0),
+        _atlasResolution(0), _renderOrderBase(-1000), _enabled(true)
     {}
 
     VirtualShadowPageRenderer::~VirtualShadowPageRenderer()
@@ -34,7 +35,7 @@ namespace osgVerse
         _concurrency = (concurrency > 0) ? concurrency : 1;
         _tileResolution = settings.tileResolution;
         _atlasResolution = atlas->getTextureWidth();
-        _atlasTexture = atlas;
+        _atlasTexture = atlas; _casterMask = casterMask;
         _root = new osg::Group;
 
         // Depth-only caster program
@@ -59,7 +60,6 @@ namespace osgVerse
             osg::Camera* camera = createPageCamera(
                 slot, _tileResolution, casterMask, gc, casterScene);
             _cameras.push_back(camera);
-            _root->addChild(camera);
         }
         return true;
     }
@@ -76,11 +76,14 @@ namespace osgVerse
         camera->setViewport(0, 0, tileResolution, tileResolution);
         camera->setClearColor(osg::Vec4(1.0f, 0.0f, 0.0f, 1.0f));
         camera->setClearDepth(1.0);
-        camera->setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // Cleared and culled only while the slot actually renders a page this frame; an idle
+        // slot must neither wipe its previous tile nor draw anything
+        camera->setClearMask(0);
         camera->setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
         camera->setAllowEventFocus(false);
         camera->setCullMask(casterMask);
-        camera->setNodeMask(0);
+        camera->setNodeMask(~static_cast<unsigned int>(0));
+        camera->setUserValue("PipelineCullMask", (unsigned int)0);
         camera->attach(osg::Camera::COLOR_BUFFER0, _atlasTexture.get());
         if (casterScene != NULL) camera->addChild(casterScene);
 
@@ -102,11 +105,28 @@ namespace osgVerse
         return camera.release();
     }
 
+    void VirtualShadowPageRenderer::addToView(osgViewer::View* view)
+    {
+        if (view == NULL) return;
+        osg::Matrixd identity;
+        for (size_t i = 0; i < _cameras.size(); ++i)
+        {
+            // Each page camera is a dedicated slave so it is rendered exactly once. Nesting it
+            // in the main scene would let every pipeline stage traverse (and clear) it.
+            // useBaseViewMatrix is false because each page owns an absolute light-space
+            // view/projection.
+            view->addSlave(_cameras[i].get(), identity, identity, false);
+        }
+    }
+
     void VirtualShadowPageRenderer::beginFrame()
     {
         _nextSlot = 0;
         for (size_t i = 0; i < _cameras.size(); ++i)
-            _cameras[i]->setNodeMask(0);
+        {
+            _cameras[i]->setClearMask(0);
+            _cameras[i]->setUserValue("PipelineCullMask", (unsigned int)0);
+        }
     }
 
     int VirtualShadowPageRenderer::renderPage(VirtualShadowMap* vsm,
@@ -134,7 +154,8 @@ namespace osgVerse
             _scissors[slot]->setScissor(tileX * _tileResolution, tileY * _tileResolution,
                                         _tileResolution, _tileResolution);
 
-        camera->setNodeMask(~static_cast<unsigned int>(0));
+        camera->setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        camera->setUserValue("PipelineCullMask", _casterMask);
         return tile;
     }
 

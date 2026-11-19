@@ -9,6 +9,8 @@
 #include <osg/Texture2D>
 #include <vector>
 
+namespace osgViewer { class View; }
+
 namespace osgVerse
 {
     /** Renders virtual shadow pages directly into the physical atlas.
@@ -18,11 +20,16 @@ namespace osgVerse
         into the atlas avoids a separate copy pass and the texture-array FBO attachment that
         not every OSG/driver combination supports.
 
+        The page cameras must be registered as dedicated view slaves (addToView()): a camera
+        nested in the main scene graph would be traversed by every pipeline stage camera, and
+        the stages whose cull mask excludes the casters would clear the tile without drawing
+        it again, leaving the atlas empty.
+
         The caller drives it:
           1. pageRenderer->beginFrame()
           2. for each page to update:
              tile = pageRenderer->renderPage(vsm, key, view, projection, worldToShadow)
-          3. draw the frame; getRoot() must be part of the caster scene graph
+          3. draw the frame
         */
     class VirtualShadowPageRenderer : public osg::Referenced
     {
@@ -33,6 +40,9 @@ namespace osgVerse
                        unsigned int casterMask, int concurrency,
                        const VirtualShadowSettings& settings, osg::Texture2D* atlas,
                        int glVersion, int glslVersion);
+
+        /** Add the page cameras as view slaves, in front of the pipeline stages. */
+        void addToView(osgViewer::View* view);
 
         osg::Group* getRoot() { return _root.get(); }
         const osg::Group* getRoot() const { return _root.get(); }
@@ -63,6 +73,7 @@ namespace osgVerse
         osg::ref_ptr<osg::Program> _pageProgram;
         std::vector<osg::ref_ptr<osg::Camera>> _cameras;
         std::vector<osg::ref_ptr<osg::Scissor>> _scissors;
+        unsigned int _casterMask;
         int _concurrency, _nextSlot, _tileResolution, _atlasResolution;
         int _renderOrderBase;
         bool _enabled;

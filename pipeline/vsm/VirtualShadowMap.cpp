@@ -1,6 +1,7 @@
 #include "VirtualShadowMap.h"
 #include "../Pipeline.h"
 #include "../Utilities.h"
+#include <algorithm>
 #include <cstring>
 
 #ifndef GL_R32F
@@ -261,6 +262,9 @@ namespace osgVerse
         if (_matrixDirty && _matrixImage.valid())
         {
             _matrixImage->dirty();
+            // A TextureBuffer only recreates its GL buffer when the texture object is dirtied;
+            // Image::dirty() alone leaves a re-allocated buffer sampled as the previous data
+            _tileMatrixBuffer->dirtyTextureObject();
             _matrixDirty = false;
         }
     }
@@ -283,6 +287,12 @@ namespace osgVerse
 
         std::vector<VirtualShadowPageKey> pages;
         table->getResidentPages(pages);
+
+        // Coarse pages must be stamped first: a fine page then overwrites only its own
+        // rectangle, and a missing fine page keeps the coarse fallback underneath
+        std::sort(pages.begin(), pages.end(),
+                  [](const VirtualShadowPageKey& a, const VirtualShadowPageKey& b)
+                  { return a.level > b.level; });
         for (size_t i = 0; i < pages.size(); ++i)
         {
             const VirtualShadowPageKey& key = pages[i];
