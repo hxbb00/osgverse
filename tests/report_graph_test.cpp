@@ -359,6 +359,10 @@ protected:
             new osg::Vec3Array, new osg::Vec3Array, osg::Vec4(1.0f, 1.0f, 1.0f, 1.0f), new osg::DrawArrays(GL_LINES));
         _intersectShowNode->removeDrawables(0, _intersectShowNode->getNumDrawables());
         _intersectShowNode->addDrawable(_intersectLines.get());
+        // Nothing to show yet. Drawing this empty geometry (0 vertices with per-vertex arrays)
+        // issues a GL_LINES draw with 0 vertices, which crashes the NVIDIA driver inside
+        // glDrawArrays() in a GL core/GLES context, so it must stay culled until a line is added
+        _intersectShowNode->setNodeMask(0);
     }
 
     void drawIntersectionResult(osg::Camera* cam, const osgGA::GUIEventAdapter& ea,
@@ -389,6 +393,7 @@ protected:
 
         osg::DrawArrays* p = static_cast<osg::DrawArrays*>(_intersectLines->getPrimitiveSet(0));
         p->setCount(va->size()); p->dirty();
+        _intersectShowNode->setNodeMask(0xffffffff);  // now there is at least one line to show
     }
 
     osg::ref_ptr<osg::Geode> _intersectShowNode;

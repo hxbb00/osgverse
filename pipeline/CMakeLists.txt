@@ -6,13 +6,19 @@ SET(LIBRARY_INCLUDE_FILES
     ShaderLibrary.h RenderCallbackXR.h NISUpscaler.h Allocator.h VolumetricCloud.h CSGNode.h
     Utilities.h Global.h PerfProfiler.h PerfAnalyzer.h
 )
-SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES}
+SET(VSM_INCLUDE_FILES
+    vsm/VirtualShadowTypes.h vsm/VirtualShadowPageTable.h vsm/VirtualShadowTilePool.h
+    vsm/VirtualShadowScheduler.h vsm/VirtualShadowMap.h vsm/VirtualShadowPageRenderer.h
+)
+SET(LIBRARY_FILES ${LIBRARY_INCLUDE_FILES} ${VSM_INCLUDE_FILES}
     Pipeline.cpp PipelineStandard.cpp PipelineLoader.cpp DeferredCallback.cpp UserInputModule.cpp
     ShadowModule.cpp LightModule.cpp LightCluster.cpp LightDrawable.cpp HistoryBufferCallback.cpp
     SkyBox.cpp NodeSelector.cpp MultiEffectNode.cpp SymbolManager.cpp Drawer2D.cpp IncrementalCompiler.cpp
     IntersectionManager.cpp Rasterizer.cpp ShaderLibrary.cpp RenderCallbackXR.cpp ExternalTexture2D.cpp
     NISUpscaler.cpp VolumetricCloud.cpp CSGNode.cpp CSGNodeRenderer.cpp ResourceManager.cpp
     Utilities.cpp UtilitiesEx.cpp PerfProfiler.cpp PerfAnalyzer.cpp
+    vsm/VirtualShadowPageTable.cpp vsm/VirtualShadowTilePool.cpp vsm/VirtualShadowScheduler.cpp
+    vsm/VirtualShadowMap.cpp vsm/VirtualShadowPageRenderer.cpp
 )
 
 IF(MSVC AND NOT VERSE_USE_EXTERNAL_GLES)
@@ -73,3 +79,4 @@ INSTALL(TARGETS ${LIB_NAME} EXPORT ${LIB_NAME}
         LIBRARY DESTINATION ${INSTALL_LIBDIR} COMPONENT libosgverse
         ARCHIVE DESTINATION ${INSTALL_ARCHIVEDIR} COMPONENT libosgverse-dev)
 INSTALL(FILES ${LIBRARY_INCLUDE_FILES} DESTINATION ${INSTALL_INCDIR}/osgVerse/pipeline COMPONENT libosgverse-dev)
+INSTALL(FILES ${VSM_INCLUDE_FILES} DESTINATION ${INSTALL_INCDIR}/osgVerse/pipeline/vsm COMPONENT libosgverse-dev)
