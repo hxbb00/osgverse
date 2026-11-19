@@ -42,6 +42,7 @@ local.properties
 *.meta
 .DS_Store
 .qoder*/
+/work/
 build*/
 sdk*/
 .gitnexus

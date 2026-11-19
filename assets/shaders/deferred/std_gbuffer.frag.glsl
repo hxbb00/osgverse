@@ -1,3 +1,5 @@
+#include "../normal_encoding.module.glsl"
+
 uniform sampler2D DiffuseMap, NormalMap, SpecularMap, ShininessMap;
 uniform sampler2D AmbientMap, EmissiveMap, ReflectionMap;
 VERSE_FS_IN vec4 texCoord0, texCoord1, color;
@@ -34,15 +36,17 @@ void main()
         eyeNormal2 = normalize(mat3(eyeTangent, eyeBinormal, eyeNormal) * tsNormal);
     }
 
-    // MRT output
+    // MRT output. The eye-space normal is stored octahedrally encoded in .rg (see
+    // normal_encoding.module.glsl), .a keeps the material AO and .b is reserved
     VERSE_SCRIPT_FUNC(1);
+    vec2 octNormal = encode_normal_octahedral(eyeNormal2) * 0.5 + 0.5;
 #if defined(VERSE_GLES3) || defined(VERSE_FS_MRT)
-    fragData0/*NormalBuffer*/ = vec4(eyeNormal2.xyz, metalRough.r);
+    fragData0/*NormalBuffer*/ = vec4(octNormal, 0.0, metalRough.r);
     fragData1/*DiffuseMetallicBuffer*/ = vec4(diffuse.rgb, metalRough.b);
     fragData2/*SpecularRoughnessBuffer*/ = vec4(specular, metalRough.g);
     fragData3/*EmissionBuffer*/ = vec4(emission);
 #else
-    gl_FragData[0]/*NormalBuffer*/ = vec4(eyeNormal2.xyz, metalRough.r);
+    gl_FragData[0]/*NormalBuffer*/ = vec4(octNormal, 0.0, metalRough.r);
     gl_FragData[1]/*DiffuseMetallicBuffer*/ = vec4(diffuse.rgb, metalRough.b);
     gl_FragData[2]/*SpecularRoughnessBuffer*/ = vec4(specular, metalRough.g);
     gl_FragData[3]/*EmissionBuffer*/ = vec4(emission);

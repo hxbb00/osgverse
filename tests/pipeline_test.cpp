@@ -217,8 +217,8 @@ int main(int argc, char** argv)
         // 3. Add gbuffer stage: this will require the hardware to support MRT
         osgVerse::Pipeline::Stage* gbuffer = pipeline->addInputStage(
             "GBuffer", DEFERRED_SCENE_MASK, 0,
-            osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "std_gbuffer.vert.glsl"),
-            osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "std_gbuffer.frag.glsl"), 5,
+            osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "deferred/std_gbuffer.vert.glsl"),
+            osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "deferred/std_gbuffer.frag.glsl"), 5,
             "NormalBuffer", osgVerse::Pipeline::RGBA_INT8,
             "DiffuseMetallicBuffer", osgVerse::Pipeline::RGBA_INT8,
             "SpecularRoughnessBuffer", osgVerse::Pipeline::RGBA_INT8,
@@ -294,7 +294,7 @@ int main(int argc, char** argv)
 #endif
             viewer.addEventHandler(new UpdateHandlerXR(pipeline.get(), gbuffer, xr));  // frame event to beginFrame()
 
-            osg::ref_ptr<osg::Shader> gs = osgDB::readShaderFile(osg::Shader::GEOMETRY, SHADER_DIR + "std_gbuffer.geom.glsl");
+            osg::ref_ptr<osg::Shader> gs = osgDB::readShaderFile(osg::Shader::GEOMETRY, SHADER_DIR + "deferred/std_gbuffer.geom.glsl");
             if (gs.valid()) pipeline->updateStageForStereoVR(gbuffer, gs.get(), true);  // apply single-pass stereo
 
             // Move the model far from the HMD position to make it visible at first

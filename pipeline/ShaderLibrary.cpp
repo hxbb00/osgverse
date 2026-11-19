@@ -1,6 +1,7 @@
 #include <osg/ValueObject>
 #include <osgDB/ReadFile>
 #include <osgDB/FileUtils>
+#include <osgDB/FileNameUtils>
 #include "Pipeline.h"
 #include "ShadowModule.h"
 #include "ShaderLibrary.h"
@@ -426,8 +427,19 @@ void ShaderLibrary::processIncludes(osg::Shader& shader, const osgDB::ReaderWrit
         std::string filename = fileOrDefines;
         std::string realFilename = osgDB::findDataFile(filename);
         if (!realFilename.empty()) innerShader = osgDB::readRefShaderFile(realFilename, options);
+        if (!innerShader)
+        {   // try relative to the including shader itself, so that a shader placed in a
+            // subdirectory (deferred/, forward/...) may include a module sitting beside it
+            std::string shaderPath = osgDB::getFilePath(shader.getFileName());
+            if (!shaderPath.empty())
+            {
+                realFilename = osgDB::findDataFile(shaderPath + "/" + filename);
+                if (!realFilename.empty()) innerShader = osgDB::readRefShaderFile(realFilename, options);
+            }
+        }
         if (!innerShader) innerShader = osgDB::readRefShaderFile(SHADER_DIR + filename, options);
-
+        if (!innerShader) innerShader = osgDB::readRefShaderFile(SHADER_DIR + "deferred/" + filename, options);
+        if (!innerShader) innerShader = osgDB::readRefShaderFile(SHADER_DIR + "forward/" + filename, options);
         if (innerShader.valid())
         {
             if (!startOfIncludeMarker.empty())

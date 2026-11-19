@@ -44,7 +44,7 @@ public:
     UpdateHandlerXR(osg::StateSet* ss, osgVerse::RenderCallbackXR* xr) : _sceneStateSet(ss), _xr(xr)
     {
         updateStageForStereoVR(osgDB::readShaderFile(
-            osg::Shader::GEOMETRY, SHADER_DIR + "std_forward_render.geom.glsl"), true);
+            osg::Shader::GEOMETRY, SHADER_DIR + "forward/std_forward_render.geom.glsl"), true);
     }
 
     bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
@@ -136,25 +136,17 @@ protected:
 osg::StateSet* createPbrStateSet(osgVerse::Pipeline* pipeline)
 {
     osg::ref_ptr<osg::StateSet> forwardSS = pipeline->createForwardStateSet(
-        osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "std_forward_render.vert.glsl"),
-        osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "std_forward_render.frag.glsl"));
+        osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "forward/std_forward_render.vert.glsl"),
+        osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "forward/std_forward_render.frag.glsl"));
 
     osgVerse::LightModule* lm = static_cast<osgVerse::LightModule*>(pipeline->getModule("Light"));
     if (forwardSS.valid() && lm)
     {
-        // The light module uploads its table as a texture buffer object (TBO) on platforms
-        // supporting it, and as a plain texture otherwise (see LightModule::getUseTextureBuffer)
-        if (lm->getUseTextureBuffer() && lm->getParameterBuffer())
-        {
-            osgVerse::applyTextureAttributeAndModes(&*forwardSS, 7, lm->getParameterBuffer());
-            forwardSS->addUniform(new osg::Uniform("LightParameterBuffer", 7));
-        }
-        else
-        {
-            osgVerse::applyTextureAttributeAndModes(&*forwardSS, 7, lm->getParameterTable());
-            forwardSS->addUniform(new osg::Uniform("LightParameterMap", 7));
-        }
-        forwardSS->addUniform(lm->getLightNumber());
+        // Bind the parameter table and (on TBO platforms) the cluster buffers to the forward
+        // stateset. refreshCam is NULL because this test has no pipeline stage camera: the
+        // LightModule itself is an update callback of the viewer camera and keeps the table
+        // (and the clusters, which the forward shader also walks now) up to date instead
+        lm->applyToStateSet(&*forwardSS, NULL, "LightParameterMap", 7);
     }
     return forwardSS.release();
 }

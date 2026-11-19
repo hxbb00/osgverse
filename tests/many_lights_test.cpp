@@ -211,6 +211,7 @@ int main(int argc, char** argv)
     bool animate = !arguments.read("--no-animate");
     bool startNoCluster = arguments.read("--no-cluster");
     bool noSsao = arguments.read("--no-ssao");
+    bool noSsgi = arguments.read("--no-ssgi");
     bool noBloom = arguments.read("--no-bloom");
     bool showLights = arguments.read("--show-lights");
     unsigned seed = 1234; arguments.read("--seed", seed);
@@ -249,6 +250,7 @@ int main(int argc, char** argv)
     osg::ref_ptr<osgVerse::StandardPipelineViewer> viewer =
         new osgVerse::StandardPipelineViewer(true, false, false);
     viewer->getParameters().enableAO = !noSsao;  // SSAO uses a random kernel (noisy in captures)
+    viewer->getParameters().enableGI = !noSsgi;  // one-bounce screen-space GI (same kind of noise)
     viewer->getParameters().enableBloom = !noBloom;  // bloom also drives the eye adaptation
     viewer->getParameters().shadowNumber = 0;  // no shadow needed: the lights are not shadow casters
     viewer->setSceneData(root.get());

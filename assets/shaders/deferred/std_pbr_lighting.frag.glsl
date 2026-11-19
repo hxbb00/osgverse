@@ -1,4 +1,5 @@
-#include "basic_lighting.module.glsl"
+#include "../basic_lighting.module.glsl"
+#include "../normal_encoding.module.glsl"
 
 uniform sampler2D BrdfLutBuffer, PrefilterBuffer, IrradianceBuffer;
 uniform sampler2D NormalBuffer, DepthBuffer, DiffuseMetallicBuffer, SpecularRoughnessBuffer;
@@ -25,6 +26,7 @@ VERSE_FS_IN vec4 texCoord0;
 #if defined(VERSE_GLES3) || defined(VERSE_FS_MRT)
 layout(location = 0) VERSE_FS_OUT vec4 fragData0;
 layout(location = 1) VERSE_FS_OUT vec4 fragData1;
+layout(location = 2) VERSE_FS_OUT vec4 fragData2;  // IblSpecularBuffer
 #endif
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
@@ -149,9 +151,11 @@ void main()
 #if defined(VERSE_GLES3) || defined(VERSE_FS_MRT)
         fragData0/*ColorBuffer*/ = vec4(0.0, 0.0, 0.0, 1.0);
         fragData1/*IblAmbientBuffer*/ = vec4(0.0, 0.0, 0.0, 1.0);
+        fragData2/*IblSpecularBuffer*/ = vec4(0.0, 0.0, 0.0, 1.0);
 #else
         gl_FragData[0]/*ColorBuffer*/ = vec4(0.0, 0.0, 0.0, 1.0);
         gl_FragData[1]/*IblAmbientBuffer*/ = vec4(0.0, 0.0, 0.0, 1.0);
+        gl_FragData[2]/*IblSpecularBuffer*/ = vec4(0.0, 0.0, 0.0, 1.0);
 #endif
         return;
     }
@@ -167,7 +171,9 @@ void main()
     vec4 vecInProj = vec4(uv0.x * 2.0 - 1.0, uv0.y * 2.0 - 1.0, depthValue, 1.0);
     vec4 eyeVertex = GBufferMatrices[3] * vecInProj;
     vec3 eyePosition = eyeVertex.xyz / eyeVertex.w;
-    vec3 eyeNormal = normalAlpha.rgb;
+    // The G-Buffer stores the normal octahedrally encoded in .rg (see normal_encoding.module.glsl
+    // and std_gbuffer.frag.glsl), with the material AO kept in .a
+    vec3 eyeNormal = decode_normal_octahedral(normalAlpha.rg);
 
     // Components common to all light types
     vec3 viewDir = -normalize(eyePosition);
@@ -224,24 +230,46 @@ void main()
     vec2 envBRDF = VERSE_TEX2D(BrdfLutBuffer, vec2(nDotV, roughness)).rg;
     vec3 envSpecular = prefilteredColor * (kS * envBRDF.x + envBRDF.y);
 
-    // Occlusion of the ambient/indirect lighting: material AO (stored in NormalBuffer.a)
-    // multiplied by the screen-space AO. Note it is applied to indirect light only, which
-    // is the physically correct place; direct light is handled by the shadowing stage.
-    float occlusion = ao * VERSE_TEX2D(SsaoBlurredBuffer, uv0).r;
-    vec3 ambient = kD * diffuse * occlusion + envSpecular;
+    // Occlusion of the ambient/indirect lighting. Following the rule that occlusion must only
+    // darken the indirect color and never change a coverage value (which the screen-space
+    // effects would then wrongly treat as "this pixel is background"):
+    // - Indirect diffuse (irradiance): the screen-space AO is combined with the material AO
+    //   (NormalBuffer.a) with a minimum, so that the two estimators never darken the same pixel
+    //   twice as much as any of them alone suggests
+    // - Indirect specular (prefiltered environment): a horizon-based specular occlusion (GTSO,
+    //   Jimenez et al. 2016) derived from the same scalar visibility, which keeps grazing
+    //   reflections mostly intact while darkening the ambient reflection in cavities. Screen-space
+    //   effects (SSR/SSGI) must NOT be occluded this way, as their own ray hits already carry the
+    //   correct occlusion; direct light is handled by the shadowing stage
+    // The two terms are written to separate buffers so that the SSGI stage (see
+    // std_ssgi.frag.glsl) can fade the diffuse fallback by its own coverage at the combine,
+    // leaving the specular term untouched: this is the "indirect = screen space -> IBL"
+    // fallback chain of the pluggable indirect lighting
+    float occlusion = min(ao, VERSE_TEX2D(SsaoBlurredBuffer, uv0).r);
+    float specOcclusion = clamp(
+        pow(nDotV + occlusion, exp2(-16.0 * roughness - 1.0)) - 1.0 + occlusion, 0.0, 1.0);
+    vec3 ambientDiffuse = kD * diffuse * occlusion;
+    vec3 ambientSpecular = envSpecular * specOcclusion;
 
     // Dropping the NaN of a broken IBL texture here (instead of letting it reach the tone mapping)
     // is what keeps such a pixel from becoming a black patch: the luminance of the ambient is used
     // as the test, as a NaN in any of its components propagates to it
-    float ambientLum = dot(ambient, vec3(0.2126, 0.7152, 0.0722));
-    if (ambientLum != ambientLum) ambient = vec3(0.0);
-    else ambient = min(ambient, vec3(MAX_AMBIENT_RADIANCE));
+    float ambientLum = dot(ambientDiffuse + ambientSpecular, vec3(0.2126, 0.7152, 0.0722));
+    if (ambientLum != ambientLum)
+    { ambientDiffuse = vec3(0.0); ambientSpecular = vec3(0.0); }
+    else
+    {
+        ambientDiffuse = min(ambientDiffuse, vec3(MAX_AMBIENT_RADIANCE));
+        ambientSpecular = min(ambientSpecular, vec3(MAX_AMBIENT_RADIANCE));
+    }
 
 #if defined(VERSE_GLES3) || defined(VERSE_FS_MRT)
     fragData0/*ColorBuffer*/ = vec4(radianceOut, 1.0);
-    fragData1/*IblAmbientBuffer*/ = vec4(ambient, 1.0);
+    fragData1/*IblAmbientBuffer*/ = vec4(ambientDiffuse, 1.0);
+    fragData2/*IblSpecularBuffer*/ = vec4(ambientSpecular, 1.0);
 #else
     gl_FragData[0]/*ColorBuffer*/ = vec4(radianceOut, 1.0);
-    gl_FragData[1]/*IblAmbientBuffer*/ = vec4(ambient, 1.0);
+    gl_FragData[1]/*IblAmbientBuffer*/ = vec4(ambientDiffuse, 1.0);
+    gl_FragData[2]/*IblSpecularBuffer*/ = vec4(ambientSpecular, 1.0);
 #endif
 }

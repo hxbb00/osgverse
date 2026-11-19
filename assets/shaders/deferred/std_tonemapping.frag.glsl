@@ -1,5 +1,5 @@
 uniform sampler2D ColorBuffer;
-uniform sampler2D BloomBuffer, IblAmbientBuffer;
+uniform sampler2D BloomBuffer, IblAmbientBuffer, IblSpecularBuffer, SsgiBlurredBuffer;
 // Exposure of this frame, computed by the eye adaptation stage of the pipeline. It is a 1x1
 // buffer holding the exposure encoded in log2 space, which keeps the bloom chain out of the
 // exposure completely: BrightnessThreshold is free to be tuned for the bloom alone
@@ -47,10 +47,17 @@ void main()
     vec2 uv0 = texCoord0.xy;
     vec4 color = VERSE_TEX2D(ColorBuffer, uv0), colorBloom = VERSE_TEX2D(BloomBuffer, uv0);
     vec4 iblColor = VERSE_TEX2D(IblAmbientBuffer, uv0);
+    vec4 ssgi = VERSE_TEX2D(SsgiBlurredBuffer, uv0);
+
+    // Indirect diffuse: the fallback chain "screen-space GI -> IBL". Where the SSGI trace
+    // (std_ssgi.frag.glsl) resolved the hemisphere (its radiance is premultiplied by the
+    // coverage in .a) its radiance is used, and the IBL irradiance is faded by the remaining
+    // coverage; the IBL specular term is added as it is (see std_pbr_lighting.frag.glsl)
+    vec3 indirectDiffuse = ssgi.rgb + (1.0 - ssgi.a) * iblColor.rgb;
 
     // The emissive term is not read here anymore: it is added to CombinedBuffer by the shadow
     // combining stage, so that it also takes part in the bloom extraction of this frame
-    color.rgb = color.rgb + iblColor.rgb + colorBloom.rgb;
+    color.rgb = color.rgb + indirectDiffuse + VERSE_TEX2D(IblSpecularBuffer, uv0).rgb + colorBloom.rgb;
     float exposure = exp2(mix(ENCODE_MIN, ENCODE_MAX, VERSE_TEX2D(
         ExposureBuffer, vec2(0.5, 0.5)).r));
     color.rgb = ACESToneMapping(color.rgb, exposure);

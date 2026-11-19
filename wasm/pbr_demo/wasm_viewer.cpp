@@ -246,8 +246,8 @@ int main(int argc, char** argv)
 
     osgVerse::Pipeline::Stage* gbuffer = pipeline->addInputStage(
     "GBuffer", DEFERRED_SCENE_MASK, 0,
-    osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "std_gbuffer.vert.glsl"),
-    osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "std_gbuffer.frag.glsl"), 5,
+    osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "deferred/std_gbuffer.vert.glsl"),
+    osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "deferred/std_gbuffer.frag.glsl"), 5,
     "NormalBuffer", osgVerse::Pipeline::RGBA_INT8,
     "DiffuseMetallicBuffer", osgVerse::Pipeline::RGBA_INT8,
     "SpecularRoughnessBuffer", osgVerse::Pipeline::RGBA_INT8,

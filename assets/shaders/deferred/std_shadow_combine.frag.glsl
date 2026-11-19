@@ -1,6 +1,7 @@
 #pragma import_defines(VERSE_SHADOW_BAND_PCF, VERSE_SHADOW_POSSION_PCF)
 #pragma import_defines(VERSE_SHADOW_VSM, VERSE_SHADOW_ESM, VERSE_SHADOW_EVSM)
-#include "shadowing.module.glsl"
+#include "../shadowing.module.glsl"
+#include "../normal_encoding.module.glsl"
 
 uniform sampler2D ColorBuffer, NormalBuffer, DepthBuffer;
 uniform sampler2D EmissionBuffer;  // added here so that it also feeds the bloom extraction
@@ -88,7 +89,7 @@ void main()
     // Rebuild world vertex attributes
     vec4 vecInProj = vec4(uv0.x * 2.0 - 1.0, uv0.y * 2.0 - 1.0, depthValue, 1.0);
     vec4 eyeVertex = GBufferMatrices[3] * vecInProj;
-    vec3 eyeNormal = normalAlpha.rgb;
+    vec3 eyeNormal = decode_normal_octahedral(normalAlpha.rg);  // octahedral, see std_gbuffer.frag.glsl
     vec3 eyeLightDir = getEyeSpaceLightDirection(GBufferMatrices[0]);
     // Select the cascade covering this pixel by its view distance. Shadow maps of different
     // cascades have different resolutions, so multiplying all overlapping cascades (as it was

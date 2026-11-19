@@ -464,6 +464,7 @@ namespace osgVerse
         {
             osg::ref_ptr<osg::Shader> gbufferVS, gbufferGS, shadowCastVS, shadowCastGS;
             osg::ref_ptr<osg::Shader> gbufferFS, shadowCastFS, ssaoFS, ssaoBlurFS;
+            osg::ref_ptr<osg::Shader> ssgiFS, ssgiBlurFS;
             osg::ref_ptr<osg::Shader> pbrLightingFS, shadowCombineFS, shadowDebugCombineFS;
             osg::ref_ptr<osg::Shader> downsampleFS, luminanceFS, brightnessFS, brightnessCombineFS, bloomFS;
             osg::ref_ptr<osg::Shader> exposureAdaptationFS;
@@ -536,6 +537,14 @@ namespace osgVerse
         double depthPartitionNearValue;
         bool withEmbeddedViewer, debugShadowModule, debugShadowCombination, enableVSync, enableMRT;
         bool enableAO, enablePostEffects, enableUserInput, enableDepthPartition, enableVR, enable3DGS;
+        /** Screen-space global illumination (std_ssgi.frag.glsl): a stochastic screen-space
+            sampling of the hemisphere which produces the one-bounce diffuse radiance and the
+            coverage of the hemisphere the trace resolved. The tone mapping combines it with the
+            IBL diffuse fallback as "GI + (1 - coverage) * IBL" (see std_tonemapping.frag.glsl).
+            It is created after the shadow combining stage, whose shadowed direct lighting is the
+            radiance the GI rays pick up. Ignored on the GLES2 builds and together with
+            debugShadowCombination (their combined buffer does not hold the real radiance) */
+        bool enableGI;
         /** Temporal anti-aliasing. It needs the jittered projection & history buffer of the
             G-Buffer, and is switched off automatically on low-performance devices */
         bool enableTAA;

@@ -4,6 +4,7 @@
 // The bloom is left out on purpose: it is a post effect of that color, and metering it would
 // couple the exposure to the bloom settings again
 uniform sampler2D ColorBuffer, AmbientBuffer, DepthBuffer;
+uniform sampler2D AmbientSpecularBuffer, SsgiBuffer;  // kept apart by the lighting/SSGI stages
 // 1.0 when the background of the color buffer holds valid content (the sky of the deferred
 // pipeline), 0.0 when it is an empty background which must not take part in the average
 uniform float IncludeBackground;
@@ -33,7 +34,8 @@ void main()
         fragData = vec4(0.0, 0.0, 0.0, 1.0);
     else
     {
-        vec3 color = VERSE_TEX2D(ColorBuffer, uv0).rgb + VERSE_TEX2D(AmbientBuffer, uv0).rgb;
+        vec3 color = VERSE_TEX2D(ColorBuffer, uv0).rgb + VERSE_TEX2D(AmbientBuffer, uv0).rgb
+                   + VERSE_TEX2D(AmbientSpecularBuffer, uv0).rgb + VERSE_TEX2D(SsgiBuffer, uv0).rgb;
         float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
 
         // A pixel which is not a number (an uninitialised buffer, a division by zero somewhere in

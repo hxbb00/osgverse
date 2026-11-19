@@ -137,6 +137,11 @@ osgVerse/
 ├── assets/                     # Assets (models, shaders, textures)
 │   ├── models/                # 3D models
 │   ├── shaders/               # GLSL shaders
+│   │   ├── deferred/          # StandardPipeline per-frame stages (GBuffer, shadows,
+│   │   │                      #   SSAO/SSGI, deferred lighting, post effects: std_*)
+│   │   ├── forward/           # Forward path shaders (std_forward_render.*)
+│   │   └── *.module.glsl      # Shared include modules (stay in the root on purpose:
+│   │                          #   std_common_quad.*, IBL precomputation, skybox...)
 │   ├── skyboxes/              # HDR skyboxes
 │   └── textures/              # Textures
 │
@@ -410,8 +415,9 @@ being installed (check that `RealizeOperation` actually runs on the presenting c
 that is itself a bug worth fixing, as the driver message names the offending call.
 
 **7. Diff images for a visual regression.** Capture the same view with the feature ON and
-OFF (`--agent-keys`, `--no-shadows`, `--no-ssao`, `--no-bloom`, `--no-cluster`,
-`--cluster-tile`, `--cluster-slices`, ...), then compare the PNGs pixel-wise. A non-zero
+OFF (`--agent-keys`, `--no-shadows`, `--no-ssao`, `--no-ssgi`, `--no-bloom`,
+`--no-cluster`, `--cluster-tile`, `--cluster-slices`, ...), then compare the PNGs
+pixel-wise. A non-zero
 diff is expected where the feature is visible; a diff *outside* that region is a
 regression. `osgVerse::ScreenSnapshotCallback` (`pipeline/Utilities.h`) can be attached
 directly to a camera's `FINAL_DRAW` when a test needs custom capture timing.
@@ -477,13 +483,25 @@ this order (exact set depends on the parameters):
 ```
 GBuffer (input, mask = deferredMask)
   -> Ssao -> SsaoBlur1 -> SsaoBlur2            (when enableAO)
-  -> Lighting                                   (consumes the G-buffer + light table)
+  -> Lighting                                   (3 MRT outputs: ColorBuffer +
+                                                 IblAmbientBuffer + IblSpecularBuffer)
   -> Shadowing                                  (shadow combine; when shadows are on)
+  -> Ssgi -> SsgiBlur1 -> SsgiBlur2            (when enableGI; traces the *shadowed*
+                                                 radiance written by Shadowing)
   -> [user "Forward" input stage]               (added by addUserInputStage())
   -> [Brighting -> downsample chain -> combining]  (when enableBloom)
   -> DeferredSky                                (when useDeferredSky / TAA is on)
-  -> ToneMapping -> AntiAliasing (FXAA or TAA) -> Final (display stage)
+  -> ToneMapping (composes indirect light, see below)
+  -> AntiAliasing (FXAA or TAA) -> Final (display stage)
 ```
+
+**Indirect-light fallback chain.** The deferred lighting stage keeps diffuse and specular
+ambient in *separate* MRT buffers on purpose: screen-space effects can then be composed at
+tone mapping time as `indirectDiffuse = ssgi.rgb + (1 - ssgi.a) * iblDiffuse`, where
+`ssgi.a` is hemisphere *coverage* (how much of the pixel's hemisphere actually sees other
+geometry). Where nothing is traced, the IBL stays — this is the pluggable chain
+screen-space → (future: probes/DDGI) → IBL. The exposure (luminance) stage meters the same
+radiance the tone mapping sums, including the specular IBL and GI buffers.
 
 **Pipeline masks** decide which pass draws which node — set them with
 `Pipeline::setPipelineMask(node, mask)`; several masks can be OR-ed:
@@ -558,6 +576,47 @@ are packed by view range, and the VSM/EVSM paths add a blur chain the receiver-s
 shader consumes. `shadowNumber`, `shadowResolution` and the bias/exponent parameters come
 from `StandardPipelineParameters`.
 
+### Screen-Space Lighting Effects: SSAO / SSGI / Exposure
+
+**SSAO (`deferred/std_ssao*.frag.glsl`)** produces a hemisphere occlusion factor applied
+*only to indirect light* (diffuse uses `min(materialAO, SSAO)`, specular uses the GTSO
+function of Jimenez 2016), never to direct light — applying it to direct light double-
+darkens shadowed areas.
+
+**SSGI (`deferred/std_ssgi*.frag.glsl`, `enableGI`, default on; GLES2 and
+`debugShadowCombination` skip it)** is a one-bounce SSDO-style tracer: 16 golden-angle
+spiral samples in a screen-space disk around the pixel; a sample counts if it is above the
+horizon, inside the radius and not on the same surface. It returns the sample's own
+*outgoing* radiance (read from the **Shadowing** stage's combined buffer, so bounced light
+already respects shadows and albedo) times its weight, and accumulates hemisphere
+*coverage* in alpha. Output is `rgb = radiance * coverage` (premultiplied so the bilateral
+blur never erodes uncovered regions), `a = coverage`. Tone mapping composes
+`ssgi.rgb + (1 - ssgi.a) * iblDiffuse + iblSpecular`.
+
+Radius policy: with `GIRadius > 0` it is a world-unit radius (projected at the pixel
+depth); with `GIRadius <= 0` (the default) a constant on-screen radius (~40 px, ~5% of
+viewport height) is used and the corresponding world radius is derived per pixel — osgVerse
+scenes range from centimeter objects to a globe, so no single world radius fits all.
+
+**Next steps planned for the lighting system (see TODO_cn.md for tracking):**
+1. **Temporal reprojection (prerequisite: velocity buffer).** The screen-space effects are
+   noisy at 16 samples and flicker in motion; TAA already has a history chain, but there is
+   no per-pixel motion vector buffer yet. Add a `VelocityBuffer` output in the G-buffer
+   (previous-frame clip-space position via a previous-view matrix), then give SSAO/SSGI a
+   temporal accumulation pass and TAA proper motion handling (removes ghosting too).
+2. **Half-resolution SSGI + joint bilateral upsample** (upsample with depth+normal guides,
+   like the blur) — the tracer is the most expensive full-res pass at the moment.
+3. **Second bounce / bent normals**: the Ssgi stage output is already a pluggable slot in
+   the fallback chain; a second trace reading the blurred GI buffer (or feeding GI into
+   the specular occlusion) can build on it without touching tone mapping again.
+4. **Fallback chain level 2 — probe-based GI (DDGI-style)**: replace/augment the IBL
+   diffuse fallback for pixels with low screen-space coverage.
+5. **Deferred contact shadows** for point lights (screen-space raymarch against the depth
+   buffer in the lighting stage) — a cheap win on top of the existing cluster lighting.
+6. `standard_pipeline*.json` still embed the old shader sources (2-MRT ambient, RGB
+   normals, no GI); they are self-consistent variants but drift further with every shader
+   change — either regenerate them from the .glsl files or drop the embedding.
+
 ### 3DGS Training (VkSplat, Vulkan)
 
 - Vendored core: `3rdparty/vksplat/` (Apache-2.0, glm replaced by Eigen). It is built as `osgVerseVkSplat` only when `VERSE_BUILD_WITH_VKSPLAT=ON`, Vulkan is found, and the target is desktop Linux/Windows.
@@ -613,6 +672,42 @@ Rules of thumb:
 
 ### Known Pitfalls
 
+- **Shader `#include` is resolved by OSG's `osgdb_glsl` plugin, relative to the *including
+  shader's directory*.** `ReaderWriterGLSL::readShader` pushes the current file's directory
+  onto the options' `databasePathList` and resolves every bare `#include "x.module.glsl"`
+  against it. After the `deferred/`/`forward/` reorganization, shaders in those
+  subdirectories must write `#include "../x.module.glsl"`. The include pass in
+  `ShaderLibrary::processIncludes` is only a fallback (for scripts that bypass the plugin)
+  and resolves data-file → including-shader-relative → `SHADER_DIR` → `SHADER_DIR/deferred`
+  → `SHADER_DIR/forward`.
+- **Symptoms of a failed include are delayed and misleading:** the plugin logs
+  `Error reading file x.module.glsl: file not found` at *shader load* time, but the GL
+  compiler only complains much later with `undefined variable <function>` at link time.
+  Treat any `file not found` during load as fatal for that shader — do not debug the
+  "undefined variable" first.
+- **After moving/renaming shader files**, three things must be updated together: the C++
+  load paths (`PipelineStandard.cpp` ctor `READ_SHADER`s, `ShadowModule.cpp`, plus direct
+  loads in `tests/pipeline_test.cpp`, `tests/shadow_test.cpp`,
+  `tests/forward_pbr_test.cpp`, `wasm/pbr_demo/wasm_viewer.cpp`), the *runtime* shader
+  tree (`verse-build/<mode>/sdk/shaders` — mirror it with
+  `robocopy assets/shaders <runtime>/shaders /MIR` so stale flat copies are deleted, plain
+  copy leaves both old and new files), and the include paths above.
+- **There is no `osgVersePipeline.dll` on Windows** — the pipeline library is linked
+  statically into each test/viewer exe, so rebuilding the test target *is* rebuilding the
+  pipeline. But running the exe still needs the full PATH
+  (`osg-build\compat_x64\sdk\bin` first for OSG/plugins, then
+  `Dependencies\x64\msvc18\bin`, then `verse-build\compat_x64\bin`), and
+  `OSG_LIBRARY_PATH=verse-build\compat_x64\sdk\bin`.
+- **Do not mix cmd and PowerShell in one command line.** Inside `cmd /c "..."` anything
+  with `$` is mangled by the outer PowerShell, and `findstr /c:"a" /c:"b" /i` silently
+  mis-parses with several qualifiers. For anything non-trivial write a temporary `.ps1`
+  script and run it with `powershell -ExecutionPolicy Bypass -File`, or keep one cmd
+  `set ... && exe` line and post-filter the log with `Select-String` in a separate call.
+- **"Coverage ≈ 0 on surfaces facing open sky is correct, not a bug"** for SSAO and SSGI
+  alike: a wall whose hemisphere sees only the sky has no occluders/bouncers, so the
+  fallback (IBL) takes over entirely. Verify GI on interior/corner views (e.g. inside
+  Sponza), never judge it from an exterior wall; and remember eye adaptation is disabled
+  with `--no-bloom`, so A/B brightness changes are real, not exposure-compensated.
 - **`osg::TextureBuffer` + `setImage()` needs `dirtyTextureObject()`.** `apply()` calls
   `glTexBuffer()` only when the GL texture object is first created; `setImage()`
   (through `setBufferData()`) swaps the `BufferData`/`BufferObject` without touching the

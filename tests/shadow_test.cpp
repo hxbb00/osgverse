@@ -225,8 +225,8 @@ int main(int argc, char** argv)
     {
         shadow = new osgVerse::ShadowModule("Shadow", NULL, true);
         std::vector<osgVerse::Pipeline::Stage*> stages = shadow->createStages(2048, 3,
-            osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "std_shadow_cast.vert.glsl"),
-            osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "std_shadow_cast.frag.glsl"), SHADOW_CASTER_MASK);
+            osgDB::readShaderFile(osg::Shader::VERTEX, SHADER_DIR + "deferred/std_shadow_cast.vert.glsl"),
+            osgDB::readShaderFile(osg::Shader::FRAGMENT, SHADER_DIR + "deferred/std_shadow_cast.frag.glsl"), SHADOW_CASTER_MASK);
         std::vector<osg::ref_ptr<osgVerse::Pipeline::Stage>> refStages(stages.begin(), stages.end());
 
         osg::ref_ptr<osg::Group> shadowRoot = new osg::Group;

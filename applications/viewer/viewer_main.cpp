@@ -324,6 +324,7 @@ int main(int argc, char** argv)
                              osgVerse::StandardPipelineParameters::BEFORE_FINAL_STAGE);
     
     if (arguments.read("--no-ssao")) params.enableAO = false;
+    if (arguments.read("--no-ssgi")) params.enableGI = false;
     if (arguments.read("--no-posteffects")) params.enablePostEffects = false;
     if (arguments.read("--no-bloom")) params.enableBloom = false;
     if (arguments.read("--no-shadows")) params.shadowNumber = 0;

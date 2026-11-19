@@ -12,6 +12,11 @@
 - 重要变更：合并原第 23/32 行重复条目；多条原标 100% 但代码证据不支持的条目已明确降级并在备注注明"原100%"；新增 vksplat/3DGS 训练、MLT、Earth AI、Terrarium、EXR/Lottie、PerfProfiler 等文档漏记项。
 - 当前未提交改动：本次文档更新，以及 `pipeline/Utilities.cpp`（CORE 下禁用 lightmapper 的开关）；其余修复均已进历史提交。
 
+#### 本次审视说明（2026-11-20）
+- 范围：光照/屏幕空间效果（前向光照簇、SSAO 应用位置、法线编码、SSGI 初版）、shader 目录重组、AGENTS.md 测试经验补充；以 RTX 4080 桌面 GL2 兼容模式运行验证为主（1280×720 截图逐像素 A/B）。
+- 已完成并验证：Forward 光照簇、SSAO 间接光遮蔽、八面体法线、SSGI 初版（回退链第一级）、shaders 目录 deferred//forward/ 重组。
+- 光照系统后续计划按 AGENTS.md "Screen-Space Lighting Effects" 一节推进：velocity buffer + 时域重投影 → SSGI 半分辨率/多弹射 → 探针 GI 回退级 → 点光源接触阴影。
+
 #### TODO列表
 | 模块      | 所属库        | 类型     | 完成情况   | 具体内容描述  | 备注 |
 |-----------|-------------|----------|---------|-------------|------|
@@ -86,6 +91,16 @@
 | 模型/动画 | animation    | 新增     | 80%     | TweenAnimation 路径/纤程动画验证 | P3；原备注"待测试"；已有手工交互测试且 CMake 仍标 FIXME，缺自动断言 |
 | 渲染/例程 | pipeline     | 新增     | 70%     | 多光源测试案例 | P3；`tests/many_lights_test.cpp` 已存在，可上调进度，待补压力基线断言 |
 | 系统      |              | 新增     |         | 统一的输入设备抽象与手柄映射配置 | P3；现有窗口/UI 输入分散，XR 输入亦缺绑定配置 |
+| 渲染      | pipeline     | 优化     | 100%     | Forward 渲染路径接入光照簇（与 deferred 共享 LightCluster） | P1；`std_forward_render.frag.glsl` 新增 `VERSE_LIGHT_CLUSTER` 分支与 `getClusterIndex()`，`LightModule::applyToStateSet()` 返回下一可用纹理单元；many_lights/forward_pbr A/B 验证与基线差异仅 HUD 文本与容差噪声 |
+| 渲染      | pipeline     | 优化     | 100%     | SSAO 应用位置审查：只遮蔽间接光 | P1；漫反射 `min(materialAO, SSAO)`、镜面 GTSO（Jimenez 2016）；A/B 与 HEAD 基线几乎逐像素一致（5/1,024,000 像素），负向对照 116,576 像素证明测试敏感 |
+| 渲染      | pipeline     | 优化     | 100%     | GBuffer 法线八面体编码 | P1；新增 `normal_encoding.module.glsl` 共享模块，GBuffer/lighting/shadow combine/forward 全链路同步 |
+| 渲染      | pipeline     | 新增     | 100%     | SSGI 单弹射初版（间接光回退链第一级） | P1；`std_ssgi(+_blur).frag.glsl`：SSDO 风格 16 采样，输出 rgb=辐亮度×覆盖率（预乘）、a=覆盖率；lighting ambient 拆 3 MRT（Color/IblAmbient/IblSpecular）；tonemapping 合成 `ssgi.rgb + (1-覆盖率)×IBL 漫反射`；曝光计量同步纳入；`GIRadius<=0` 默认屏幕空间半径（40px）适配任意场景尺度； GLES2 与 debugShadowCombination 跳过；质量优化见下 |
+| 渲染      | pipeline     | 优化     | 100%     | assets/shaders 目录整理：deferred/ 与 forward/ 子目录 | P2；27 个延迟阶段 shader 入 deferred/、3 个 forward shader 入 forward/，共享模块（common_quad/IBL 预计算/skybox）留根；子目录 include 改 `../` 相对路径（OSG glsl 插件按包含文件所在目录解析，裸文件名会找不到）；全部 C++ 加载点同步后五个测试程序验证通过 |
+| 渲染      | pipeline     | 新增     |         | Velocity buffer + 屏幕空间效果时域重投影 | P1；SSAO/SSGI 16 采样有噪声且运动闪烁；TAA 已有历史链但无逐像素运动矢量（运动物体拖影同源）；GBuffer 输出 VelocityBuffer（经上一帧视图矩阵的裁剪空间位置），SSAO/SSGI 时域累积 + TAA 正确消拖影；计划详见 AGENTS.md "Screen-Space Lighting Effects" |
+| 渲染      | pipeline     | 优化     | 30%     | SSGI 质量与性能优化 | P1；半分辨率 + 深度/法线联合双边上采样、第二次弹射（读 SsgiBlurredBuffer 可直接叠加）、弯曲法线输出、GI 强度随场景亮度自动调参；当前为 16 采样全分辨率初版 |
+| 渲染      | pipeline     | 新增     |         | 间接光回退链第二级：探针 GI（DDGI 风格） | P2；回退链插槽已在 tonemapping 落地（screen-space → IBL），探针用于覆盖率低的像素替代/增强 IBL 漫反射回退 |
+| 渲染      | pipeline     | 新增     |         | 点光源延迟接触阴影（screen-space raymarch） | P2；在 lighting 阶段对深度缓冲光线步进，叠加在现有 cluster lighting 之上，低成本补足点光源阴影缺口（另见多光源阴影行） |
+| 渲染      | pipeline     | 除虫     |         | standard_pipeline*.json 内嵌 shader 与 .glsl 源漂移 | P2；JSON 仍是旧版（2-MRT ambient、RGB 法线、无 GI、旧目录名），每次 shader 改动漂移加大；从 .glsl 再生成或取消内嵌 |
 | —— | —— | —— | —— | **以下为复核后未见明显缺漏的历史完成项（未做运行时回归）** | —— |
 | 编译      |              | 新增     | 100%     | 支持 Static 编译流程 | 优先级：-；选项联动与静态插件注册机制齐全 |
 | 编译      |              | 新增     | 100%     | 支持 MinGW 编译流程 | 优先级：-；CMake 与 Setup.sh 分支齐备 |

@@ -389,9 +389,9 @@ namespace osgVerse
                 // One shared program for all cascades: the shader is identical, only the uniforms
                 // (ShadowFilterAttribs and InvShadowMapSize) change between stages
                 osg::ref_ptr<osg::Shader> blurVS = osgDB::readShaderFile(
-                    osg::Shader::VERTEX, SHADER_DIR + "std_shadow_blur.vert.glsl");
+                    osg::Shader::VERTEX, SHADER_DIR + "deferred/std_shadow_blur.vert.glsl");
                 osg::ref_ptr<osg::Shader> blurFS = osgDB::readShaderFile(
-                    osg::Shader::FRAGMENT, SHADER_DIR + "std_shadow_blur.frag.glsl");
+                    osg::Shader::FRAGMENT, SHADER_DIR + "deferred/std_shadow_blur.frag.glsl");
                 if (blurVS.valid() && blurFS.valid())
                 {
                     Pipeline::createShaderDefinitions(blurVS.get(), cxtVer, glslVer);

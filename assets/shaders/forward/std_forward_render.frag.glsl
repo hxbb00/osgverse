@@ -1,4 +1,4 @@
-#include "basic_lighting.module.glsl"
+#include "../basic_lighting.module.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 uniform sampler2D DiffuseMap, NormalMap, SpecularMap, ShininessMap;
@@ -11,12 +11,27 @@ uniform samplerBuffer LightParameterBuffer;
 uniform sampler2D LightParameterMap;  // (r0: col+type, r1: pos+att1, r2: dir+att0, r3: spotProp)
 #endif
 uniform vec2 LightNumber;  // (num, max_num)
+#ifdef VERSE_LIGHT_CLUSTER
+// Same clustered light culling as the deferred lighting pass (std_pbr_lighting.frag.glsl):
+// the CPU side (LightCluster) bins the lights into a 2D tile x exponential depth slice grid and
+// the fragment only walks the lights of the cluster it falls in. The light positions stored in
+// the parameter table are eye-space, and so is eyeVertex below, so the same assignment applies
+uniform samplerBuffer LightIndexBuffer;    // light indices of each cluster, in a flat list
+uniform samplerBuffer LightClusterBuffer;  // (offset, count) of the index list of each cluster
+uniform vec3 LightClusterGrid;             // grid size: (tilesX, tilesY, slices)
+uniform vec2 LightClusterTile;             // size of one screen tile, in pixels
+uniform vec2 LightClusterDepth;            // (near, far) range the slices are distributed over
+uniform int LightClusterEnabled;           // 1: loop over the lights of the current cluster only
+#endif
 VERSE_FS_IN vec4 texCoord0, texCoord1, color, eyeVertex;
 VERSE_FS_IN vec3 eyeNormal, eyeTangent, eyeBinormal;
 VERSE_FS_OUT vec4 fragData;
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
 const int maxLights = 1024;
+#ifdef VERSE_LIGHT_CLUSTER
+const int maxClusterLights = 256;  // must match LightCluster::MaxLightsPerCluster
+#endif
 
 /// PBR functions
 vec2 sphericalUV(vec3 v)
@@ -55,6 +70,22 @@ int getLightAttributes(in int id, out vec3 color, out vec3 pos, out vec3 dir,
     spotCutoff = attr2.w; return int(attr0.w);
 }
 
+#ifdef VERSE_LIGHT_CLUSTER
+// Linear index of the cluster a fragment belongs to (see LightCluster::build(), which uses the
+// same grid, the same exponential slices and the same near/far range on the CPU side)
+int getClusterIndex(vec3 eyePosition)
+{
+    ivec2 gridXY = ivec2(LightClusterGrid.xy);
+    ivec2 tile = ivec2(gl_FragCoord.xy / LightClusterTile);
+    tile = clamp(tile, ivec2(0), gridXY - 1);
+    float viewZ = max(-eyePosition.z, LightClusterDepth.x);
+    float f = log(viewZ / LightClusterDepth.x) / log(LightClusterDepth.y / LightClusterDepth.x);
+    int slices = int(LightClusterGrid.z);
+    int slice = clamp(int(f * float(slices)), 0, slices - 1);
+    return (slice * gridXY.y + tile.y) * gridXY.x + tile.x;
+}
+#endif
+
 void main()
 {
     vec2 uv0 = texCoord0.xy, uv1 = texCoord1.xy;
@@ -85,9 +116,42 @@ void main()
     // if it's a metal, use the albedo color as F0 (metallic workflow)
     vec3 F0 = mix(vec3(0.04), albedo, metallic), radianceOut = vec3(0.0);
 
-    // Compute direcional lights
+    // Compute lights: either the ones assigned to the cluster of this pixel (clustered light
+    // culling, computed on the CPU by LightCluster), or the whole table when it is disabled
     vec3 lightColor, lightPos, lightDir; float lightRange = 0.0, lightSpot = 0.0;
     int numLights = int(min(LightNumber.x, LightNumber.y));
+#ifdef VERSE_LIGHT_CLUSTER
+    if (LightClusterEnabled == 1)
+    {
+        vec2 clusterRange = texelFetch(LightClusterBuffer, getClusterIndex(eyeVertex.xyz)).rg;
+        int start = int(clusterRange.x), count = int(clusterRange.y);
+        for (int i = 0; i < maxClusterLights; ++i)
+        {
+            if (i >= count) break;  // to avoid 'WebGL: Loop index cannot be compared with non-constant expression'
+            int id = int(texelFetch(LightIndexBuffer, start + i).r);
+            int type = getLightAttributes(id, lightColor, lightPos, lightDir, lightRange, lightSpot);
+            if (type == 1)
+            {
+                radianceOut += get_directional_light_contribution(
+                        viewDir, eyeVertex.xyz, lightPos, lightDir, lightColor, albedo, metallic,
+                        roughness, eyeNormal, lightRange);
+            }
+            else if (type == 2)
+            {
+                radianceOut += get_point_light_contribution(
+                        viewDir, eyeVertex.xyz, lightPos, lightColor, albedo, metallic, roughness,
+                        eyeNormal, lightRange);
+            }
+            else if (type == 3)
+            {
+                radianceOut += get_spot_light_contribution(
+                        viewDir, eyeVertex.xyz, lightPos, lightDir, lightColor, albedo, metallic,
+                        roughness, eyeNormal, lightRange, lightSpot);
+            }
+        }
+    }
+    else
+#endif
     for (int i = 0; i < maxLights; ++i)
     {
         if (numLights <= i) break;  // to avoid 'WebGL: Loop index cannot be compared with non-constant expression'

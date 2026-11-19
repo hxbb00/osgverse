@@ -281,6 +281,46 @@ namespace osgVerse
         return startU + 1;
     }
 
+    int LightModule::applyToStateSet(osg::StateSet* ss, osg::Camera* refreshCam,
+                                     const std::string& prefix, int startU)
+    {
+        // Same registration rule as applyTextureAndUniforms(): only the first consumer gets the
+        // pre-draw refresh callback; later ones (the deferred lighting stage and a forward state
+        // set, for instance) share the same uniform objects and the table refreshed by it
+        if (ss == NULL) return startU;
+        if (refreshCam != NULL && !_tableCamera.valid())
+        {
+            _tableCamera = refreshCam;
+            refreshCam->addPreDrawCallback(new LightTableCallback(this, refreshCam));
+        }
+
+        if (_useTextureBuffer && _parameterBuffer.valid())
+        {
+            applyTextureAttributeAndModes(ss, startU, _parameterBuffer.get());
+            ss->addUniform(new osg::Uniform("LightParameterBuffer", startU));
+        }
+        else
+        {
+            applyTextureAttributeAndModes(ss, startU, _parameterTex.get());
+            ss->addUniform(new osg::Uniform(prefix.data(), startU));
+        }
+        ss->addUniform(getLightNumber());
+        ss->addUniform(_clusterEnabled.get());
+        if (getClusterEnabled() && _lightCluster->getIndexBuffer() != NULL &&
+            _lightCluster->getClusterBuffer() != NULL)
+        {
+            applyTextureAttributeAndModes(ss, startU + 1, _lightCluster->getIndexBuffer());
+            ss->addUniform(new osg::Uniform("LightIndexBuffer", startU + 1));
+            applyTextureAttributeAndModes(ss, startU + 2, _lightCluster->getClusterBuffer());
+            ss->addUniform(new osg::Uniform("LightClusterBuffer", startU + 2));
+            ss->addUniform(_clusterGrid.get());
+            ss->addUniform(_clusterTile.get());
+            ss->addUniform(_clusterDepth.get());
+            return startU + 3;
+        }
+        return startU + 1;
+    }
+
     LightGlobalManager* LightGlobalManager::instance()
     {
         static osg::ref_ptr<LightGlobalManager> s_instance = new LightGlobalManager;

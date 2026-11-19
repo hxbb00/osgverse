@@ -569,7 +569,7 @@ namespace osgVerse
         withEmbeddedViewer(false), debugShadowModule(false), debugShadowCombination(false),
         enableVSync(true), enableMRT(true), enableAO(true), enablePostEffects(true),
         enableUserInput(false), enableDepthPartition(false), enableVR(false), enable3DGS(true),
-        enableTAA(false), enableBloom(true), useDeferredSky(false), upscaling(0)
+        enableTAA(false), enableBloom(true), useDeferredSky(false), upscaling(0), enableGI(true)
     {
         obtainScreenResolution(originWidth, originHeight);
         if (!originWidth) originWidth = 1920; if (!originHeight) originHeight = 1080;
@@ -593,7 +593,7 @@ namespace osgVerse
         withEmbeddedViewer(false), debugShadowModule(false), debugShadowCombination(false),
         enableVSync(true), enableMRT(true), enableAO(true), enablePostEffects(true),
         enableUserInput(false), enableDepthPartition(false), enableVR(false), enable3DGS(true),
-        enableTAA(false), enableBloom(true), useDeferredSky(false), upscaling(0)
+        enableTAA(false), enableBloom(true), useDeferredSky(false), upscaling(0), enableGI(true)
     {
         obtainScreenResolution(originWidth, originHeight);
         if (!originWidth) originWidth = 1920; if (!originHeight) originHeight = 1080;
@@ -605,36 +605,43 @@ namespace osgVerse
     var = rw->readShader(name).getShader(); \
     if (var != NULL) var->setType(type);
 
-            READ_SHADER(shaders.gbufferVS, VERT, dir + "std_gbuffer.vert.glsl");
-            READ_SHADER(shaders.gbufferGS, GEOM, dir + "std_gbuffer.geom.glsl");
-            READ_SHADER(shaders.shadowCastVS, VERT, dir + "std_shadow_cast.vert.glsl");
-            READ_SHADER(shaders.shadowCastGS, GEOM, dir + "std_shadow_cast.geom.glsl");
+            // The per-frame stages of this deferred pipeline live in shaders/deferred/, the
+            // forward path shaders in shaders/forward/; the IBL precomputation and the shared
+            // quad shaders stay in the shader root as they serve both paths
+            const std::string defDir = dir + "deferred/", fwdDir = dir + "forward/";
 
-            READ_SHADER(shaders.gbufferFS, FRAG, dir + "std_gbuffer.frag.glsl");
-            READ_SHADER(shaders.shadowCastFS, FRAG, dir + "std_shadow_cast.frag.glsl");
-            READ_SHADER(shaders.ssaoFS, FRAG, dir + "std_ssao.frag.glsl");
-            READ_SHADER(shaders.ssaoBlurFS, FRAG, dir + "std_ssao_blur.frag.glsl");
-            READ_SHADER(shaders.pbrLightingFS, FRAG, dir + "std_pbr_lighting.frag.glsl");
-            READ_SHADER(shaders.shadowCombineFS, FRAG, dir + "std_shadow_combine.frag.glsl");
-            READ_SHADER(shaders.shadowDebugCombineFS, FRAG, dir + "std_shadow_debug_combine.frag.glsl");
-            READ_SHADER(shaders.downsampleFS, FRAG, dir + "std_luminance_downsample.frag.glsl");
-            READ_SHADER(shaders.luminanceFS, FRAG, dir + "std_luminance_extraction.frag.glsl");
-            READ_SHADER(shaders.exposureAdaptationFS, FRAG, dir + "std_exposure_adaptation.frag.glsl");
-            READ_SHADER(shaders.brightnessFS, FRAG, dir + "std_brightness_extraction.frag.glsl");
-            READ_SHADER(shaders.brightnessCombineFS, FRAG, dir + "std_brightness_combine.frag.glsl");
-            READ_SHADER(shaders.bloomFS, FRAG, dir + "std_brightness_bloom.frag.glsl");
-            READ_SHADER(shaders.tonemappingFS, FRAG, dir + "std_tonemapping.frag.glsl");
-            READ_SHADER(shaders.antiAliasingFS, FRAG, dir + "std_antialiasing.frag.glsl");
-            READ_SHADER(shaders.taaFS, FRAG, dir + "std_taa.frag.glsl");
+            READ_SHADER(shaders.gbufferVS, VERT, defDir + "std_gbuffer.vert.glsl");
+            READ_SHADER(shaders.gbufferGS, GEOM, defDir + "std_gbuffer.geom.glsl");
+            READ_SHADER(shaders.shadowCastVS, VERT, defDir + "std_shadow_cast.vert.glsl");
+            READ_SHADER(shaders.shadowCastGS, GEOM, defDir + "std_shadow_cast.geom.glsl");
+
+            READ_SHADER(shaders.gbufferFS, FRAG, defDir + "std_gbuffer.frag.glsl");
+            READ_SHADER(shaders.shadowCastFS, FRAG, defDir + "std_shadow_cast.frag.glsl");
+            READ_SHADER(shaders.ssaoFS, FRAG, defDir + "std_ssao.frag.glsl");
+            READ_SHADER(shaders.ssaoBlurFS, FRAG, defDir + "std_ssao_blur.frag.glsl");
+            READ_SHADER(shaders.ssgiFS, FRAG, defDir + "std_ssgi.frag.glsl");
+            READ_SHADER(shaders.ssgiBlurFS, FRAG, defDir + "std_ssgi_blur.frag.glsl");
+            READ_SHADER(shaders.pbrLightingFS, FRAG, defDir + "std_pbr_lighting.frag.glsl");
+            READ_SHADER(shaders.shadowCombineFS, FRAG, defDir + "std_shadow_combine.frag.glsl");
+            READ_SHADER(shaders.shadowDebugCombineFS, FRAG, defDir + "std_shadow_debug_combine.frag.glsl");
+            READ_SHADER(shaders.downsampleFS, FRAG, defDir + "std_luminance_downsample.frag.glsl");
+            READ_SHADER(shaders.luminanceFS, FRAG, defDir + "std_luminance_extraction.frag.glsl");
+            READ_SHADER(shaders.exposureAdaptationFS, FRAG, defDir + "std_exposure_adaptation.frag.glsl");
+            READ_SHADER(shaders.brightnessFS, FRAG, defDir + "std_brightness_extraction.frag.glsl");
+            READ_SHADER(shaders.brightnessCombineFS, FRAG, defDir + "std_brightness_combine.frag.glsl");
+            READ_SHADER(shaders.bloomFS, FRAG, defDir + "std_brightness_bloom.frag.glsl");
+            READ_SHADER(shaders.tonemappingFS, FRAG, defDir + "std_tonemapping.frag.glsl");
+            READ_SHADER(shaders.antiAliasingFS, FRAG, defDir + "std_antialiasing.frag.glsl");
+            READ_SHADER(shaders.taaFS, FRAG, defDir + "std_taa.frag.glsl");
             READ_SHADER(shaders.skyboxFS, FRAG, dir + "skybox.frag.glsl");
             READ_SHADER(shaders.brdfLutFS, FRAG, dir + "std_brdf_lut.frag.glsl");
             READ_SHADER(shaders.envPrefilterFS, FRAG, dir + "std_environment_prefiltering.frag.glsl");
             READ_SHADER(shaders.irrConvolutionFS, FRAG, dir + "std_irradiance_convolution.frag.glsl");
             READ_SHADER(shaders.quadFS, FRAG, dir + "std_common_quad.frag.glsl");
-            READ_SHADER(shaders.displayFS, FRAG, dir + "std_display.frag.glsl");
+            READ_SHADER(shaders.displayFS, FRAG, defDir + "std_display.frag.glsl");
 
-            READ_SHADER(shaders.forwardVS, VERT, dir + "std_forward_render.vert.glsl");
-            READ_SHADER(shaders.forwardFS, FRAG, dir + "std_forward_render.frag.glsl");
+            READ_SHADER(shaders.forwardVS, VERT, fwdDir + "std_forward_render.vert.glsl");
+            READ_SHADER(shaders.forwardFS, FRAG, fwdDir + "std_forward_render.frag.glsl");
             READ_SHADER(shaders.quadVS, VERT, dir + "std_common_quad.vert.glsl");
         }
 
@@ -1157,13 +1164,15 @@ namespace osgVerse
         // Embedded builds (GLES/WebGL) keep INT8, as half-float render targets are not
         // guaranteed to be color-renderable there
         osgVerse::Pipeline::Stage* lighting = p->addWorkStage("Lighting", 1.0f,
-            spp.shaders.quadVS, spp.shaders.pbrLightingFS, 2,
+            spp.shaders.quadVS, spp.shaders.pbrLightingFS, 3,
 #if defined(VERSE_EMBEDDED)
             "ColorBuffer", osgVerse::Pipeline::RGB_INT8,
-            "IblAmbientBuffer", osgVerse::Pipeline::RGB_INT8);
+            "IblAmbientBuffer", osgVerse::Pipeline::RGB_INT8,
+            "IblSpecularBuffer", osgVerse::Pipeline::RGB_INT8);
 #else
             "ColorBuffer", osgVerse::Pipeline::RGB_FLOAT16,
-            "IblAmbientBuffer", osgVerse::Pipeline::RGBA_FLOAT16);
+            "IblAmbientBuffer", osgVerse::Pipeline::RGBA_FLOAT16,
+            "IblSpecularBuffer", osgVerse::Pipeline::RGBA_FLOAT16);
 #endif
         lighting->applyBuffer(*gbuffer, "NormalBuffer", 0);
         lighting->applyBuffer(*gbuffer, "DiffuseMetallicBuffer", 1);
@@ -1234,6 +1243,57 @@ namespace osgVerse
         int shadowEndUnit = shadowModule->applyTextureAndUniforms(shadowing, "ShadowMap", 5);
         shadowing->applyBuffer(*gbuffer, "EmissionBuffer", shadowEndUnit);
         shadowModule->applyTechniqueDefines(shadowing->getOrCreateStateSet());
+
+        // Screen-space global illumination (see std_ssgi.frag.glsl). It is created right after
+        // the shadow combining stage, whose output (the shadowed direct lighting) is the
+        // radiance the GI rays pick up at their hits, and before the post effects: the tone
+        // mapping stage combines it with the IBL diffuse fallback per the "indirect = screen
+        // space -> IBL" chain. The debug combination variant of the shadowing stage draws
+        // visualization data into the combined buffer, which would be traced as radiance, so
+        // the GI is skipped in that mode
+        osgVerse::Pipeline::Stage* lastGiStage = NULL;
+#if !defined(VERSE_EMBEDDED_GLES2)  // the GI sampling is too heavy for the GLES2 builds
+        if (spp.enableGI && !spp.debugShadowCombination)
+        {
+#if defined(VERSE_EMBEDDED)
+            const osgVerse::Pipeline::BufferType giBuffer = osgVerse::Pipeline::RGBA_INT8;
+#else
+            // Radiance and coverage of the indirect lighting: HDR values are expected here as
+            // well (a bright light bounce can exceed 1.0), so a floating point buffer is used
+            const osgVerse::Pipeline::BufferType giBuffer = osgVerse::Pipeline::RGBA_FLOAT16;
+#endif
+            osgVerse::Pipeline::Stage* ssgi = p->addWorkStage("Ssgi", 1.0f,
+                spp.shaders.quadVS, spp.shaders.ssgiFS, 1, "SsgiBuffer", giBuffer);
+            ssgi->applyBuffer(*gbuffer, "NormalBuffer", 0);
+            ssgi->applyBuffer(*gbuffer, "DepthBuffer", 1);
+            ssgi->applyBuffer(*shadowing, "CombinedBuffer", 2);
+            ssgi->applyTexture(generatePoissonDiscDistribution(4, 4), "RandomTexture", 3);
+            // 0 lets the shader derive the traced radius from a constant on-screen size, which
+            // stays meaningful for scenes of any scale; a positive value is a world-unit radius
+            // for scenes where the bounce distance itself is meaningful
+            ssgi->applyUniform(new osg::Uniform("GIRadius", 0.0f));
+            ssgi->applyUniform(new osg::Uniform("GIIntensity", 1.0f));
+
+            // The sampling is interleaved (a per-pixel random pattern), so a pair of depth-aware
+            // separable blur stages removes its noise, exactly as the SSAO chain does above
+            osgVerse::Pipeline::Stage* ssgiBlur1 = p->addWorkStage("SsgiBlur1", 1.0f,
+                spp.shaders.quadVS, spp.shaders.ssgiBlurFS, 1,
+                "SsgiBlurredBuffer0", giBuffer);
+            ssgiBlur1->applyBuffer(*ssgi, "SsgiBuffer", 0);
+            ssgiBlur1->applyBuffer(*gbuffer, "DepthBuffer", 1);
+            ssgiBlur1->applyUniform(new osg::Uniform("BlurDirection", osg::Vec2(1.0f, 0.0f)));
+            ssgiBlur1->applyUniform(new osg::Uniform("BlurSharpness", 40.0f));
+
+            osgVerse::Pipeline::Stage* ssgiBlur2 = p->addWorkStage("SsgiBlur2", 1.0f,
+                spp.shaders.quadVS, spp.shaders.ssgiBlurFS, 1,
+                "SsgiBlurredBuffer", giBuffer);
+            ssgiBlur2->applyBuffer(*ssgiBlur1, "SsgiBlurredBuffer0", "SsgiBuffer", 0);
+            ssgiBlur2->applyBuffer(*gbuffer, "DepthBuffer", 1);
+            ssgiBlur2->applyUniform(new osg::Uniform("BlurDirection", osg::Vec2(0.0f, 1.0f)));
+            ssgiBlur2->applyUniform(new osg::Uniform("BlurSharpness", 40.0f));
+            lastGiStage = ssgiBlur2;
+        }
+#endif
 
         // User input module before post-effects
         occasion = StandardPipelineParameters::BEFORE_POSTEFFECTS;
@@ -1411,6 +1471,14 @@ namespace osgVerse
                 luminanceStage->applyBuffer(*shadowing, "CombinedBuffer", "ColorBuffer", 0);
                 luminanceStage->applyBuffer(*lighting, "IblAmbientBuffer", "AmbientBuffer", 2);
                 luminanceStage->applyBuffer(*gbuffer, "DepthBuffer", 1);
+                // The metering must see the same radiance the tone mapping sums: the specular
+                // IBL (kept apart by the lighting stage) and the screen-space GI of the frame
+                luminanceStage->applyBuffer(*lighting, "IblSpecularBuffer", "AmbientSpecularBuffer", 3);
+                if (lastGiStage != NULL)
+                    luminanceStage->applyBuffer(*lastGiStage, "SsgiBlurredBuffer", "SsgiBuffer", 4);
+                else
+                    luminanceStage->applyTexture(createDefaultTexture(
+                        osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f)), "SsgiBuffer", 4);
                 // The background of CombinedBuffer only holds valid content when the sky is drawn
                 // inside the pipeline: in that case it must take part in the average (it is what
                 // the eye adapts to when looking at the horizon). Otherwise it is nothing but the
@@ -1482,6 +1550,15 @@ namespace osgVerse
                 "ToneMappedBuffer", osgVerse::Pipeline::RGB_INT8);  // RGB_FLOAT16
             tonemapping->applyBuffer(*shadowing, "CombinedBuffer", "ColorBuffer", 0);
             tonemapping->applyBuffer(*lighting, "IblAmbientBuffer", 4);  // emission is in CombinedBuffer now
+            // The indirect diffuse fallback chain (screen-space GI -> IBL, see
+            // std_tonemapping.frag.glsl): the specular term is added as it is, the GI radiance
+            // + coverage pair fades the diffuse fallback where the trace resolved
+            tonemapping->applyBuffer(*lighting, "IblSpecularBuffer", 5);
+            if (lastGiStage != NULL)
+                tonemapping->applyBuffer(*lastGiStage, "SsgiBlurredBuffer", 6);
+            else
+                tonemapping->applyTexture(createDefaultTexture(
+                    osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f)), "SsgiBlurredBuffer", 6);
             if (blooming)
                 tonemapping->applyBuffer(*blooming, "BloomBuffer", 2);
             else
@@ -1633,14 +1710,12 @@ namespace osgVerse
         p->applyStagesToView(view, mainCam, spp.forwardMask);
         p->requireDepthBlit(gbuffer, true);
 
-        /*osg::StateSet* forwardSS = p->createForwardStateSet(
-            spp.shaders.forwardVS.get(), spp.shaders.forwardFS.get());
-        if (forwardSS && lightModule)
-        {
-            forwardSS->setTextureAttributeAndModes(7, lightModule->getParameterTable());
-            forwardSS->addUniform(new osg::Uniform("LightParameterMap", 7));
-            forwardSS->addUniform(lightModule->getLightNumber());
-        }*/
+        // Forward-shading objects (drawn by the main camera with the forwardMask) can use the
+        // same PBR lighting as the deferred pass: create a stateset with
+        // p->createForwardStateSet(spp.shaders.forwardVS.get(), spp.shaders.forwardFS.get())
+        // and feed it with lightModule->applyToStateSet(ss, mainCam, "LightParameterMap", 7),
+        // which also binds the cluster buffers. See tests/forward_pbr_test.cpp for a working
+        // example; this setup leaves the forward-masked nodes with their own shaders
         return true;
     }
 

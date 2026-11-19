@@ -22,6 +22,19 @@ namespace osgVerse
         /** Feed light parameter data & uniforms to certain pipeline stage */
         int applyTextureAndUniforms(Pipeline::Stage* stage, const std::string& prefix, int startU);
 
+        /** Feed light parameter data & uniforms (including the cluster buffers when enabled) to
+            a plain state set, which is how a forward-shading object uses the light module: create
+            the stateset with Pipeline::createForwardStateSet() and call this with it. The state
+            set will be drawn by the main camera, so 'refreshCam' should be that camera to have
+            the table refreshed in its pre-draw callback (leave it NULL if another stage or the
+            update traversal already refreshes the table every frame; the uniforms are shared
+            osg::Uniform objects in either case). Returns the next free texture unit. Note that
+            the cluster tile grid is built with the resolution of the consuming pass, so the state
+            set must be rendered at the same resolution the light module used (the window
+            resolution for a viewer camera without NIS downscaling) */
+        int applyToStateSet(osg::StateSet* ss, osg::Camera* refreshCam,
+                            const std::string& prefix, int startU);
+
         /** Whether the light parameter table is stored in a texture buffer object (TBO), which is
             the default on platforms providing samplerBuffer (desktop GL3 core, see
             VERSE_LIGHT_BUFFER in ShaderLibrary::createShaderDefinitions). Low-end devices
