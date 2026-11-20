@@ -26,6 +26,8 @@ namespace osgS57
         int kind = 0;           // RCNM code of the referenced record
         long long rcid = 0;     // RCID inside that record class
         int topi = 0;           // VRPT topology indicator (1=begin,2=end ...)
+        int ornt = 0;           // FSPT orientation (1=forward, 2=reverse, 3=undef)
+        int usag = 0;           // FSPT usage (1=exterior ring, 2=interior hole)
         bool valid() const { return kind >= 100 && rcid >= 0; }
     };
 
@@ -36,6 +38,9 @@ namespace osgS57
         long long rcid = 0;
         std::vector<S57::ChartPoint> pts;   // decoded coordinates (degrees)
         std::vector<SRef> links;       // VRPT pointer list
+        int ruin = 0;                  // update status: 1=insert, 2=delete, 3=modify
+        int rver = 0;                  // record version (update chain)
+        bool deleted = false;          // tombstone set by RUIN=2 update records
     };
 
     // One feature record.
@@ -45,6 +50,9 @@ namespace osgS57
         int objl = 0, prim = 0;
         std::vector<S57::AttributeInstance> attrs;
         std::vector<SRef> refs;        // FSPT pointer list
+        int ruin = 0;                  // update status: 1=insert, 2=delete, 3=modify
+        int rver = 0;                  // record version (update chain)
+        bool deleted = false;          // tombstone set by RUIN=2 update records
     };
 
     // Decode a 40-bit / wider binary NAME subfield into kind + RCID.
@@ -100,13 +108,55 @@ namespace osgS57
     // ---------------------------------------------------------------------------
     // chain-node rebuild: order a set of edges through their shared nodes
     // ---------------------------------------------------------------------------
-    struct Chain { std::vector<osg::Vec3> pts; bool closed = false; };
+    struct Chain
+    {
+        std::vector<osg::Vec3> pts;
+        bool closed = false;
+        int usag = 0;   // 1=exterior ring, 2=interior hole (0=unknown)
+        int ornt = 0;   // orientation of the first oriented edge
+    };
 
-    static osg::Vec3 nodeXY(const std::vector<VecRec>& recs, const Projection& pr, int nodeIdx)
+    // Signed area of a 2D ring (shoelace); positive = counter-clockwise.
+    static double ringArea(const std::vector<osg::Vec3>& r)
+    {
+        double s = 0.0;
+        for (size_t i = 0, j = r.size() - 1; i < r.size(); j = i++)
+            s += (double)r[j].x() * r[i].y() - (double)r[i].x() * r[j].y();
+        return s * 0.5;
+    }
+
+    // Is p inside a ring?  Ray casting; used to attach holes to their outer.
+    static bool pointInRing(const osg::Vec2& p, const std::vector<osg::Vec3>& r)
+    {
+        bool inside = false;
+        for (size_t i = 0, j = r.size() - 1; i < r.size(); j = i++)
+        {
+            const osg::Vec3& a = r[i]; const osg::Vec3& b = r[j];
+            if (((a.y() > p.y()) != (b.y() > p.y())) &&
+                (p.x() < (b.x() - a.x()) * (p.y() - a.y()) / (b.y() - a.y()) + a.x()))
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    // Build a Vec3Array copy of a ring for osgVerse::Feature::addPoints().
+    static osg::Vec3Array* toVec3Array(const std::vector<osg::Vec3>& pts)
+    {
+        osg::Vec3Array* va = new osg::Vec3Array;
+        va->insert(va->end(), pts.begin(), pts.end());
+        return va;
+    }
+
+    // Return false (and leave 'out' untouched) when the node has no geometry.
+    // Returning (0,0,0) here used to inject the projection origin -- the image
+    // centre -- into chains, producing the fan of long straight lines.
+    static bool nodeXY(const std::vector<VecRec>& recs, const Projection& pr,
+                       int nodeIdx, osg::Vec3& out)
     {
         if (nodeIdx >= 0 && nodeIdx < static_cast<int>(recs.size()) &&
-            !recs[nodeIdx].pts.empty()) return pr.toXY(recs[nodeIdx].pts[0]);
-        return osg::Vec3();
+            !recs[nodeIdx].pts.empty())
+            { out = pr.toXY(recs[nodeIdx].pts[0]); return true; }
+        return false;
     }
 
     // Append one edge's vertices to a chain, oriented startNode -> endNode.
@@ -117,28 +167,21 @@ namespace osgS57
         const VecRec& e = recs[eIdx];
         if (e.pts.empty())
         {
-            // straight edge: geometry comes from its two nodes
-            bool pushed = false;
-            if (fromNode >= 0)
-            {
-                osg::Vec3 p = nodeXY(recs, pr, fromNode);
-                if (out.empty() || out.back() != p) out.push_back(p);
-                pushed = true;
-            }
-            if (toNode >= 0 && toNode != fromNode)
-            {
-                osg::Vec3 p = nodeXY(recs, pr, toNode);
-                if (out.empty() || out.back() != p) out.push_back(p);
-                pushed = true;
-            }
-            if (!pushed && !e.pts.empty()) out.push_back(pr.toXY(e.pts[0]));
+            // straight edge: geometry comes from its two nodes, but only if
+            // those nodes actually carry coordinates
+            osg::Vec3 p;
+            if (nodeXY(recs, pr, fromNode, p) && (out.empty() || out.back() != p))
+                out.push_back(p);
+            if (toNode != fromNode && nodeXY(recs, pr, toNode, p) &&
+                (out.empty() || out.back() != p)) out.push_back(p);
             return;
         }
 
         bool forward = true;
-        if (fromNode >= 0)
+        osg::Vec3 nf;
+        bool haveFrom = nodeXY(recs, pr, fromNode, nf);
+        if (haveFrom)
         {
-            osg::Vec3 nf = nodeXY(recs, pr, fromNode);
             const S57::ChartPoint& f0 = e.pts.front();
             const S57::ChartPoint& f1 = e.pts.back();
             osg::Vec3 p0 = pr.toXY(f0), p1 = pr.toXY(f1);
@@ -146,6 +189,9 @@ namespace osgS57
             forward = d2(p0, nf) <= d2(p1, nf);
         }
 
+        // S-57 requires SG2D's first/last points to equal the connected NODE
+        // coordinates, so the endpoint nodes are already present.  Do NOT
+        // prepend/append them again: that only duplicates ~3% of the vertices.
         if (forward)
         {
             for (const S57::ChartPoint& p : e.pts)
@@ -162,10 +208,13 @@ namespace osgS57
                 if (out.empty() || out.back() != v) out.push_back(v);
             }
         }
+
     }
 
     static std::vector<Chain> buildChains(const std::vector<VecRec>& recs,
-                                          const Projection& pr, const std::vector<int>& edgeIdx)
+                                          const Projection& pr, const std::vector<int>& edgeIdx,
+                                          const std::vector<int>* usagList = NULL,
+                                          const std::vector<int>* orntList = NULL)
     {
         std::vector<Chain> result;
 
@@ -217,6 +266,13 @@ namespace osgS57
                 if (a == curNode) other = b;
                 else if (b == curNode) other = a;
                 appendEdge(recs, pr, edgeIdx[curEdge], curNode, other, chain.pts);
+                // remember USAG/ORNT of the first edge that carries one
+                if (usagList && chain.usag == 0 &&
+                    curEdge < static_cast<int>(usagList->size()) && (*usagList)[curEdge] != 0)
+                    chain.usag = (*usagList)[curEdge];
+                if (orntList && chain.ornt == 0 &&
+                    curEdge < static_cast<int>(orntList->size()) && (*orntList)[curEdge] != 0)
+                    chain.ornt = (*orntList)[curEdge];
                 curNode = other;
                 if (other >= 0 && other == startNode)
                 {
@@ -276,36 +332,58 @@ namespace osgS57
         std::vector<VecRec> recs;
         std::vector<FeatureRec> features;
         std::map<std::pair<int, long long>, int> spatialIndex; // (kind,rcid)->rec
+        double lonMin = 1e9, lonMax = -1e9, latMin = 1e9, latMax = -1e9;
+        bool haveGeo = false;
 
+        void updateBounds(const VecRec& v)
+        {
+            for (const S57::ChartPoint& p : v.pts)
+            {
+                lonMin = std::min(lonMin, p.lon); lonMax = std::max(lonMax, p.lon);
+                latMin = std::min(latMin, p.lat); latMax = std::max(latMax, p.lat);
+                haveGeo = true;
+            }
+        }
+
+        // deleted records stay in place as tombstones so that the indices
+        // stored in spatialIndex (and in FeatureRec edge indices) stay valid
         int findSpatial(int kind, long long rcid) const
         {
             auto it = spatialIndex.find({ kind, rcid });
-            if (it != spatialIndex.end()) return it->second;
+            if (it != spatialIndex.end())
+            {
+                int idx = it->second;
+                if (idx >= 0 && idx < static_cast<int>(recs.size()) && !recs[idx].deleted)
+                    return idx;
+                return -1;
+            }
             // tolerate producers that mix node classes
             if (kind == 110 || kind == 120)
-                for (const VecRec& v : recs)
-                    if (v.rcid == rcid && (v.kind == 110 || v.kind == 120))
-                        return static_cast<int>(&v - &recs[0]);
+                for (std::size_t i = 0; i < recs.size(); ++i)
+                    if (!recs[i].deleted && recs[i].rcid == rcid &&
+                        (recs[i].kind == 110 || recs[i].kind == 120))
+                        return static_cast<int>(i);
             return -1;
+        }
+
+        int addVector(const VecRec& vr)
+        {
+            int idx = static_cast<int>(recs.size());
+            recs.push_back(vr);
+            spatialIndex[{vr.kind, vr.rcid}] = idx;
+            updateBounds(vr);
+            return idx;
         }
     };
 
-    static osgVerse::FeatureCollection* buildChart(const I8211::Iso8211Reader& rdr)
+    // Parse every vector/feature record of one ISO8211 dataset (base cell or
+    // update cell) into 'chart'.  Update cells carry no DSPM of their own, so
+    // the caller passes the base cell's parameters (COMF/SOMF inheritance);
+    // RUIN/RVER subfields are stored on the records for the update merge.
+    static void parseDataset(const I8211::Iso8211Reader& rdr,
+                             const S57::DatasetParameters& dspm, ChartData& chart)
     {
         std::size_t n = rdr.recordCount();
-        if (n == 0) return NULL;
-
-        // dataset parameters (coordinate scale)
-        S57::DatasetParameters dspm;
-        for (std::size_t i = 0; i < n; ++i)
-        {
-            const auto& rec = rdr.record(i);
-            if (rec.find("DSPM")) dspm = S57::readDspm(rdr, rec);
-        }
-
-        ChartData chart;
-        double lonMin = 1e9, lonMax = -1e9, latMin = 1e9, latMax = -1e9;
-        bool haveGeo = false;
 
         // ---- pass 1: vector records -------------------------------------------
         for (std::size_t i = 0; i < n; ++i)
@@ -320,6 +398,8 @@ namespace osgS57
             VecRec vr;
             vr.kind = kind;
             vr.rcid = rdr.intSubfield(rec, "VRID", 0, "RCID", 0, &ok);
+            vr.ruin = static_cast<int>(rdr.intSubfield(rec, "VRID", 0, "RUIN", 0, &ok));
+            vr.rver = static_cast<int>(rdr.intSubfield(rec, "VRID", 0, "RVER", 0, &ok));
             vr.pts = S57::spatialCoordinates(rdr, rec, dspm);
 
             // VRPT pointer list (nodes for edges, edges for faces)
@@ -337,15 +417,7 @@ namespace osgS57
                 }
             }
 
-            int idx = static_cast<int>(chart.recs.size());
-            chart.recs.push_back(vr);
-            chart.spatialIndex[{kind, vr.rcid}] = idx;
-            for (const S57::ChartPoint& p : vr.pts)
-            {
-                lonMin = std::min(lonMin, p.lon); lonMax = std::max(lonMax, p.lon);
-                latMin = std::min(latMin, p.lat); latMax = std::max(latMax, p.lat);
-                haveGeo = true;
-            }
+            chart.addVector(vr);
         }
 
         // ---- pass 2: feature records ------------------------------------------
@@ -359,6 +431,8 @@ namespace osgS57
             fr.rcid = rdr.intSubfield(rec, "FRID", 0, "RCID", 0, &ok);
             fr.prim = static_cast<int>(rdr.intSubfield(rec, "FRID", 0, "PRIM", 0, &ok));
             fr.objl = static_cast<int>(rdr.intSubfield(rec, "FRID", 0, "OBJL", 0, &ok));
+            fr.ruin = static_cast<int>(rdr.intSubfield(rec, "FRID", 0, "RUIN", 0, &ok));
+            fr.rver = static_cast<int>(rdr.intSubfield(rec, "FRID", 0, "RVER", 0, &ok));
             fr.attrs = S57::readAttributes(rdr, rec);
             if (rec.find("FSPT"))
             {
@@ -371,21 +445,30 @@ namespace osgS57
                     if (decodeName(name, r))
                     {
                         r.topi = static_cast<int>(rdr.intSubfield(rec, "FSPT", 0, "TOPI", k, &ok));
+                        r.ornt = static_cast<int>(rdr.intSubfield(rec, "FSPT", 0, "ORNT", k, &ok));
+                        r.usag = static_cast<int>(rdr.intSubfield(rec, "FSPT", 0, "USAG", k, &ok));
                         fr.refs.push_back(r);
                     }
                 }
             }
             chart.features.push_back(fr);
         }
+    }
+
+    // Turn the (possibly update-merged) chart into a FeatureCollection.
+    static osgVerse::FeatureCollection* assembleChart(const ChartData& chart,
+                                                      const S57::DatasetParameters& dspm)
+    {
         if (chart.features.empty()) return NULL;
 
         // ---- projection centre ------------------------------------------------
         Projection pr;
-        if (haveGeo) pr.set(lonMin, latMin, lonMax, latMax);
+        if (chart.haveGeo) pr.set(chart.lonMin, chart.latMin, chart.lonMax, chart.latMax);
 
         osgVerse::FeatureCollection* collection = new osgVerse::FeatureCollection;
         for (const FeatureRec& fr : chart.features)
         {
+            if (fr.deleted) continue;   // removed by an update cell
             S57::ObjectClassInfo oi = S57::objectClass(fr.objl);
             std::string acr = oi.valid ? oi.acronym : "UNK" + std::to_string(fr.objl);
             std::string cls = oi.valid ? oi.name : "(unknown object class)";
@@ -401,14 +484,16 @@ namespace osgS57
             osg::Vec4 color = palette[(unsigned int)(fr.objl) %
                                       (sizeof(palette) / sizeof(palette[0]))];
 
-            // resolve the referenced spatial records
-            std::vector<int> nodeRefs, edgeRefs, faceRefs;
+            // resolve the referenced spatial records (USAG/ORNT stay parallel
+            // to edgeRefs so that chain assembly can propagate them)
+            std::vector<int> nodeRefs, edgeRefs, faceRefs, edgeUsags, edgeOrnts;
             for (const SRef& r : fr.refs)
             {
                 int idx = chart.findSpatial(r.kind, r.rcid);
                 if (idx < 0) continue;
                 if (r.kind == 110 || r.kind == 120) nodeRefs.push_back(idx);
-                else if (r.kind == 130) edgeRefs.push_back(idx);
+                else if (r.kind == 130)
+                    { edgeRefs.push_back(idx); edgeUsags.push_back(r.usag); edgeOrnts.push_back(r.ornt); }
                 else if (r.kind == 140) faceRefs.push_back(idx);
             }
 
@@ -421,6 +506,11 @@ namespace osgS57
                 ft->setUserValue("ObjectCode", (double)fr.objl);
                 ft->setUserValue("RCID", (double)fr.rcid);
                 ft->setUserValue("Primitive", (double)fr.prim);
+                // metadata objects (M_QUAL/M_COVR/M_NPUB/M_NSYS ...) span the
+                // whole cell and are presentation-only; flag them so raster
+                // rendering can skip them (S-52 does not display metadata)
+                if (acr.size() > 2 && acr[0] == 'M' && acr[1] == '_')
+                    ft->setUserValue("IsMetaObject", 1.0);
                 for (const S57::AttributeInstance& a : fr.attrs)
                 {
                     S57::AttributeInfo ai = S57::attribute(static_cast<int>(a.code));
@@ -464,7 +554,7 @@ namespace osgS57
                             }
                 }
 
-                std::vector<Chain> chains = buildChains(chart.recs, pr, ids);
+                std::vector<Chain> chains = buildChains(chart.recs, pr, ids, &edgeUsags, &edgeOrnts);
                 for (const Chain& c : chains)
                 {
                     if (c.pts.size() < 2) continue;
@@ -490,40 +580,334 @@ namespace osgS57
                             }
                 }
 
-                std::vector<Chain> rings = buildChains(chart.recs, pr, ids);
+                std::vector<Chain> rings = buildChains(chart.recs, pr, ids, &edgeUsags, &edgeOrnts);
                 if (!rings.empty())
                 {
-#if false
-                    osgVerse::Feature* feature = new osgVerse::Feature;
-                    fillMeta(feature); feature->setType(GL_POLYGON);
+                    struct RingData
+                    {
+                        std::vector<osg::Vec3> pts;
+                        double area = 0.0;
+                        int usag = 0;        // FSPT.USAG: 1=exterior, 2=hole
+                        int depth = 0;       // how many other rings contain this one
+                        bool hole = false;   // interior ring (hole)
+                    };
+                    std::vector<RingData> closed;
+
                     for (const Chain& r : rings)
                     {
-                        if (r.pts.size() < 3) continue;
-                        // closed ring: tessellation works on an open contour list
-                        osg::ref_ptr<osg::Vec3Array> va = new osg::Vec3Array;
-                        va->insert(va->end(), r.pts.begin(), r.pts.end());
-                        if (va->size() > 2 && (*va)[0] == (*va)[va->size() - 1]) va->pop_back();
-                        if (va->size() >= 3) feature->addPoints(va.get());
+                        if (!r.closed) continue;          // truncated by the cell edge
+                        if (r.pts.size() < 3) continue;   // degenerate leftover ring
+                        RingData rd; rd.pts = r.pts; rd.usag = r.usag;
+                        if (rd.pts.size() > 2 && rd.pts.front() == rd.pts.back()) rd.pts.pop_back();
+                        if (rd.pts.size() < 3) continue;  // degenerate after dedup
+                        rd.area = ringArea(rd.pts); closed.push_back(rd);
                     }
-                    made = !feature->getPointList().empty();
-                    if (made) collection->push_back(feature);
-#else
+
+                    // nesting depth: an even depth is an exterior, odd a hole.
+                    // FSPT.USAG overrides the geometric guess when present.
+                    for (size_t i = 0; i < closed.size(); ++i)
+                    {
+                        const osg::Vec3& p = closed[i].pts[0];
+                        for (size_t j = 0; j < closed.size(); ++j)
+                        {
+                            if (i == j) continue;
+                            if (pointInRing(osg::Vec2(p.x(), p.y()), closed[j].pts)) closed[i].depth++;
+                        }
+                        bool hole = (closed[i].depth % 2 == 1);
+                        if (closed[i].usag == 1) hole = false;
+                        else if (closed[i].usag == 2) hole = true;
+                        closed[i].hole = hole;
+                    }
+
+                    // attach each hole to the smallest exterior containing it,
+                    // then emit ONE feature per exterior: [outer, hole, hole...].
+                    // Mixing all rings of a cell into a single polygon (old code)
+                    // makes odd/even-odd fill draw spurious long triangles.
+                    std::vector<std::vector<size_t>> owned(closed.size());
+                    for (size_t h = 0; h < closed.size(); ++h)
+                    {
+                        if (!closed[h].hole) continue;
+                        const osg::Vec3& p = closed[h].pts[0];
+                        int best = -1; double bestArea = 1e300;
+                        for (size_t o = 0; o < closed.size(); ++o)
+                        {
+                            if (closed[o].hole || o == h) continue;
+                            if (!pointInRing(osg::Vec2(p.x(), p.y()), closed[o].pts)) continue;
+                            if (fabs(closed[o].area) < bestArea)
+                                { bestArea = fabs(closed[o].area); best = static_cast<int>(o); }
+                        }
+                        if (best >= 0) owned[best].push_back(h);
+                        else closed[h].hole = false;   // orphan hole: keep as exterior
+                    }
+
+                    for (size_t o = 0; o < closed.size(); ++o)
+                    {
+                        if (closed[o].hole) continue;
+                        osgVerse::Feature* area = new osgVerse::Feature;
+                        fillMeta(area); area->setType(GL_POLYGON);
+                        area->addPoints(toVec3Array(closed[o].pts));
+                        for (size_t h : owned[o]) area->addPoints(toVec3Array(closed[h].pts));
+                        area->setUserValue("ExteriorRings", 1.0);
+                        area->setUserValue("InteriorRings", (double)owned[o].size());
+                        collection->push_back(area);
+                    }
+
+                    // rings truncated by the cell boundary: boundary-only loops
                     for (const Chain& r : rings)
                     {
-                        if (r.pts.size() < 3) continue;
+                        if (r.closed || r.pts.size() < 3) continue;
                         osg::ref_ptr<osg::Vec3Array> va = new osg::Vec3Array;
                         va->insert(va->end(), r.pts.begin(), r.pts.end());
                         if (va->size() > 2 && (*va)[0] == (*va)[va->size() - 1]) va->pop_back();
 
                         osgVerse::Feature* feature = new osgVerse::Feature;
-                        fillMeta(feature); feature->setType(GL_LINE_LOOP);
+                        // truncated chains are OPEN: a LINE_LOOP would draw a
+                        // spurious long segment from the last point to the first
+                        fillMeta(feature); feature->setType(GL_LINE_STRIP);
                         feature->addPoints(va.get()); collection->push_back(feature);
                     }
-#endif
                 }
             }
         }
         return collection;
+    }
+
+    // ---------------------------------------------------------------------------
+    // P1: update cells (.001 .002 ...).  Per S-57 Appendix 2 an update record
+    // carries a RUIN subfield in its VRID/FRID field:
+    //     1 = insert (new record), 2 = delete (key-only record), 3 = modify
+    // and its RVER must be exactly one higher than the version it replaces.
+    // A cell can be cancelled by an update whose DSID.EDTN starts with '0'.
+    // ---------------------------------------------------------------------------
+    struct UpdateStats
+    {
+        std::string file;
+        int inserts = 0, deletes = 0, modifies = 0, skipped = 0;
+        bool cancelled = false;
+    };
+
+    static bool rverChainOk(int baseRver, int updRver, const char* what,
+                            long long rcid, const std::string& file)
+    {
+        if (baseRver > 0 && updRver > 0 && updRver != baseRver + 1)
+        {
+            OSG_WARN << "[ReaderWriterS57] broken RVER chain in "
+                     << osgDB::getSimpleFileName(file) << ": " << what
+                     << " RCID " << rcid << " expects RVER " << (baseRver + 1)
+                     << ", got " << updRver << " (record skipped)" << std::endl;
+            return false;
+        }
+        return true;
+    }
+
+    // Apply one update cell to 'chart'.  Returns false when the update could
+    // not be applied (the caller must stop the chain: later updates would be
+    // built on a wrong state).
+    static bool applyUpdateCell(const std::string& path, ChartData& chart,
+                                const S57::DatasetParameters& dspm, UpdateStats& stats)
+    {
+        stats.file = path;
+        std::ifstream in(path, std::ios::in | std::ios::binary);
+        if (!in)
+        {
+            OSG_WARN << "[ReaderWriterS57] cannot open update cell " << path << std::endl;
+            return false;
+        }
+        std::vector<uint8_t> buffer((std::istreambuf_iterator<char>(in)),
+                                    std::istreambuf_iterator<char>());
+        if (buffer.empty())
+        {
+            OSG_WARN << "[ReaderWriterS57] empty update cell " << path << std::endl;
+            return false;
+        }
+
+        I8211::Iso8211Reader rdr;
+        I8211::ParseResult pr = rdr.openMemory(buffer);
+        if (!pr.ok)
+        {
+            OSG_WARN << "[ReaderWriterS57] " << osgDB::getSimpleFileName(path)
+                     << ": " << pr.message << std::endl;
+            return false;
+        }
+
+        // cancellation update: announces that the referenced cell is withdrawn
+        if (rdr.recordCount() > 0)
+        {
+            const auto& rec = rdr.record(0);
+            bool ok = false;
+            std::string edtn = rdr.stringSubfield(rec, "DSID", 0, "EDTN", 0, &ok);
+            if (ok && !edtn.empty() && edtn[0] == '0')
+            {
+                OSG_INFO << "[ReaderWriterS57] " << osgDB::getSimpleFileName(path)
+                         << " is a cancellation update (EDTN=" << edtn << "), skipped"
+                         << std::endl;
+                stats.cancelled = true;
+                return true;
+            }
+        }
+
+        // parse the update's own records; they carry no DSPM, so coordinates
+        // are decoded with the BASE cell's COMF/SOMF (inherited parameter)
+        ChartData upd;
+        parseDataset(rdr, dspm, upd);
+
+        for (const VecRec& uv : upd.recs)
+        {
+            if (uv.kind < 110 || uv.kind > 140) continue;
+            if (uv.ruin == 2)                    // ---- delete
+            {
+                int idx = chart.findSpatial(uv.kind, uv.rcid);
+                if (idx < 0) { stats.skipped++; continue; }
+                int baseRver = chart.recs[idx].rver;
+                // same version: a re-issued update, already applied -> idempotent skip
+                if (uv.rver > 0 && baseRver > 0 && uv.rver == baseRver)
+                    { stats.skipped++; continue; }
+                if (!rverChainOk(baseRver, uv.rver, "vector", uv.rcid, stats.file))
+                    { stats.skipped++; continue; }
+                chart.recs[idx].deleted = true;
+                stats.deletes++;
+            }
+            else if (uv.ruin == 3)               // ---- modify: replace in place
+            {
+                int idx = chart.findSpatial(uv.kind, uv.rcid);
+                if (idx < 0) { stats.skipped++; continue; }
+                int baseRver = chart.recs[idx].rver;
+                if (uv.rver > 0 && baseRver > 0 && uv.rver == baseRver)
+                    { stats.skipped++; continue; }   // re-issued update
+                if (!rverChainOk(baseRver, uv.rver, "vector", uv.rcid, stats.file))
+                    { stats.skipped++; continue; }
+                VecRec merged = uv; merged.ruin = 3; merged.deleted = false;
+                chart.recs[idx] = merged;
+                chart.updateBounds(merged);
+                stats.modifies++;
+            }
+            else                                 // ---- insert
+            {
+                // re-issued (already applied) updates must not duplicate records
+                if (chart.findSpatial(uv.kind, uv.rcid) >= 0)
+                    { stats.skipped++; continue; }
+                chart.addVector(uv);
+                stats.inserts++;
+            }
+        }
+
+        for (const FeatureRec& uf : upd.features)
+        {
+            if (uf.ruin == 2)                    // ---- delete
+            {
+                for (std::size_t i = 0; i < chart.features.size(); ++i)
+                {
+                    FeatureRec& base = chart.features[i];
+                    if (base.deleted || base.rcid != uf.rcid) continue;
+                    // same version: re-issued update -> idempotent skip
+                    if (uf.rver > 0 && base.rver > 0 && uf.rver == base.rver)
+                        { stats.skipped++; break; }
+                    if (!rverChainOk(base.rver, uf.rver, "feature", uf.rcid, stats.file))
+                        { stats.skipped++; break; }
+                    base.deleted = true;
+                    stats.deletes++;
+                    break;
+                }
+            }
+            else if (uf.ruin == 3)               // ---- modify: replace in place
+            {
+                for (std::size_t i = 0; i < chart.features.size(); ++i)
+                {
+                    FeatureRec& base = chart.features[i];
+                    if (base.deleted || base.rcid != uf.rcid) continue;
+                    if (uf.rver > 0 && base.rver > 0 && uf.rver == base.rver)
+                        { stats.skipped++; break; }   // re-issued update
+                    if (!rverChainOk(base.rver, uf.rver, "feature", uf.rcid, stats.file))
+                        { stats.skipped++; break; }
+                    FeatureRec merged = uf; merged.ruin = 3; merged.deleted = false;
+                    base = merged;
+                    stats.modifies++;
+                    break;
+                }
+            }
+            else                                 // ---- insert
+            {
+                // re-issued (already applied) updates must not duplicate records
+                bool dup = false;
+                for (std::size_t i = 0; i < chart.features.size(); ++i)
+                    if (!chart.features[i].deleted && chart.features[i].rcid == uf.rcid)
+                        { dup = true; break; }
+                if (dup) { stats.skipped++; continue; }
+                chart.features.push_back(uf);
+                stats.inserts++;
+            }
+        }
+        return true;
+    }
+
+    // Merge every numbered sibling update cell of 'basePath' in sequence
+    // (GB5X01SW.000 -> .001, .002, ...).  The chain stops at the first file
+    // that is missing or fails to apply.
+    static void applyUpdateCells(const std::string& basePath, ChartData& chart,
+                                 const S57::DatasetParameters& dspm)
+    {
+        std::string dir = osgDB::getFilePath(basePath);
+        std::string stem = osgDB::getNameLessExtension(osgDB::getSimpleFileName(basePath));
+        std::string baseExt = osgDB::getLowerCaseFileExtension(basePath);
+        int num = atoi(baseExt.c_str());
+        if (num < 0) return;   // base cells are .000, updates start at .001
+
+        for (++num; num < 1000; ++num)
+        {
+            char ext[8]; sprintf(ext, "%03d", num);
+            std::string f = dir.empty()
+                ? (stem + "." + ext) : (dir + "/" + stem + "." + ext);
+            if (!osgDB::fileExists(f)) break;
+
+            UpdateStats st;
+            if (!applyUpdateCell(f, chart, dspm, st)) break;
+            OSG_INFO << "[ReaderWriterS57] applied update "
+                     << osgDB::getSimpleFileName(f)
+                     << " (+" << st.inserts << " -" << st.deletes
+                     << " ~" << st.modifies << ", skipped " << st.skipped << ")"
+                     << std::endl;
+            if (st.cancelled) break;
+        }
+    }
+
+    // Convenience wrapper preserving the original single-dataset entry point.
+    static osgVerse::FeatureCollection* buildChart(const I8211::Iso8211Reader& rdr)
+    {
+        std::size_t n = rdr.recordCount();
+        if (n == 0) return NULL;
+
+        S57::DatasetParameters dspm;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& rec = rdr.record(i);
+            if (rec.find("DSPM")) dspm = S57::readDspm(rdr, rec);
+        }
+
+        ChartData chart;
+        parseDataset(rdr, dspm, chart);
+        return assembleChart(chart, dspm);
+    }
+
+    // Base cell + sequential merge of its sibling update cells.  Update cells
+    // never carry a DSPM record, so the base cell's COMF/SOMF drive the
+    // coordinate decoding of every update (known pitfall).
+    static osgVerse::FeatureCollection* buildChartWithUpdates(
+        const I8211::Iso8211Reader& rdr, const std::string& basePath, bool applyUpdates)
+    {
+        std::size_t n = rdr.recordCount();
+        if (n == 0) return NULL;
+
+        S57::DatasetParameters dspm;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& rec = rdr.record(i);
+            if (rec.find("DSPM")) dspm = S57::readDspm(rdr, rec);
+        }
+
+        ChartData chart;
+        parseDataset(rdr, dspm, chart);
+        if (applyUpdates && !basePath.empty()) applyUpdateCells(basePath, chart, dspm);
+        return assembleChart(chart, dspm);
     }
 }  // namespace
 
@@ -538,11 +922,26 @@ public:
         supportsOption("IncludeFeatures", "Add FeatureCollection as UserData of the result Geometry/Image. Default: 0");
         supportsOption("ImageWidth", "Image resolution. Default: 512");
         supportsOption("ImageHeight", "Image resolution. Default: 512");
+        supportsOption("ShowMetaObjects",
+            "Draw M_QUAL/M_COVR/M_NPUB/... polygons in readImage. Default: 0");
+        supportsOption("ApplyUpdates",
+            "Merge sibling update cells (.001/.002/...) when the input is a "
+            "base cell read from a file. Default: 1");
     }
 
     virtual const char* className() const
     {
         return "[osgVerse] S-57 electronic navigational chart reader";
+    }
+
+    // helper shared by the three stream entry points
+    static osg::ref_ptr<osgVerse::FeatureCollection> loadCollection(
+        const osgS57::I8211::Iso8211Reader& rdr, const Options* options)
+    {
+        std::string upd = options ? options->getPluginStringData("ApplyUpdates") : "";
+        bool applyUpd = (upd.empty() || upd[0] != '0');
+        std::string basePath = options ? options->getPluginStringData("S57_BASE_PATH") : "";
+        return osgS57::buildChartWithUpdates(rdr, basePath, applyUpd);
     }
 
     virtual ReadResult readObject(const std::string& path, const Options* options) const
@@ -553,6 +952,7 @@ public:
         osg::ref_ptr<Options> lOptions = options ?
             static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
         lOptions->setPluginStringData("STREAM_FILENAME", osgDB::getSimpleFileName(fileName));
+        lOptions->setPluginStringData("S57_BASE_PATH", fileName);
 
         std::ifstream in(fileName, std::ios::in | std::ios::binary);
         if (!in) return ReadResult::FILE_NOT_HANDLED;;
@@ -567,6 +967,7 @@ public:
         osg::ref_ptr<Options> lOptions = options ?
             static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
         lOptions->setPluginStringData("STREAM_FILENAME", osgDB::getSimpleFileName(fileName));
+        lOptions->setPluginStringData("S57_BASE_PATH", fileName);
 
         std::ifstream in(fileName, std::ios::in | std::ios::binary);
         if (!in) return ReadResult::FILE_NOT_HANDLED;;
@@ -581,6 +982,7 @@ public:
         osg::ref_ptr<Options> lOptions = options ?
             static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
         lOptions->setPluginStringData("STREAM_FILENAME", osgDB::getSimpleFileName(fileName));
+        lOptions->setPluginStringData("S57_BASE_PATH", fileName);
 
         std::ifstream in(fileName, std::ios::in | std::ios::binary);
         if (!in) return ReadResult::FILE_NOT_HANDLED;
@@ -601,7 +1003,7 @@ public:
             return ReadResult::ERROR_IN_READING_FILE;
         }
 
-        osg::ref_ptr<osgVerse::FeatureCollection> collection = osgS57::buildChart(rdr);
+        osg::ref_ptr<osgVerse::FeatureCollection> collection = loadCollection(rdr, options);
         if (!collection) return ReadResult::ERROR_IN_READING_FILE;
         return collection.get();
     }
@@ -620,7 +1022,7 @@ public:
             return ReadResult::ERROR_IN_READING_FILE;
         }
 
-        osg::ref_ptr<osgVerse::FeatureCollection> collection = osgS57::buildChart(rdr);
+        osg::ref_ptr<osgVerse::FeatureCollection> collection = loadCollection(rdr, options);
         if (!collection) return ReadResult::ERROR_IN_READING_FILE;
 
         osg::ref_ptr<osg::Geode> geode = new osg::Geode; osg::ref_ptr<osg::Geometry> geom;
@@ -635,6 +1037,18 @@ public:
             osgVerse::Feature* feature = collection->features[i];
             osgVerse::addFeatureToGeometry(*feature, geom.get(), true);
             if (geom->getNumPrimitiveSets() > 1024) geom = NULL;
+        }
+
+        // expose the original data bounds so callers can frame the camera
+        const osg::BoundingBox& bb = collection->bound;
+        if (bb.valid())
+        {
+            geode->setUserValue("BoundMinX", (double)bb.xMin());
+            geode->setUserValue("BoundMinY", (double)bb.yMin());
+            geode->setUserValue("BoundMinZ", (double)bb.zMin());
+            geode->setUserValue("BoundMaxX", (double)bb.xMax());
+            geode->setUserValue("BoundMaxY", (double)bb.yMax());
+            geode->setUserValue("BoundMaxZ", (double)bb.zMax());
         }
 
         if (options)
@@ -659,7 +1073,7 @@ public:
             return ReadResult::ERROR_IN_READING_FILE;
         }
 
-        osg::ref_ptr<osgVerse::FeatureCollection> fc = osgS57::buildChart(rdr);
+        osg::ref_ptr<osgVerse::FeatureCollection> fc = loadCollection(rdr, options);
         if (!fc) return ReadResult::ERROR_IN_READING_FILE;
 
         std::string wStr = options ? options->getPluginStringData("ImageWidth") : "512";
@@ -674,16 +1088,64 @@ public:
         }
         drawer->allocateImage(w, h, 1, GL_RGBA, GL_UNSIGNED_BYTE);
         drawer->setPixelBufferObject(new osg::PixelBufferObject(drawer.get()));
-        drawer->start(false); drawer->fillBackground(osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+        drawer->start(false);
+        // opaque sea background; a transparent one makes the biggest area
+        // feature (which covers the whole cell) look like a blank white image
+        drawer->fillBackground(osg::Vec4(214.0f / 255.0f, 233.0f / 255.0f, 248.0f / 255.0f, 1.0f));
 
         const osg::BoundingBox& bb = fc->bound;
-        osg::Vec2 off(-bb.xMin(), -bb.yMin()),
-            sc((float)w / (bb.xMax() - bb.xMin()), (float)h / (bb.yMax() - bb.yMin()));
-        osgVerse::DrawerStyleData fillStyle(osg::Vec4(1.0f, 1.0f, 1.0f, 1.0f), true);
-        for (size_t i = 0; i < fc->features.size(); ++i)
+        float spanX = (float)(bb.xMax() - bb.xMin()), spanY = (float)(bb.yMax() - bb.yMin());
+        if (spanX < 1e-3f) spanX = 1.0f;
+        if (spanY < 1e-3f) spanY = 1.0f;
+        // y flipped so that north is up (image rows run downwards)
+        osg::Vec2 off(-(float)bb.xMin(), -(float)bb.yMax()), sc((float)w / spanX, -(float)h / spanY);
+
+        // minimal chart palette, mirroring the S-52-ish colours used by the
+        // independent s57render GDI+ reference tool
+        auto fillColor = [](osgVerse::Feature* f) -> osg::Vec4
         {
-            osgVerse::Feature* feature = fc->features[i];
-            osgVerse::drawFeatureToImage(*feature, drawer.get(), off, sc, &fillStyle);
+            std::string acr; f->getUserValue("ObjectAcronym", acr);
+            if (acr == "DEPARE") return osg::Vec4(0.66f, 0.85f, 0.97f, 1.0f);
+            if (acr == "LNDARE" || acr == "LNDRGN" || acr == "LNDELV")
+                return osg::Vec4(0.886f, 0.839f, 0.690f, 1.0f);
+            if (acr == "BUAARE") return osg::Vec4(0.816f, 0.784f, 0.698f, 1.0f);
+            if (acr == "DRGARE" || acr == "DMPGRD") return osg::Vec4(0.784f, 0.824f, 0.471f, 1.0f);
+            if (acr == "SEAARE") return osg::Vec4(0.647f, 0.647f, 0.784f, 1.0f);
+            return osgS57::featureColor(f, osg::Vec4(0.78f, 0.78f, 0.82f, 1.0f));
+        };
+
+        // display-priority passes: area fills -> area outlines -> lines -> points
+        // (otherwise a cell-wide DEPARE/M_COVR polygon hides everything after it)
+        bool showMeta = options &&
+            atoi(options->getPluginStringData("ShowMetaObjects").c_str()) > 0;
+        for (int pass = 0; pass < 4; ++pass)
+        {
+            for (size_t i = 0; i < fc->features.size(); ++i)
+            {
+                osgVerse::Feature* feature = fc->features[i];
+                double isMeta = 0.0; feature->getUserValue("IsMetaObject", isMeta);
+                if (!showMeta && isMeta > 0.0) continue;   // presentation-only
+                GLenum type = feature->getType();
+                osgVerse::DrawerStyleData style;
+
+                if (pass == 0 && type == GL_POLYGON)
+                    style = osgVerse::DrawerStyleData(fillColor(feature), true);
+                else if (pass == 1 && type == GL_POLYGON)
+                    style = osgVerse::DrawerStyleData(osg::Vec4(0.16f, 0.24f, 0.31f, 0.55f), false);
+                else if (pass == 2 && (type == GL_LINE_STRIP || type == GL_LINE_LOOP))
+                {
+                    std::string acr; feature->getUserValue("ObjectAcronym", acr);
+                    bool major = (acr == "DEPCNT" || acr == "COALNE");
+                    style = osgVerse::DrawerStyleData(major ?
+                        osg::Vec4(0.12f, 0.24f, 0.35f, 1.0f) :
+                        osg::Vec4(0.55f, 0.42f, 0.34f, 0.75f), false);
+                }
+                else if (pass == 3 && type == GL_POINTS)
+                    style = osgVerse::DrawerStyleData(osg::Vec4(0.90f, 0.47f, 0.08f, 0.90f), true);
+                else continue;
+
+                osgVerse::drawFeatureToImage(*feature, drawer.get(), off, sc, &style);
+            }
         }
         drawer->finish(); return drawer.get();
     }
