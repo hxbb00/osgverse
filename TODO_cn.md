@@ -12,6 +12,10 @@
 - 重要变更：合并原第 23/32 行重复条目；多条原标 100% 但代码证据不支持的条目已明确降级并在备注注明"原100%"；新增 vksplat/3DGS 训练、MLT、Earth AI、Terrarium、EXR/Lottie、PerfProfiler 等文档漏记项。
 - 当前未提交改动：本次文档更新，以及 `pipeline/Utilities.cpp`（CORE 下禁用 lightmapper 的开关）；其余修复均已进历史提交。
 
+#### 更新说明（2026-11-22）
+- many_lights_test 新增 1-6 渲染模式切换（HUD 提示按键）：forward/deferred × 无灯/多灯 × 无GI/GI 六种组合运行时可切（也可 `--mode N` 无头指定）；模式 1/2 验证中发现 **forward 输出不经过色调映射**的架构缺口，已列为 P1 计划项。
+- 光照计划重排（见 AGENTS.md "Screen-Space Lighting Effects"）：① velocity buffer + 时域重投影 → ② forward 输出接入后处理 → ③ SSGI 半分辨率 → ④ 二次弹射/弯曲法线 → ⑤ 点光源接触阴影 → ⑥ 探针 GI → ⑦ JSON 内嵌 shader 再生成。
+
 #### 本次审视说明（2026-11-20）
 - 范围：光照/屏幕空间效果（前向光照簇、SSAO 应用位置、法线编码、SSGI 初版）、shader 目录重组、AGENTS.md 测试经验补充；以 RTX 4080 桌面 GL2 兼容模式运行验证为主（1280×720 截图逐像素 A/B）。
 - 已完成并验证：Forward 光照簇、SSAO 间接光遮蔽、八面体法线、SSGI 初版（回退链第一级）、shaders 目录 deferred//forward/ 重组。
@@ -96,6 +100,8 @@
 | 渲染      | pipeline     | 优化     | 100%     | GBuffer 法线八面体编码 | P1；新增 `normal_encoding.module.glsl` 共享模块，GBuffer/lighting/shadow combine/forward 全链路同步 |
 | 渲染      | pipeline     | 新增     | 100%     | SSGI 单弹射初版（间接光回退链第一级） | P1；`std_ssgi(+_blur).frag.glsl`：SSDO 风格 16 采样，输出 rgb=辐亮度×覆盖率（预乘）、a=覆盖率；lighting ambient 拆 3 MRT（Color/IblAmbient/IblSpecular）；tonemapping 合成 `ssgi.rgb + (1-覆盖率)×IBL 漫反射`；曝光计量同步纳入；`GIRadius<=0` 默认屏幕空间半径（40px）适配任意场景尺度； GLES2 与 debugShadowCombination 跳过；质量优化见下 |
 | 渲染      | pipeline     | 优化     | 100%     | assets/shaders 目录整理：deferred/ 与 forward/ 子目录 | P2；27 个延迟阶段 shader 入 deferred/、3 个 forward shader 入 forward/，共享模块（common_quad/IBL 预计算/skybox）留根；子目录 include 改 `../` 相对路径（OSG glsl 插件按包含文件所在目录解析，裸文件名会找不到）；全部 C++ 加载点同步后五个测试程序验证通过 |
+| 渲染      | pipeline     | 新增     | 100%     | many_lights_test 六模式交互切换（HUD 提示按 1-6） | P1；1=forward+无灯+无GI，2=forward+多灯+无GI，3=deferred+无灯+无GI，4=deferred+多灯+无GI，5=deferred+无灯+GI，6=deferred+多灯+GI；灯光瞬时开关=置零 LightDrawable 颜色（nodeMask 摘除会被 LightGlobalManager 的 cull 回调/prune 延迟数帧，不可用）、GI=stage 相机 nodeMask + 消费端重绑零纹理、forward=FORWARD_SCENE_MASK + createForwardStateSet；六模式截图 + 按键注入验证（key3 ≈ mode3，avg 1.149）均符合预期；支持 `--mode N` 无头驱动 |
+| 渲染      | pipeline     | 新增     |         | Forward 输出接入后处理链（色调映射/曝光） | P1；模式 1/2 验证发现：forward 相机在 display 阶段之后直接画后备缓冲，输出未做色调映射与曝光（高光溢出、与 deferred 亮度不可比）；方案：forward 场景画进后处理链读取的缓冲，或在 forward pass 后追加 tonemap 阶段 |
 | 渲染      | pipeline     | 新增     |         | Velocity buffer + 屏幕空间效果时域重投影 | P1；SSAO/SSGI 16 采样有噪声且运动闪烁；TAA 已有历史链但无逐像素运动矢量（运动物体拖影同源）；GBuffer 输出 VelocityBuffer（经上一帧视图矩阵的裁剪空间位置），SSAO/SSGI 时域累积 + TAA 正确消拖影；计划详见 AGENTS.md "Screen-Space Lighting Effects" |
 | 渲染      | pipeline     | 优化     | 30%     | SSGI 质量与性能优化 | P1；半分辨率 + 深度/法线联合双边上采样、第二次弹射（读 SsgiBlurredBuffer 可直接叠加）、弯曲法线输出、GI 强度随场景亮度自动调参；当前为 16 采样全分辨率初版 |
 | 渲染      | pipeline     | 新增     |         | 间接光回退链第二级：探针 GI（DDGI 风格） | P2；回退链插槽已在 tonemapping 落地（screen-space → IBL），探针用于覆盖率低的像素替代/增强 IBL 漫反射回退 |

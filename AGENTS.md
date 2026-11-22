@@ -598,22 +598,30 @@ depth); with `GIRadius <= 0` (the default) a constant on-screen radius (~40 px, 
 viewport height) is used and the corresponding world radius is derived per pixel — osgVerse
 scenes range from centimeter objects to a globe, so no single world radius fits all.
 
-**Next steps planned for the lighting system (see TODO_cn.md for tracking):**
+**Next steps planned for the lighting system (see TODO_cn.md for tracking).** The A/B
+harness for all of this is `many_lights_test`: keys **1-6** switch at runtime between
+forward/deferred x no-lights/many-lights x no-GI/GI (or `--mode N` head-less), so every
+plan item can be validated against the same view with one keypress:
 1. **Temporal reprojection (prerequisite: velocity buffer).** The screen-space effects are
    noisy at 16 samples and flicker in motion; TAA already has a history chain, but there is
    no per-pixel motion vector buffer yet. Add a `VelocityBuffer` output in the G-buffer
    (previous-frame clip-space position via a previous-view matrix), then give SSAO/SSGI a
    temporal accumulation pass and TAA proper motion handling (removes ghosting too).
-2. **Half-resolution SSGI + joint bilateral upsample** (upsample with depth+normal guides,
+2. **Forward output into the post chain.** The forward pass draws to the back buffer after
+   the display stage, so forward results skip tone mapping/exposure (visible as blown-out
+   highlights in modes 1/2 of `many_lights_test`). Either render the forward scene into a
+   buffer that the tone mapping reads, or append a tonemap pass after the forward pass;
+   until then, forward modes are for structural comparison only, not photometric A/B.
+3. **Half-resolution SSGI + joint bilateral upsample** (upsample with depth+normal guides,
    like the blur) — the tracer is the most expensive full-res pass at the moment.
-3. **Second bounce / bent normals**: the Ssgi stage output is already a pluggable slot in
+4. **Second bounce / bent normals**: the Ssgi stage output is already a pluggable slot in
    the fallback chain; a second trace reading the blurred GI buffer (or feeding GI into
    the specular occlusion) can build on it without touching tone mapping again.
-4. **Fallback chain level 2 — probe-based GI (DDGI-style)**: replace/augment the IBL
-   diffuse fallback for pixels with low screen-space coverage.
 5. **Deferred contact shadows** for point lights (screen-space raymarch against the depth
    buffer in the lighting stage) — a cheap win on top of the existing cluster lighting.
-6. `standard_pipeline*.json` still embed the old shader sources (2-MRT ambient, RGB
+6. **Fallback chain level 2 — probe-based GI (DDGI-style)**: replace/augment the IBL
+   diffuse fallback for pixels with low screen-space coverage.
+7. `standard_pipeline*.json` still embed the old shader sources (2-MRT ambient, RGB
    normals, no GI); they are self-consistent variants but drift further with every shader
    change — either regenerate them from the .glsl files or drop the embedding.
 
@@ -708,6 +716,38 @@ Rules of thumb:
   fallback (IBL) takes over entirely. Verify GI on interior/corner views (e.g. inside
   Sponza), never judge it from an exterior wall; and remember eye adaptation is disabled
   with `--no-bloom`, so A/B brightness changes are real, not exposure-compensated.
+- **Runtime stage toggling pattern** (used by the 1-6 mode switcher in
+  `many_lights_test`): set the stage camera's node mask to 0 to disable a stage (the cull
+  visitor skips the whole slave, so its buffers keep stale content), then rebind every
+  consumer of that stage's outputs with `Stage::applyDefaultTexture(...)` (zero texel) or
+  `Stage::applyBuffer(...)` when re-enabling. Rebinding only on the consuming side is not
+  enough if an exposure/metering stage also reads the buffer. See `LightStatHandler::
+  applyGi` for the full pattern (Ssgi chain + tone mapping unit 6 + luminance unit 4).
+- **"No lights" cannot be done by masking the light geode**: the light table is fed by the
+  per-drawable cull callback (`LightCullCallback` → `LightGlobalManager`), and entries are
+  only pruned after several frames of not being culled. A masked geode keeps lighting the
+  scene with the stale table. Zero the `LightDrawable` colors instead (instant, see
+  `LightStatHandler::setLights`).
+- **`HeadUpDisplayCanvas` has two traps** (hit while moving the many_lights_test HUD):
+  1. Its `Anchor` enum values do **not** match `3rdparty/layout.h`'s flags: `BOTTOM` maps
+     to `LAY_TOP`, `TOP` maps to `LAY_BOTTOM` — the createText anchor of a multi-line text
+     block is effectively unpredictable. Pin the `osgText::Text` object directly instead
+     (`setAlignment(LEFT_TOP)` + explicit position after `createText`).
+  2. The canvas size must come from the **real framebuffer**, not a hardcoded 1920x1080:
+     a DPI-scaled window (1280x720 request on a 200% Windows display → 2560x1600
+     framebuffer) renders a 1920x1080 canvas 1:1 into the bottom-left of the framebuffer,
+     so content can never reach the top third of the screen. In tests, create the canvas
+     after realize() using the master camera's viewport (`viewer->getCamera()->
+     getViewport()` — its GraphicsContext is often NULL because the stages render via
+     slaves; the viewport is the reliable size source).
+- **`--agent-keys` presses are delivered as real key events** (keyPress+keyRelease through
+  the event queue at the capture frame), but verify the *effect* numerically — a wrong
+  toggle assumption cost a debug round here: compare the capture against the expected
+  configuration's reference image, not against "it changed something".
+- **The forward pass output is NOT tone mapped** in the standard pipeline: the forward
+  camera draws to the back buffer after the display stage. Expect modes 1/2 of
+  `many_lights_test` (forward) to look blown out versus deferred — that is the pipeline's
+  known limitation, not a bug in the test (see plan item 2 above).
 - **`osg::TextureBuffer` + `setImage()` needs `dirtyTextureObject()`.** `apply()` calls
   `glTexBuffer()` only when the GL texture object is first created; `setImage()`
   (through `setBufferData()`) swaps the `BufferData`/`BufferObject` without touching the

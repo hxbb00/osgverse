@@ -98,13 +98,22 @@ namespace
             ss->removeAttribute(osg::StateAttribute::POLYGONMODE);
     }
 
-    /** Simple on-screen text HUD showing the light count and the state of the light clustering */
+    /** Simple on-screen text HUD showing the light count and the state of the light clustering.
+        Keys 1-6 switch the whole rendering configuration (deferred/forward x lights x GI) so
+        that every combination can be inspected and A/B-compared at runtime:
+          1: forward,  no lights,    no GI      4: deferred, many lights, no GI
+          2: forward,  many lights,  no GI      5: deferred, no lights,    GI
+          3: deferred, no lights,    no GI      6: deferred, many lights,  GI */
     class LightStatHandler : public osgVerse::QuickEventHandler
     {
     public:
-        LightStatHandler(osgVerse::LightModule* m, osgText::Text* text, int numLights)
+        LightStatHandler(osgVerse::LightModule* m, osgText::Text* text, int numLights,
+                         osgVerse::Pipeline* p, osg::Node* sceneRoot,
+                         osg::Shader* forwardVS, osg::Shader* forwardFS)
             : _module(m), _text(text), _numLights(numLights), _animated(true),
-              _showDebug(false), _frame(0), _reported(false)
+              _showDebug(false), _frame(0), _reported(false), _mode(0), _lightMask(0xffffffff),
+              _giAvailable(true), _pipeline(p), _sceneRoot(sceneRoot),
+              _forwardVS(forwardVS), _forwardFS(forwardFS)
         {
             _polygonMode = new osg::PolygonMode(osg::PolygonMode::FRONT_AND_BACK,
                                                 osg::PolygonMode::LINE);
@@ -114,14 +123,58 @@ namespace
             addKeyUpCallback('A', [this](int) { _animated = !_animated; });
             addKeyUpCallback('l', [this](int) { toggleDebug(); });
             addKeyUpCallback('L', [this](int) { toggleDebug(); });
+            addKeyUpCallback('1', [this](int) { setMode(1); });
+            addKeyUpCallback('2', [this](int) { setMode(2); });
+            addKeyUpCallback('3', [this](int) { setMode(3); });
+            addKeyUpCallback('4', [this](int) { setMode(4); });
+            addKeyUpCallback('5', [this](int) { setMode(5); });
+            addKeyUpCallback('6', [this](int) { setMode(6); });
         }
 
-        void setLightRoot(osg::Geode* g) { _lightRoot = g; }
+        void setLightRoot(osg::Geode* g)
+        {
+            _lightRoot = g; if (g != NULL) _lightMask = g->getNodeMask();
+            // Snapshot the light colors once: the "no lights" mode zeroes them instead of
+            // masking the geode out, because the light table is fed by the cull callback of
+            // each LightDrawable and only pruned after several frames -- masking would leave
+            // the stale lights lighting the scene long after the switch
+            _savedColors.clear();
+            if (g != NULL)
+                for (unsigned int i = 0; i < g->getNumDrawables(); ++i)
+                {
+                    osgVerse::LightDrawable* ld =
+                        dynamic_cast<osgVerse::LightDrawable*>(g->getDrawable(i));
+                    _savedColors.push_back(ld ? ld->getColor() : osg::Vec3(0.0f, 0.0f, 0.0f));
+                }
+        }
         bool getShowDebug() const { return _showDebug; }
         void setShowDebug(bool b) { _showDebug = b; showLightGeometries(_lightRoot.get(), b, _polygonMode.get()); }
 
         bool getAnimated() const { return _animated; }
         void setAnimated(bool b) { _animated = b; }
+
+        int getMode() const { return _mode; }
+        void setMode(int m)
+        {
+            if (m < 1 || m > 6) return;
+            // Forward rendering has no deferred G-buffer at all, so the GI stages (which read
+            // the deferred shadow/lighting buffers) are meaningless there: modes 1/2 are
+            // no-GI by design
+            bool deferred = (m >= 3);
+            bool lights = (m == 2 || m == 4 || m == 6);
+            bool gi = deferred && (m >= 5);
+            setLights(lights);
+            applyGi(gi);
+            applyDeferred(deferred);
+            _mode = m;
+            if (!deferred)
+            {   // Known limitation of the standard pipeline: the forward pass draws to the back
+                // buffer after the display stage, so its output skips tone mapping/exposure
+                OSG_NOTICE << "[ManyLights] Mode " << m << ": forward rendering; its output is "
+                           << "NOT tone mapped yet (see the pipeline TODO)" << std::endl;
+            }
+            updateText();
+        }
 
         virtual bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
         {
@@ -168,8 +221,17 @@ namespace
                 }
             }
             ss << "\nAnimation: " << (_animated ? "ON" : "OFF")
-               << ", light wireframe: " << (_showDebug ? "ON" : "OFF")
-               << "\nKeys: [C] cluster, [A] animation, [L] light wireframe";
+               << ", light wireframe: " << (_showDebug ? "ON" : "OFF");
+            if (_mode >= 1)
+            {
+                bool gi = (_mode >= 5) && _giAvailable;
+                ss << "\nRender mode " << _mode << ": "
+                   << ((_mode >= 3) ? "deferred lighting, " : "forward rendering, ")
+                   << ((_mode == 2 || _mode == 4 || _mode == 6) ? "many lights, " : "no lights, ")
+                   << (gi ? "GI" : "no GI");
+                if ((_mode >= 5) && !_giAvailable) ss << " (GI stages not built)";
+            }
+            ss << "\nKeys: [1-6] render mode, [C] cluster, [A] animation, [L] light wireframe";
             if (_text.valid())
             {
                 _text->setText(ss.str());
@@ -186,11 +248,83 @@ namespace
 
         void toggleDebug() { setShowDebug(!_showDebug); updateText(); }
 
+        void setLights(bool on)
+        {
+            if (!_lightRoot.valid() || _savedColors.empty()) return;
+            for (unsigned int i = 0; i < _lightRoot->getNumDrawables() && i < _savedColors.size(); ++i)
+            {
+                osgVerse::LightDrawable* ld =
+                    dynamic_cast<osgVerse::LightDrawable*>(_lightRoot->getDrawable(i));
+                if (ld != NULL) ld->setColor(on ? _savedColors[i] : osg::Vec3(0.0f, 0.0f, 0.0f));
+            }
+        }
+
+        void applyGi(bool on)
+        {
+            if (!_pipeline.valid()) return;
+            osgVerse::Pipeline::Stage* ssgi = _pipeline->getStage("Ssgi");
+            if (ssgi == NULL || ssgi->camera == NULL || _pipeline->getStage("SsgiBlur2") == NULL)
+            {   // Built without GI (GLES2, debugShadowCombination or --no-ssgi): nothing to toggle
+                _giAvailable = false; return;
+            }
+            osgVerse::Pipeline::Stage* blur1 = _pipeline->getStage("SsgiBlur1");
+            osgVerse::Pipeline::Stage* blur2 = _pipeline->getStage("SsgiBlur2");
+            osgVerse::Pipeline::Stage* tonemap = _pipeline->getStage("ToneMapping");
+            osgVerse::Pipeline::Stage* luminance = _pipeline->getStage("LogLuminance");
+            if (blur1 == NULL || blur1->camera == NULL || blur2->camera == NULL ||
+                tonemap == NULL) { _giAvailable = false; return; }
+
+            // A zero node mask makes the cull visitor skip the stage camera entirely, so the
+            // disabled stages stop updating (and stop clearing) their buffers. The consumers
+            // must then be pointed at a zero texel instead of the frozen GI buffer: coverage 0
+            // makes the tone mapping fall back to the pure IBL term, which is exactly "no GI"
+            unsigned int stageMask = on ? 0xffffffffu : 0x0u;
+            ssgi->camera->setNodeMask(stageMask);
+            blur1->camera->setNodeMask(stageMask);
+            blur2->camera->setNodeMask(stageMask);
+            if (on)
+            {
+                tonemap->applyBuffer(*blur2, "SsgiBlurredBuffer", 6);
+                if (luminance != NULL)
+                    luminance->applyBuffer(*blur2, "SsgiBlurredBuffer", "SsgiBuffer", 4);
+            }
+            else
+            {
+                tonemap->applyDefaultTexture(osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f), "SsgiBlurredBuffer", 6);
+                if (luminance != NULL)
+                    luminance->applyDefaultTexture(osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f), "SsgiBuffer", 4);
+            }
+        }
+
+        void applyDeferred(bool on)
+        {
+            if (!_sceneRoot.valid()) return;
+            osg::StateSet* ss = _sceneRoot->getOrCreateStateSet();
+            ss->clear();  // also undoes the forward stateset of the previous mode
+            if (on)
+            {
+                _sceneRoot->setNodeMask(DEFERRED_SCENE_MASK | SHADOW_CASTER_MASK);
+            }
+            else
+            {
+                if (!_forwardSS.valid() && _pipeline.valid())
+                    _forwardSS = _pipeline->createForwardStateSet(_forwardVS.get(), _forwardFS.get());
+                if (_forwardSS.valid()) ss->merge(*_forwardSS);
+                _sceneRoot->setNodeMask(FORWARD_SCENE_MASK);
+            }
+        }
+
         osg::observer_ptr<osgVerse::LightModule> _module;
         osg::observer_ptr<osgText::Text> _text;
         osg::observer_ptr<osg::Geode> _lightRoot;
+        osg::observer_ptr<osgVerse::Pipeline> _pipeline;
+        osg::observer_ptr<osg::Node> _sceneRoot;
+        osg::ref_ptr<osg::Shader> _forwardVS, _forwardFS;
+        osg::ref_ptr<osg::StateSet> _forwardSS;
         osg::ref_ptr<osg::PolygonMode> _polygonMode;
         int _numLights; bool _animated, _showDebug, _reported; int _frame;
+        int _mode; unsigned int _lightMask; bool _giAvailable;
+        std::vector<osg::Vec3> _savedColors;
     };
 }
 
@@ -236,16 +370,6 @@ int main(int argc, char** argv)
     osg::ref_ptr<osg::Group> root = new osg::Group;
     root->addChild(sceneRoot.get());
 
-    // HUD text
-    osgVerse::HeadUpDisplayCanvas hudCanvas;
-    osg::Camera* hudCamera = hudCanvas.create(1920, 1080);
-    osgVerse::Pipeline::setPipelineMask(*hudCamera, FORWARD_SCENE_MASK);
-    root->addChild(hudCamera);
-    hudCanvas.createText("main", L"", 18, 1000, 120, "root",
-                         osgVerse::HeadUpDisplayCanvas::FREE,
-                         osgVerse::HeadUpDisplayCanvas::TOP | osgVerse::HeadUpDisplayCanvas::LEFT);
-    osgText::Text* hudText = hudCanvas.texts["main"].get();
-
     // Start the viewer with the standard (deferred + post effects) pipeline
     osg::ref_ptr<osgVerse::StandardPipelineViewer> viewer =
         new osgVerse::StandardPipelineViewer(true, false, false);
@@ -260,6 +384,46 @@ int main(int argc, char** argv)
     viewer->setCameraManipulator(new osgGA::TrackballManipulator);
     viewer->setUpViewOnSingleScreen(0);
     viewer->realize();
+
+    // The HUD canvas is created only after realize(), with the REAL framebuffer size: the
+    // window may be DPI-scaled (a 1280x720 request on a 200% Windows display gives a
+    // 2560x1600 framebuffer), and a hardcoded canvas size would map its content into just a
+    // corner of the screen (with the previous 1920x1080 canvas the text could never reach
+    // the top 1/3 of the display). The canvas ortho is 1:1 with framebuffer pixels, so the
+    // text can be pinned to the top-left corner with exact coordinates
+    int canvasW = 1920, canvasH = 1080;
+    {   // Prefer the graphics context traits (framebuffer pixels); the master camera of the
+        // pipeline viewer may have no context of its own (the stages render via slaves), in
+        // which case its viewport is the best proxy for the real on-screen size
+        osg::GraphicsContext* gc = viewer->getCamera()->getGraphicsContext();
+        if (gc != NULL && gc->getTraits() != NULL)
+        { canvasW = gc->getTraits()->width; canvasH = gc->getTraits()->height; }
+        else
+        {
+            osg::Viewport* vp = viewer->getCamera()->getViewport();
+            if (vp != NULL) { canvasW = (int)vp->width(); canvasH = (int)vp->height(); }
+        }
+        OSG_NOTICE << "[ManyLights] HUD canvas uses " << canvasW << "x" << canvasH << std::endl;
+    }
+
+    osgVerse::HeadUpDisplayCanvas hudCanvas;
+    osg::Camera* hudCamera = hudCanvas.create(canvasW, canvasH);
+    osgVerse::Pipeline::setPipelineMask(*hudCamera, FORWARD_SCENE_MASK);
+    root->addChild(hudCamera);
+    int hudFontSize = osg::maximum(26, (int)(canvasH * 0.03f));
+    hudCanvas.createText("main", L"", hudFontSize, canvasW * 9 / 10, canvasH / 3, "root",
+                         osgVerse::HeadUpDisplayCanvas::FREE,
+                         osgVerse::HeadUpDisplayCanvas::BOTTOM);  // NOTE: maps to LAY_TOP of layout.h
+    osgText::Text* hudText = hudCanvas.texts["main"].get();
+    // The canvas layout puts the text block wherever its (y-down) rect happens to be; we want
+    // it pinned to the top-left of the canvas instead, so set alignment and position directly.
+    // (The anchor enum of the canvas does not match layout.h's internal flags -- BOTTOM there
+    // means LAY_TOP -- which makes the createText anchor unreliable for multi-line HUD text.)
+    if (hudText != NULL)
+    {
+        hudText->setAlignment(osgText::Text::LEFT_TOP);
+        hudText->setPosition(osg::Vec3(0.02f * canvasW, 0.98f * canvasH, 0.0f));
+    }
 
     // Configure the light module: TBO is the default, cluster culling is on by default
     osgVerse::Pipeline* pipeline = viewer->getPipeline();
@@ -298,11 +462,17 @@ int main(int argc, char** argv)
     createRandomLights(lightRoot, bb, numLights, rangeScale, powerScale, spotRatio, seed);
 
     // HUD handler owns the text content and the hot keys, including the light wireframe toggle
+    // and the 1-6 rendering-mode switching (deferred/forward x lights x GI)
     osg::ref_ptr<LightStatHandler> statHandler =
-        new LightStatHandler(lightModule, hudText, numLights);
+        new LightStatHandler(lightModule, hudText, numLights, pipeline, sceneRoot.get(),
+                             viewer->getParameters().shaders.forwardVS.get(),
+                             viewer->getParameters().shaders.forwardFS.get());
     statHandler->setLightRoot(lightRoot);
     statHandler->setAnimated(animate);
     statHandler->setShowDebug(showLights);
+    int startMode = noSsgi ? 4 : 6;  // the configuration the startup flags produce
+    arguments.read("--mode", startMode);
+    statHandler->setMode(startMode);
     statHandler->updateText();
     viewer->addEventHandler(statHandler.get());
     if (showLights)
