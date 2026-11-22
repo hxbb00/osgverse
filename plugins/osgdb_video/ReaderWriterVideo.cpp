@@ -26,7 +26,7 @@ namespace osgVerse
         MP4VideoDemuxer(const std::string& fileName)
         :   _videoTrack(NULL), _audioTrack(NULL), _currentOffset(0), _currentFrameBytes(0),
             _timestamp(0), _videoNum(0), _audioNum(0), _videoCodec(0), _samplePos(0),
-            _width(0), _height(0), _fps(25.0)
+            _width(0), _height(0), _fps(25.0), _headerSent(false)
         {
             _fileBuffer = loadFileData(fileName);
             if (_fileBuffer.empty()) { _demuxer = NULL; return; }
@@ -45,7 +45,7 @@ namespace osgVerse
                     else if (track->handler_type == MP4D_HANDLER_TYPE_SOUN)
                         { _audioTrack = track; _audioNum = i; }
                 }
-                if (_videoTrack != NULL) initVideoTrack();
+                if (_videoTrack != NULL) { initVideoTrack(); prepareSpsPps(); }
                 if (_audioTrack != NULL) initAudioTrack();
             }
         }
@@ -94,9 +94,19 @@ namespace osgVerse
 
                     unsigned char* bufOut = _current.data();
                     bufOut[0] = 0; bufOut[1] = 0; bufOut[2] = 0; bufOut[3] = 1;
-                    *dataData = bufOut; *dataBytes = size; _currentOffset += size;
+                    _currentOffset += size;
                     if (_currentFrameBytes < size) _currentFrameBytes = 0;
                     else _currentFrameBytes -= size;
+
+                    // Emit the avcC SPS/PPS in-band before the first slice so that hardware
+                    // decoders (VAAPI needs them, NVDEC accepts them as well) can configure
+                    // the decoder; MP4 samples themselves don't carry these parameter sets
+                    if (!_headerSent && !_spsPps.empty())
+                    {
+                        _current.insert(_current.begin(), _spsPps.begin(), _spsPps.end());
+                        _headerSent = true;
+                    }
+                    *dataData = _current.data(); *dataBytes = (int)_current.size();
                 }
                 if (pts) *pts = _timestamp; return true;
             }
@@ -122,7 +132,36 @@ namespace osgVerse
             // TODO
         }
 
-        std::vector<unsigned char> _fileBuffer, _current;
+        void prepareSpsPps()
+        {
+            // SPS/PPS helpers of minimp4 only support AVC; HEVC needs a different path
+            if (_videoCodec != MP4_OBJECT_TYPE_AVC) return;
+            for (int i = 0; ; ++i)
+            {
+                int bytes = 0;
+                const void* sps = MP4D_read_sps(_demuxer, _videoNum, i, &bytes);
+                if (sps == NULL || bytes <= 0) break;
+                appendNal((const unsigned char*)sps, bytes);
+            }
+            for (int i = 0; ; ++i)
+            {
+                int bytes = 0;
+                const void* pps = MP4D_read_pps(_demuxer, _videoNum, i, &bytes);
+                if (pps == NULL || bytes <= 0) break;
+                appendNal((const unsigned char*)pps, bytes);
+            }
+            //OSG_INFO << "[MP4VideoDemuxer] Inject " << _spsPps.size()
+            //         << " bytes of SPS/PPS before the first video frame" << std::endl;
+        }
+
+        void appendNal(const unsigned char* data, int size)
+        {
+            static const unsigned char startCode[4] = { 0, 0, 0, 1 };
+            _spsPps.insert(_spsPps.end(), startCode, startCode + 4);
+            _spsPps.insert(_spsPps.end(), data, data + size);
+        }
+
+        std::vector<unsigned char> _fileBuffer, _current, _spsPps;
         MP4D_demux_t* _demuxer;
         MP4D_track_t* _videoTrack;
         MP4D_track_t* _audioTrack;
@@ -132,6 +171,7 @@ namespace osgVerse
         unsigned int _samplePos;
         int _width, _height;
         double _fps;
+        bool _headerSent;
     };
 }
 

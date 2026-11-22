@@ -284,8 +284,15 @@ void ShaderLibrary::createShaderDefinitions(osg::Shader& shader, int glVer, int 
 
 #if defined(OSG_GLES3_AVAILABLE)
     ss << "precision highp float;" << std::endl << "precision highp sampler2D;" << std::endl
-       << "precision mediump sampler3D;" << std::endl << "precision highp samplerCube;" << std::endl
-       << "precision highp samplerBuffer;" << std::endl;
+       << "precision mediump sampler3D;" << std::endl << "precision highp samplerCube;" << std::endl;
+    // samplerBuffer (buffer textures) is core from GLSL ES 3.20 on and comes from
+    // GL_EXT_texture_buffer on ES 3.10; declaring it on a 3.00 shader is a "reserved keyword"
+    // compile error (e.g. on MTT GLES3 drivers)
+    if (isTextureBufferSupported(glVer, glslVer))
+    {
+        if (glslVer < 320) ss << "#extension GL_EXT_texture_buffer : enable" << std::endl;
+        ss << "precision highp samplerBuffer;" << std::endl;
+    }
 #elif defined(OSG_GLES2_AVAILABLE)
     ss << "precision highp float;" << std::endl;
 #endif

@@ -3,12 +3,36 @@
 #include <algorithm>
 #include <fcntl.h>
 #include <unistd.h>
+#include <drm/drm_fourcc.h>
 #include "VaapiDecoder.h"
 using namespace osgVerse;
 
+namespace
+{
+    /** Some drivers (the MTT one for instance) put VA fourcc values such as VA_FOURCC_ARGB in
+        VADRMPRIMESurfaceDescriptor::fourcc, but EGL only accepts DRM fourcc values like
+        DRM_FORMAT_ARGB8888 ('AR24'). Map the VA RGB formats to their DRM equivalents; values
+        that already are DRM fourcc (NV12 etc.) are passed through unchanged. */
+    uint32_t toDRMFourcc(uint32_t fourcc)
+    {
+        switch (fourcc)
+        {
+        case 0x42475241: return DRM_FORMAT_ARGB8888;  // VA_FOURCC_ARGB ('A','R','G','B')
+        case 0x52474241: return DRM_FORMAT_ABGR8888;  // VA_FOURCC_ABGR
+        case 0x41475242: return DRM_FORMAT_BGRA8888;  // VA_FOURCC_BGRA
+        case 0x41424752: return DRM_FORMAT_RGBA8888;  // VA_FOURCC_RGBA
+        case 0x42475258: return DRM_FORMAT_XRGB8888;  // VA_FOURCC_XRGB
+        case 0x58424752: return DRM_FORMAT_RGBX8888;  // VA_FOURCC_RGBX
+        case 0x58475242: return DRM_FORMAT_BGRX8888;  // VA_FOURCC_BGRX
+        case 0x52474258: return DRM_FORMAT_XBGR8888;  // VA_FOURCC_XBGR
+        default: return fourcc;
+        }
+    }
+}
+
 VaapiDecoder::VaapiDecoder(int videoCodec, int width, int height)
 :   _vaDisplay(nullptr), _vaConfig(VA_INVALID_ID), _vppConfig(VA_INVALID_ID), _vaContext(VA_INVALID_ID),
-    _vppContext(_vppContext), _vaSurface(VA_INVALID_SURFACE), _vaSurfaceRGB(VA_INVALID_SURFACE),
+    _vppContext(VA_INVALID_ID), _vaSurface(VA_INVALID_SURFACE), _vaSurfaceRGB(VA_INVALID_SURFACE),
     _currentPTS(0), _framebufferID(0), _videoCodec(videoCodec), _drmFD(-1), _width(width), _height(height),
     _bitDepth(8), _initialized(false), _frameReady(false), _useVPP(true)
 {}
@@ -318,7 +342,7 @@ bool VaapiDecoder::exportDecodedFrame(int& fourcc, std::vector<ExportedBufferDat
     
     for (uint32_t i = 0; i < desc.num_objects; i++)
     { if (desc.objects[i].fd >= 0) close(desc.objects[i].fd); }
-    fourcc = desc.fourcc; return !bufferData.empty();
+    fourcc = toDRMFourcc(desc.fourcc); return !bufferData.empty();
 }
 
 void VaapiDecoder::releaseFrame()
@@ -328,6 +352,10 @@ void VaapiDecoder::releaseFrame()
 
 void VaapiDecoder::cleanupVAAPI()
 {
+    // Release everything with a valid display only: initialize() may call this after a failure
+    // and the destructor calls it again, where _vaDisplay is already NULL
+    if (_vaDisplay == nullptr) return;
+
     if (_vppContext != VA_INVALID_ID)
     { vaDestroyContext(_vaDisplay, _vppContext); _vppContext = VA_INVALID_ID; }
     if (_vaContext != VA_INVALID_ID)
@@ -343,8 +371,7 @@ void VaapiDecoder::cleanupVAAPI()
     if (_vaConfig != VA_INVALID_ID)
     { vaDestroyConfig(_vaDisplay, _vaConfig); _vaConfig = VA_INVALID_ID; }
     
-    if (_vaDisplay)
-    { vaTerminate(_vaDisplay); _vaDisplay = nullptr; }
+    vaTerminate(_vaDisplay); _vaDisplay = nullptr;
 }
 
 void VaapiDecoder::cleanupGBM()

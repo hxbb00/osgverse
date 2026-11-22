@@ -157,19 +157,14 @@ void GpuResourceReaderBase::EglResourceHandle::createImage(int dmabuf_fd, int w,
     image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attr); dirty = true;
     if (!image)
     {
-        OSG_WARN << "[GpuResourceReaderBase] Failed to create EGL image for DRM buffer, video-fourcc = "
-                 << std::hex << fourcc << std::dec << " (" << fourccToString(fourcc) << ")" << std::endl;
-        
-        EGLAttrib const attr2[] = {
-            EGL_WIDTH, w, EGL_HEIGHT, h,
-            EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_R8,
-            EGL_DMA_BUF_PLANE0_FD_EXT, dmabuf_fd,
-            EGL_DMA_BUF_PLANE0_OFFSET_EXT, offset,
-            EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
-            EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, modifiersL,
-            EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, modifiersH, EGL_NONE };
-        image = eglCreateImage(display, NULL, EGL_LINUX_DMA_BUF_EXT, NULL, attr2);  // try again?
-        if (image != NULL) { OSG_WARN << "[GpuResourceReaderBase] R8 is used as a temporary result..." << std::endl; }
+        // Don't try to import the same buffer as another format: that either fails as well, or
+        // (observed on the MTT driver) corrupts the driver's heap while importing ARGB as R8
+        OSG_WARN << "[GpuResourceReaderBase] Failed to create EGL image for DRM buffer ("
+                 << w << "x" << h << ", fourcc = " << std::hex << fourcc << std::dec
+                 << " (" << fourccToString(fourcc) << "), offset = " << offset
+                 << ", stride = " << stride << ", modifier = 0x"
+                 << std::hex << ((((uint64_t)modifiersH) << 32) | modifiersL) << std::dec
+                 << "), EGL error = 0x" << std::hex << eglGetError() << std::dec << std::endl;
     }
 #endif
 }

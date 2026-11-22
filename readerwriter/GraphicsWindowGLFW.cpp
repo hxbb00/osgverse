@@ -12,6 +12,8 @@ using namespace osgVerse;
 
 namespace
 {
+    static int g_glfwWindowCount = 0;
+
     static int getModKey(int modstates)
     {
         if (modstates & GLFW_MOD_CONTROL) return osgGA::GUIEventAdapter::KEY_Control_L;
@@ -156,10 +158,21 @@ GraphicsWindowGLFW::GraphicsWindowGLFW(osg::GraphicsContext::Traits* traits)
 }
 
 GraphicsWindowGLFW::~GraphicsWindowGLFW()
-{ releaseContextImplementation(); }
+{
+    // Also destroys the GLFW window and terminates GLFW once the last one is gone
+    closeImplementation();
+}
 
 void GraphicsWindowGLFW::initialize()
 {
+    // The window may be created again after the last one was destroyed, which terminates GLFW
+    // (see closeImplementation); glfwInit() is a no-op when the library is already initialized
+    if (!glfwInit())
+    {
+        const char* errMsg = NULL; glfwGetError(&errMsg);
+        OSG_WARN << "[GraphicsWindowGLFW] Failed: " << errMsg << std::endl; return;
+    }
+
     // FIXME: VERSE_WASM?
     int exMajor = 0, exMinor = 0;
     WindowData* winData = static_cast<WindowData*>(_traits->inheritedWindowData.get());
@@ -240,6 +253,7 @@ void GraphicsWindowGLFW::initialize()
     }
     else
     {
+        ++g_glfwWindowCount;
 #define GET_EVENTER(w) \
     GraphicsWindowGLFW* gw = (GraphicsWindowGLFW*)glfwGetWindowUserPointer(w); osgGA::EventQueue* eq = gw->getEventQueue();
 
@@ -330,7 +344,15 @@ bool GraphicsWindowGLFW::realizeImplementation()
 void GraphicsWindowGLFW::closeImplementation()
 {
     if (!_valid) return; else _valid = false;
-    glfwDestroyWindow(_window); _window = NULL;
+    if (_window != NULL) { glfwDestroyWindow(_window); _window = NULL; }
+
+    // Terminate GLFW (and with it the EGL display on GLES builds) as soon as the last window is
+    // gone, i.e. while the application is still running. Waiting for the windowing system object
+    // to be destroyed at exit is too late: libEGL is usually dlopen'ed by GLFW and its DSO fini
+    // frees the display before our static destructors run, which corrupts the heap
+    // (observed as "corrupted double-linked list" inside _dl_fini on the MTT AIBook, GLES3)
+    if (g_glfwWindowCount > 0) --g_glfwWindowCount;
+    if (g_glfwWindowCount == 0) glfwTerminate();
 }
 
 bool GraphicsWindowGLFW::makeCurrentImplementation()

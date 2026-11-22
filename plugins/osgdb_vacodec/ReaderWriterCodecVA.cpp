@@ -31,8 +31,15 @@ namespace osgVerse
                 {
                     _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
                     _decoder = new VaapiDecoder((int)_demuxer->getVideoCodec(), _width, _height);
-                    if (!_decoder->initialize()) return false;
-                    //if (_testImage.valid() && _testImage->valid()) _testImage->scaleImage(_width, _height, 1);
+
+                    // FIXME: VA-API VLD leaves the bitstream parsing to the host: the picture,
+                    // slice and IQ parameter buffers have to be built from SPS/PPS and the slice
+                    // headers. Submitting slice data alone is invalid and makes drivers fail, or
+                    // even corrupt their internal state (MTT: "slices number was wrong" followed
+                    // by a heap assertion). Leave the decoder uninitialized until that front-end
+                    // exists, so the player degrades cleanly instead of crashing in the driver
+                    OSG_WARN << "[ReaderWriterCodecVA] VA-API hardware decoding is not implemented "
+                             << "yet (missing host-side H.264/HEVC bitstream parser)" << std::endl;
                 }
             }
             return true;
@@ -56,12 +63,12 @@ namespace osgVerse
                 }
             }
 
-            if (_width < 1 || _height < 1)
-            { _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight(); }
-
             uint8_t *video = NULL, *frame = NULL; int videoBytes = 0; long long pts = 0;
             if (!_demuxer || !_decoder) { setState(INVALID); return; }
             else if (!_decoder->isInitialized()) { setState(INVALID); return; }
+
+            if (_width < 1 || _height < 1)
+            { _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight(); }
             
             if (!_demuxer->demux(&video, &videoBytes, &pts)) { setState(PENDING); return; }
             if (!_decoder->decode(video, videoBytes, pts)) { setState(PENDING); return; }

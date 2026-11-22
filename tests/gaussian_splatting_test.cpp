@@ -515,10 +515,7 @@ static void simplifyGaussianNode(osg::Node* node, float ratio, int opacityMode,
                                  osgVerse::GaussianSorter* sorter)
 {
     if (!(ratio > 0.0f && ratio < 1.0f))
-    {
-        std::cout << "[Simplify] Invalid ratio " << ratio << ", option ignored." << std::endl;
-        return;
-    }
+    { std::cout << "[Simplify] Option ignored." << std::endl; return; }
 
     LodNodeFinder lf; node->accept(lf);
     if (lf.found)
