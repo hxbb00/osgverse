@@ -9,7 +9,8 @@
 
 namespace osgVerse
 {
-    
+    class VaapiH264Decoder;  // H.264 bitstream parser + DPB, defined in VaapiDecoder.cpp
+
     class VaapiDecoder : public osg::Referenced
     {
     public:
@@ -35,10 +36,10 @@ namespace osgVerse
         bool isInitialized() const { return _initialized; }
 
     private:
+        friend class VaapiH264Decoder;
+
         bool setupVAAPI();
         bool setupGBM();
-        bool createSurface();
-        bool createBuffer();
         bool syncSurface(bool origin);
         void cleanupVAAPI();
         void cleanupGBM();
@@ -55,7 +56,8 @@ namespace osgVerse
         struct gbm_surface* _gbmSurface;
         struct gbm_bo* _gbmBuffer;
         std::mutex _mutex;
-        
+
+        VaapiH264Decoder* _h264;
         long long _currentPTS;
         unsigned int _framebufferID;
         int _videoCodec, _drmFD;

@@ -31,15 +31,8 @@ namespace osgVerse
                 {
                     _width = (_demuxer->getWidth() + 1) & ~1; _height = _demuxer->getHeight();
                     _decoder = new VaapiDecoder((int)_demuxer->getVideoCodec(), _width, _height);
-
-                    // FIXME: VA-API VLD leaves the bitstream parsing to the host: the picture,
-                    // slice and IQ parameter buffers have to be built from SPS/PPS and the slice
-                    // headers. Submitting slice data alone is invalid and makes drivers fail, or
-                    // even corrupt their internal state (MTT: "slices number was wrong" followed
-                    // by a heap assertion). Leave the decoder uninitialized until that front-end
-                    // exists, so the player degrades cleanly instead of crashing in the driver
-                    OSG_WARN << "[ReaderWriterCodecVA] VA-API hardware decoding is not implemented "
-                             << "yet (missing host-side H.264/HEVC bitstream parser)" << std::endl;
+                    if (!_decoder->initialize()) return false;
+                    //if (_testImage.valid() && _testImage->valid()) _testImage->scaleImage(_width, _height, 1);
                 }
             }
             return true;
@@ -89,6 +82,7 @@ namespace osgVerse
                         getDeviceDescriptor(desc, 1);  // Create the relationship between EGLImage and VASurface
                     }
                 }
+                else H->dirty = true;  // make the texture re-sample the (updated) decoded VASurface
                 setState(PLAYING);
             }
             else setState(STOPPED);
