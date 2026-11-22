@@ -156,16 +156,16 @@ namespace
         int getMode() const { return _mode; }
         void setMode(int m)
         {
-            if (m < 1 || m > 6) return;
             // Forward rendering has no deferred G-buffer at all, so the GI stages (which read
             // the deferred shadow/lighting buffers) are meaningless there: modes 1/2 are
             // no-GI by design
+            if (m < 1 || m > 6) return;
             bool deferred = (m >= 3);
             bool lights = (m == 2 || m == 4 || m == 6);
             bool gi = deferred && (m >= 5);
-            setLights(lights);
-            applyGi(gi);
+            setLights(lights); applyGi(gi);
             applyDeferred(deferred);
+
             _mode = m;
             if (!deferred)
             {   // Known limitation of the standard pipeline: the forward pass draws to the back
@@ -188,6 +188,7 @@ namespace
                     osg::Vec2 num(0.0f, 0.0f); _module->getLightNumber()->get(num);
                     OSG_NOTICE << "[ManyLights] " << (int)num.x() << " lights are active in the "
                                << "table (flat-pass cap " << (int)num.y() << ")" << std::endl;
+                    
                     osg::View* view = dynamic_cast<osg::View*>(&aa);
                     if (view && view->getCamera())
                     {
@@ -220,6 +221,7 @@ namespace
                        << " light refs";
                 }
             }
+
             ss << "\nAnimation: " << (_animated ? "ON" : "OFF")
                << ", light wireframe: " << (_showDebug ? "ON" : "OFF");
             if (_mode >= 1)
@@ -231,6 +233,7 @@ namespace
                    << (gi ? "GI" : "no GI");
                 if ((_mode >= 5) && !_giAvailable) ss << " (GI stages not built)";
             }
+
             ss << "\nKeys: [1-6] render mode, [C] cluster, [A] animation, [L] light wireframe";
             if (_text.valid())
             {
@@ -246,7 +249,8 @@ namespace
             updateText();
         }
 
-        void toggleDebug() { setShowDebug(!_showDebug); updateText(); }
+        void toggleDebug()
+        { setShowDebug(!_showDebug); updateText(); }
 
         void setLights(bool on)
         {
@@ -302,9 +306,7 @@ namespace
             osg::StateSet* ss = _sceneRoot->getOrCreateStateSet();
             ss->clear();  // also undoes the forward stateset of the previous mode
             if (on)
-            {
-                _sceneRoot->setNodeMask(DEFERRED_SCENE_MASK | SHADOW_CASTER_MASK);
-            }
+                { _sceneRoot->setNodeMask(DEFERRED_SCENE_MASK | SHADOW_CASTER_MASK); }
             else
             {
                 if (!_forwardSS.valid() && _pipeline.valid())
@@ -333,7 +335,6 @@ int main(int argc, char** argv)
     osg::ArgumentParser arguments = osgVerse::globalInitialize(argc, argv, osgVerse::defaultInitParameters());
     osg::setNotifyHandler(new osgVerse::ConsoleHandler);
 
-    int numLights = 128; arguments.read("--lights", numLights);
     // The attenuation range is taken as a fraction of the scene size, so that the light pools stay
     // small compared to the scene (a range of the same order as the scene itself would light
     // everything and blow the near surfaces out). The power follows range * range because the
@@ -342,6 +343,7 @@ int main(int argc, char** argv)
     float rangeScale = 0.12f; arguments.read("--light-range", rangeScale);
     float powerScale = 0.15f; arguments.read("--light-power", powerScale);
     float spotRatio = 0.35f; arguments.read("--spot-ratio", spotRatio);
+    int numLights = 128; arguments.read("--lights", numLights);
     bool animate = !arguments.read("--no-animate");
     bool startNoCluster = arguments.read("--no-cluster");
     bool noSsao = arguments.read("--no-ssao");
@@ -378,6 +380,7 @@ int main(int argc, char** argv)
     viewer->getParameters().enableBloom = !noBloom;  // bloom also drives the eye adaptation
     viewer->getParameters().shadowNumber = 0;  // no shadow needed: the lights are not shadow casters
     viewer->setSceneData(root.get());
+
     viewer->addEventHandler(new osgViewer::StatsHandler);
     viewer->addEventHandler(new osgViewer::WindowSizeHandler);
     viewer->addEventHandler(new osgGA::StateSetManipulator(viewer->getCamera()->getOrCreateStateSet()));
@@ -397,7 +400,7 @@ int main(int argc, char** argv)
         // which case its viewport is the best proxy for the real on-screen size
         osg::GraphicsContext* gc = viewer->getCamera()->getGraphicsContext();
         if (gc != NULL && gc->getTraits() != NULL)
-        { canvasW = gc->getTraits()->width; canvasH = gc->getTraits()->height; }
+            { canvasW = gc->getTraits()->width; canvasH = gc->getTraits()->height; }
         else
         {
             osg::Viewport* vp = viewer->getCamera()->getViewport();
@@ -410,11 +413,13 @@ int main(int argc, char** argv)
     osg::Camera* hudCamera = hudCanvas.create(canvasW, canvasH);
     osgVerse::Pipeline::setPipelineMask(*hudCamera, FORWARD_SCENE_MASK);
     root->addChild(hudCamera);
+
     int hudFontSize = osg::maximum(26, (int)(canvasH * 0.03f));
     hudCanvas.createText("main", L"", hudFontSize, canvasW * 9 / 10, canvasH / 3, "root",
                          osgVerse::HeadUpDisplayCanvas::FREE,
                          osgVerse::HeadUpDisplayCanvas::BOTTOM);  // NOTE: maps to LAY_TOP of layout.h
     osgText::Text* hudText = hudCanvas.texts["main"].get();
+
     // The canvas layout puts the text block wherever its (y-down) rect happens to be; we want
     // it pinned to the top-left of the canvas instead, so set alignment and position directly.
     // (The anchor enum of the canvas does not match layout.h's internal flags -- BOTTOM there
@@ -430,6 +435,7 @@ int main(int argc, char** argv)
     osgVerse::LightModule* lightModule =
         static_cast<osgVerse::LightModule*>(pipeline->getModule("Light"));
     if (lightModule == NULL) { OSG_WARN << "No light module found" << std::endl; return 1; }
+    
     // The flat loop can show them all too. Note the +1: the main directional light already lives in
     // the light geode, so the table holds numLights + 1 entries, and a cap of numLights would make
     // the non-clustered path silently drop one light (the clustered one keeps it), which shows up
@@ -470,6 +476,7 @@ int main(int argc, char** argv)
     statHandler->setLightRoot(lightRoot);
     statHandler->setAnimated(animate);
     statHandler->setShowDebug(showLights);
+
     int startMode = noSsgi ? 4 : 6;  // the configuration the startup flags produce
     arguments.read("--mode", startMode);
     statHandler->setMode(startMode);
@@ -484,12 +491,10 @@ int main(int argc, char** argv)
     // Agent automation (optional): set the view, capture and quit. This is a no-op unless one of
     // the --agent* options is given (see configureViewerForAgent in pipeline/Utilities.h)
     osgVerse::configureViewerForAgent(arguments, viewer.get());
-
     std::cout << "Many-lights testing started (num=" << numLights << ", cluster="
               << (lightModule->getClusterEnabled() ? "on" : "off") << ")..." << std::endl;
 
-    osg::ref_ptr<osg::FrameStamp> lastStamp;
-    double time0 = 0.0;
+    osg::ref_ptr<osg::FrameStamp> lastStamp; double time0 = 0.0;
     while (!viewer->done())
     {
         if (statHandler->getAnimated())
@@ -503,6 +508,7 @@ int main(int argc, char** argv)
                 osgVerse::LightDrawable* ld =
                     dynamic_cast<osgVerse::LightDrawable*>(lightRoot->getDrawable(i));
                 if (!ld) continue;
+                
                 osg::Vec3 p = ld->getPosition();
                 p.x() += 0.02f * (float)cos(t * 1.7 + i);
                 p.y() += 0.02f * (float)sin(t * 1.3 + i * 2);

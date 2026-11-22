@@ -111,6 +111,103 @@ std::vector<AttributeInstance> readAttributes(
     return out;
 }
 
+AttrType classifyAttribute(const std::string& v) {
+    if (v.empty()) return AttrType::Text;
+    size_t i = (v[0] == '+' || v[0] == '-') ? 1 : 0;
+    if (i >= v.size()) return AttrType::Text;
+    bool digits = false, dot = false;
+    for (; i < v.size(); ++i) {
+        char c = v[i];
+        if (c >= '0' && c <= '9') { digits = true; continue; }
+        if (c == '.' && !dot) { dot = true; continue; }
+        return AttrType::Text;   // anything else (space, comma, ...) = text
+    }
+    if (!digits) return AttrType::Text;   // ".", "-.", ...
+    return dot ? AttrType::Real : AttrType::Integer;
+}
+
+bool attributeAsDouble(const std::string& v, double& out) {
+    if (classifyAttribute(v) == AttrType::Text) return false;
+    out = strtod(v.c_str(), nullptr);
+    return true;
+}
+
+double wrapLon180(double lonDiff) {
+    // (dl + 180) may itself overflow the range at |dl| > 540 deg, so use
+    // fmod first; ENC cells never span more than a few degrees anyway.
+    double dl = fmod(lonDiff + 180.0, 360.0);
+    if (dl <= 0.0) dl += 360.0;
+    return dl - 180.0;
+}
+
+MolodenskyParams molodenskyForHdat(long long hdat) {
+    MolodenskyParams p;
+    // HDAT=2 is WGS-84 (S-57 Appendix A / ENC UOC).  Unknown codes are left
+    // as identity too; callers warn, wrong conversion is worse than none.
+    if (hdat == 0 || hdat == 2) return p;
+    p.identity = false;
+    // Classic geodetic datums still seen in legacy paper-chart-derived ENCs.
+    // (Ellipsoid + published 3-parameter shifts to WGS-84, h=0.)
+    switch (hdat) {
+    case 1:   // WGS-72
+        p.a = 6378135.0; p.rf = 298.26; p.dx = 0.0; p.dy = 0.0; p.dz = 4.5;
+        break;
+    case 5:   // NAD-27 (Clarke 1866)
+        p.a = 6378206.4; p.rf = 294.9786982;
+        p.dx = -8.0; p.dy = 160.0; p.dz = 176.0;
+        break;
+    case 6:   // NAD-83 (GRS 80) -- effectively WGS-84
+        p.a = 6378137.0; p.rf = 298.257222101; p.dx = 0.0; p.dy = 0.0; p.dz = 0.0;
+        break;
+    case 7:   // Tokyo (Bessel 1841)
+        p.a = 6377397.155; p.rf = 299.1528128;
+        p.dx = -148.0; p.dy = 507.0; p.dz = 685.0;
+        break;
+    case 20:  // European 1950 (Hayford/International 1924)
+        p.a = 6378388.0; p.rf = 297.0;
+        p.dx = -87.0; p.dy = -96.0; p.dz = -120.0;
+        break;
+    default:  // keep identity; caller warns about unconverted data
+        p.identity = true;
+        p.known = false;
+        break;
+    }
+    return p;
+}
+
+void molodenskyToWGS84(const MolodenskyParams& p,
+                       double lonDeg, double latDeg,
+                       double& lonOutDeg, double& latOutDeg) {
+    if (p.identity) { lonOutDeg = lonDeg; latOutDeg = latDeg; return; }
+
+    const double D2R = 3.14159265358979323846 / 180.0;
+    const double R2D = 180.0 / 3.14159265358979323846;
+    double lam = lonDeg * D2R, phi = latDeg * D2R, h = 0.0;
+    double f = 1.0 / p.rf, e2 = f * (2.0 - f);
+
+    // local ellipsoid -> ECEF
+    double sinPhi = sin(phi), cosPhi = cos(phi);
+    double N = p.a / sqrt(1.0 - e2 * sinPhi * sinPhi);
+    double X = (N + h) * cosPhi * cos(lam);
+    double Y = (N + h) * cosPhi * sin(lam);
+    double Z = (N * (1.0 - e2) + h) * sinPhi;
+
+    // datum shift
+    X += p.dx; Y += p.dy; Z += p.dz;
+
+    // ECEF -> geodetic on the WGS-84 ellipsoid (closed-form Bowring)
+    double aW = 6378137.0, fW = 1.0 / 298.257223563, e2W = fW * (2.0 - fW);
+    double r = sqrt(X * X + Y * Y);
+    double theta = atan2(Z * aW, r * aW * (1.0 - e2W));
+    double latW = atan2(Z + aW * e2W * sin(theta) * sin(theta) * sin(theta),
+                        r - e2W * aW * cos(theta) * cos(theta) * cos(theta));
+    double lonW = atan2(Y, X);
+    // points shifted across a pole are not a real ENC scenario; lon stays
+    // un-wrapped here, the caller applies wrapLon180() as needed
+    lonOutDeg = lonW * R2D;
+    latOutDeg = latW * R2D;
+}
+
 int recordRcnm(const I8211::Iso8211Reader& rdr,
                const I8211::RecordDef& rec) {
     // features and spatial vectors carry RCNM in FRID/VRID

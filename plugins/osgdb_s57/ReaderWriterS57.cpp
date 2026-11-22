@@ -88,6 +88,8 @@ namespace osgS57
     {
         double lon0 = 0.0, lat0 = 0.0;
         double kx = 111194.93, ky = 111194.93;   // metres per degree
+        S57::MolodenskyParams datum;             // dataset datum -> WGS-84
+        bool degreesOut = false;                 // true: x=lon, y=lat degrees
 
         void set(double lonMin, double latMin, double lonMax, double latMax)
         {
@@ -100,8 +102,20 @@ namespace osgS57
 
         osg::Vec3 toXY(const S57::ChartPoint& p) const
         {
-            return osg::Vec3(static_cast<float>((p.lon - lon0) * kx),
-                             static_cast<float>((p.lat - lat0) * ky), 0.0f);
+            // ENC vectors are referenced to DSPM.HDAT (almost always WGS-84);
+            // classic legacy datums are shifted through a 3-parameter
+            // Molodensky transform first.
+            double lon = p.lon, lat = p.lat;
+            if (!datum.identity)
+                S57::molodenskyToWGS84(datum, p.lon, p.lat, lon, lat);
+            if (degreesOut)
+                return osg::Vec3(static_cast<float>(lon),
+                                 static_cast<float>(lat), 0.0f);
+            // wrap the *difference* so cells crossing the +/-180 antimeridian
+            // stay contiguous instead of spanning the whole plane
+            double dl = S57::wrapLon180(lon - lon0);
+            return osg::Vec3(static_cast<float>(dl * kx),
+                             static_cast<float>((lat - lat0) * ky), 0.0f);
         }
     };
 
@@ -456,16 +470,32 @@ namespace osgS57
     }
 
     // Turn the (possibly update-merged) chart into a FeatureCollection.
+    // 'degreesOut' selects the output CRS: false = local tangent plane
+    // (metres, default), true = geographic WGS-84 degrees (EPSG:4326).
     static osgVerse::FeatureCollection* assembleChart(const ChartData& chart,
-                                                      const S57::DatasetParameters& dspm)
+                                                      const S57::DatasetParameters& dspm,
+                                                      bool degreesOut)
     {
         if (chart.features.empty()) return NULL;
 
         // ---- projection centre ------------------------------------------------
         Projection pr;
         if (chart.haveGeo) pr.set(chart.lonMin, chart.latMin, chart.lonMax, chart.latMax);
+        pr.degreesOut = degreesOut;
+        pr.datum = S57::molodenskyForHdat(dspm.hdat);
+        if (!pr.datum.known)
+            OSG_WARN << "[ReaderWriterS57] HDAT=" << dspm.hdat
+                     << " is not in the built-in datum table (and no M_HOPA is "
+                     << "parsed); leaving coordinates in the dataset datum"
+                     << std::endl;
 
         osgVerse::FeatureCollection* collection = new osgVerse::FeatureCollection;
+        // CRS metadata for downstream consumers
+        collection->setUserValue("CRS", std::string(degreesOut ?
+            "WGS84 (EPSG:4326, degrees)" : "LocalTangentPlane (metres)"));
+        collection->setUserValue("HorizontalDatum", (double)dspm.hdat);
+        if (pr.datum.known && !pr.datum.identity)
+            collection->setUserValue("DatumShiftedToWGS84", 1.0);
         for (const FeatureRec& fr : chart.features)
         {
             if (fr.deleted) continue;   // removed by an update cell
@@ -497,6 +527,11 @@ namespace osgS57
                 else if (r.kind == 140) faceRefs.push_back(idx);
             }
 
+            // numeric attributes that carry the sounding/height units of the
+            // cell (DUNI/HUNI): additionally exposed in metres as "<key>_m"
+            static const char* k_depthAttrs[] = { "DRVAL1", "DRVAL2", "VALSOU" };
+            static const char* k_heightAttrs[] = { "VERCLR", "VERLEN" };
+
             auto fillMeta = [&](osgVerse::Feature* ft)
             {
                 ft->setName(fname);
@@ -515,7 +550,23 @@ namespace osgS57
                 {
                     S57::AttributeInfo ai = S57::attribute(static_cast<int>(a.code));
                     std::string key = ai.valid ? ai.acronym : "A" + std::to_string(a.code);
-                    if (!key.empty()) ft->setUserValue(key, a.value);
+                    if (key.empty()) continue;
+
+                    double dv = 0.0;
+                    if (S57::attributeAsDouble(a.value, dv))
+                        ft->setUserValue(key, dv);                    // typed number
+                    else if (!a.value.empty())
+                        ft->setUserValue(key, a.value);               // text
+
+                    if (dv != 0.0 || a.value == "0")
+                    {
+                        for (const char* d : k_depthAttrs)
+                            if (key == d)
+                                { ft->setUserValue(key + "_m", dv * dspm.depthUnitMetres()); break; }
+                        for (const char* h : k_heightAttrs)
+                            if (key == h)
+                                { ft->setUserValue(key + "_m", dv * dspm.heightUnitMetres()); break; }
+                    }
                 }
             };
 
@@ -529,8 +580,38 @@ namespace osgS57
                 {
                     const VecRec& v = chart.recs[idx];
                     if (v.pts.empty()) continue;
-                    feature->addPoint(pr.toXY(v.pts[0]));
-                    made = true;
+                    // A SOUNDG isolated node carries a whole row of SG3D
+                    // points ("multi-point soundings"), each with its own
+                    // VE3D depth -- add every point, not just the first.
+                    int depthCount = 0;
+                    double dmin = 1e30, dmax = -1e30;
+                    for (const S57::ChartPoint& p3 : v.pts)
+                    {
+                        osg::Vec3 p = pr.toXY(p3);
+                        if (p3.hasDepth)
+                        {
+                            // S-57 stores positive depths below the sounding
+                            // datum, so the 3D Z is negative (down).
+                            double depthM = p3.depth * dspm.depthUnitMetres();
+                            p.z() = static_cast<float>(-depthM);
+                            depthCount++;
+                            if (depthM < dmin) dmin = depthM;
+                            if (depthM > dmax) dmax = depthM;
+                        }
+                        feature->addPoint(p);
+                        made = true;
+                    }
+                    if (depthCount > 0)
+                    {
+                        feature->setUserValue("HasDepth", (double)depthCount);
+                        if (depthCount == 1)
+                            feature->setUserValue("Depth_m", dmax);
+                        else
+                        {
+                            feature->setUserValue("DepthMin_m", dmin);
+                            feature->setUserValue("DepthMax_m", dmax);
+                        }
+                    }
                 }
                 for (int idx : edgeRefs)  // fallback: edge-vertex point objects
                 {
@@ -885,14 +966,15 @@ namespace osgS57
 
         ChartData chart;
         parseDataset(rdr, dspm, chart);
-        return assembleChart(chart, dspm);
+        return assembleChart(chart, dspm, false);
     }
 
     // Base cell + sequential merge of its sibling update cells.  Update cells
     // never carry a DSPM record, so the base cell's COMF/SOMF drive the
     // coordinate decoding of every update (known pitfall).
     static osgVerse::FeatureCollection* buildChartWithUpdates(
-        const I8211::Iso8211Reader& rdr, const std::string& basePath, bool applyUpdates)
+        const I8211::Iso8211Reader& rdr, const std::string& basePath,
+        bool applyUpdates, bool degreesOut)
     {
         std::size_t n = rdr.recordCount();
         if (n == 0) return NULL;
@@ -907,7 +989,7 @@ namespace osgS57
         ChartData chart;
         parseDataset(rdr, dspm, chart);
         if (applyUpdates && !basePath.empty()) applyUpdateCells(basePath, chart, dspm);
-        return assembleChart(chart, dspm);
+        return assembleChart(chart, dspm, degreesOut);
     }
 }  // namespace
 
@@ -927,6 +1009,10 @@ public:
         supportsOption("ApplyUpdates",
             "Merge sibling update cells (.001/.002/...) when the input is a "
             "base cell read from a file. Default: 1");
+        supportsOption("OutputCRS",
+            "Output coordinate system: Local = local tangent plane in metres "
+            "(default), WGS84 = geographic degrees (EPSG:4326). readImage "
+            "always draws in local metres regardless of this option.");
     }
 
     virtual const char* className() const
@@ -941,7 +1027,9 @@ public:
         std::string upd = options ? options->getPluginStringData("ApplyUpdates") : "";
         bool applyUpd = (upd.empty() || upd[0] != '0');
         std::string basePath = options ? options->getPluginStringData("S57_BASE_PATH") : "";
-        return osgS57::buildChartWithUpdates(rdr, basePath, applyUpd);
+        std::string crs = options ? options->getPluginStringData("OutputCRS") : "";
+        bool degreesOut = (crs == "WGS84" || crs == "wgs84" || crs == "EPSG:4326");
+        return osgS57::buildChartWithUpdates(rdr, basePath, applyUpd, degreesOut);
     }
 
     virtual ReadResult readObject(const std::string& path, const Options* options) const
@@ -1051,6 +1139,14 @@ public:
             geode->setUserValue("BoundMaxZ", (double)bb.zMax());
         }
 
+        // CRS metadata propagated from the FeatureCollection
+        std::string crsName, datumName;
+        double hdat = 0.0;
+        collection->getUserValue("CRS", crsName);
+        collection->getUserValue("HorizontalDatum", hdat);
+        if (!crsName.empty()) geode->setUserValue("CRS", crsName);
+        if (hdat > 0.0) geode->setUserValue("HorizontalDatum", hdat);
+
         if (options)
         {
             int toInc = atoi(options->getPluginStringData("IncludeFeatures").c_str());
@@ -1073,7 +1169,13 @@ public:
             return ReadResult::ERROR_IN_READING_FILE;
         }
 
-        osg::ref_ptr<osgVerse::FeatureCollection> fc = loadCollection(rdr, options);
+        // the raster path scales feature coordinates to pixels, so it always
+        // works in local metres regardless of the requested OutputCRS
+        osg::ref_ptr<Options> imgOptions = options ?
+            static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
+        imgOptions->setPluginStringData("OutputCRS", "Local");
+
+        osg::ref_ptr<osgVerse::FeatureCollection> fc = loadCollection(rdr, imgOptions.get());
         if (!fc) return ReadResult::ERROR_IN_READING_FILE;
 
         std::string wStr = options ? options->getPluginStringData("ImageWidth") : "512";

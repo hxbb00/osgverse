@@ -41,6 +41,19 @@ struct DatasetParameters {
     double soundingScale() const {
         return somf > 0 ? static_cast<double>(somf) : 1.0;
     }
+
+    // Multiplier that converts a value expressed in DUNI units into metres.
+    // DUNI: 1=metres, 2=feet, 3=fathoms (anything else assumed metres).
+    double depthUnitMetres() const {
+        if (duni == 2) return 0.3048;
+        if (duni == 3) return 1.8288;
+        return 1.0;
+    }
+    // Multiplier that converts a value expressed in HUNI units into metres.
+    // HUNI: 1=metres, 2=feet (anything else assumed metres).
+    double heightUnitMetres() const {
+        return huni == 2 ? 0.3048 : 1.0;
+    }
 };
 
 // Decode the DSPM field of a data-set parameter record.
@@ -71,6 +84,54 @@ struct AttributeInstance {
 // Attributes of a feature record (repeated ATTF + NATF fields).
 std::vector<AttributeInstance> readAttributes(
     const I8211::Iso8211Reader& rdr, const I8211::RecordDef& rec);
+
+// Attribute value classification ---------------------------------------------
+// ATTF/NATF values are stored as raw text ("ATVL"); the S-57 attribute
+// catalogue decides the intended type.  Since the bundled catalogue carries
+// no format column, values are classified syntactically: every attribute
+// whose text parses fully as a number is exposed as a number, everything
+// else stays text (names, dates, enumeration names, lists ...).
+enum class AttrType { Text, Integer, Real };
+
+AttrType classifyAttribute(const std::string& value);
+
+// Convenience: parse an integer or real attribute value.  Returns false for
+// text values (and for empty strings -- S-57 uses "" for "not given").
+bool attributeAsDouble(const std::string& value, double& out);
+
+// Coordinate-system helpers ---------------------------------------------------
+// Wrap a longitude *difference* into (-180, +180].  Subtracting wrapped
+// differences keeps cells that cross the +/-180 deg antimeridian (Fiji,
+// Chukotka, western Aleutians ...) contiguous in local projections.
+double wrapLon180(double lonDiff);
+
+// Horizontal datum conversion.  S-57 Appendix A: HDAT=2 means WGS-84 and
+// the ENC UOC *requires* that value; any other datum must be converted to
+// WGS-84.  The parameters come from the M_HOPA meta object attributes:
+//   DXDA/DYDA/DZDA  geocentric datum shift in metres (3-parameter shift)
+//   ESMA            semi-major axis of the local ellipsoid (metres)
+//   ESMI            inverse flattening of the local ellipsoid
+struct MolodenskyParams
+{
+    bool identity = true;   // true: HDAT==2 or no shift parameters given
+    bool known = true;      // false: HDAT code not in the built-in table
+    double dx = 0.0, dy = 0.0, dz = 0.0;
+    double a = 6378137.0;           // local ellipsoid semi-major axis
+    double rf = 298.2572235630;     // local ellipsoid 1 / flattening
+};
+
+// Build conversion parameters for a DSPM.HDAT value.  Returns an identity
+// transform for HDAT=2 (WGS-84).  HDAT codes outside the built-in table
+// keep identity too, but 'known' is set to false so callers can warn.
+MolodenskyParams molodenskyForHdat(long long hdat);
+
+// Geodetic longitude/latitude (degrees, local datum) -> WGS-84 degrees.
+// Height is not used (ENC vectors carry no ellipsoidal height); the
+// three-parameter shift is computed at h=0, accurate to well below a metre
+// for the datum sets actually shipped in ENCs.
+void molodenskyToWGS84(const MolodenskyParams& p,
+                       double lonDeg, double latDeg,
+                       double& lonOutDeg, double& latOutDeg);
 
 // Classification helpers -----------------------------------------------------
 // RCNM codes seen in the general exchange and spatial/feature records.
